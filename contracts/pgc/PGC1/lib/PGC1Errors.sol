@@ -3,6 +3,8 @@ pragma solidity ^0.8.24;
 
 library PGC1Errors {
     error AlreadyOwned();
+    error AlreadyInitialized();
+
     error SoldOut();
     error InvalidPayment();
     error EthNotAccepted();

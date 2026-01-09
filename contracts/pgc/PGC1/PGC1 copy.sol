@@ -23,25 +23,28 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     using SafeERC20 for IERC20;
 
     // -------------------------
-    // Storage (clone-ready: NOT immutable)
+    // Identity
     // -------------------------
-    bytes32 public gameId;
+    bytes32 public immutable gameId;
 
-    address public override paymentToken;
-    address public override treasuryRouter;
-    address public override developerRecipient;
-    uint16 public override platformFeeBps;
-    uint256 public override maxSupply; // 0 = unlimited
+    // -------------------------
+    // Immutables (config)
+    // -------------------------
+    address public immutable override paymentToken;
+    address public immutable override treasuryRouter;
+    address public immutable override developerRecipient;
+    uint16 public immutable override platformFeeBps;
+    uint256 public immutable override maxSupply; // 0 = unlimited
 
+    // -------------------------
+    // Mutable sale config
+    // -------------------------
     uint256 public override price;
-
-    // ERC1155 base URI (we manage ourselves)
-    string private _tokenBaseURI;
 
     // -------------------------
     // Contract-level metadata commits (append-only)
     // -------------------------
-    uint32 public override contractMetaHeadVersion;
+    uint32 public override contractMetaHeadVersion; // 0 means none yet
     bytes32 public override contractMetaHeadHash;
     bytes32 public override contractMetaHeadParentHash;
 
@@ -56,7 +59,7 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     // -------------------------
     // Game metadata commits (append-only)
     // -------------------------
-    uint32 public override metadataHeadVersion;
+    uint32 public override metadataHeadVersion; // 0 means none yet
     bytes32 public override metadataHeadHash;
     bytes32 public override metadataHeadParentHash;
 
@@ -68,39 +71,21 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         uint64 timestamp
     );
 
-    bool private _initialized;
-
     // -------------------------
-    // Constructor (minimal for implementation)
+    // Constructor
     // -------------------------
-    constructor() ERC1155("") Ownable(msg.sender) {}
-
-    // -------------------------
-    // ERC1155 metadata
-    // -------------------------
-    function uri(uint256) public view override returns (string memory) {
-        return _tokenBaseURI;
-    }
-
-    // -------------------------
-    // Initializer (for clones)
-    // -------------------------
-    function initialize(
-        string calldata tokenURI1155,
+    constructor(
+        string memory tokenURI1155,
         bytes32 initialContractMetaHash,
-        string calldata initialContractMetaURI,
+        string memory initialContractMetaURI,
         bytes32 gameId_,
         address paymentToken_,
         uint256 initialPrice,
         uint256 initialMaxSupply,
         address treasuryRouter_,
         address developerRecipient_,
-        uint16 platformFeeBps_,
-        address owner_
-    ) external {
-        if (_initialized) revert PGC1Errors.AlreadyInitialized();
-        _initialized = true;
-
+        uint16 platformFeeBps_
+    ) ERC1155(tokenURI1155) Ownable(msg.sender) {
         if (
             treasuryRouter_ == address(0) || developerRecipient_ == address(0)
         ) {
@@ -110,8 +95,8 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
             revert PGC1Errors.FeeTooHigh();
         }
 
-        // set config
         gameId = gameId_;
+
         paymentToken = paymentToken_;
         treasuryRouter = treasuryRouter_;
         developerRecipient = developerRecipient_;
@@ -120,15 +105,10 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         price = initialPrice;
         maxSupply = initialMaxSupply;
 
-        _tokenBaseURI = tokenURI1155;
-
-        // transfer ownership to developer/publisher
-        _transferOwnership(owner_);
-
         emit PGC1Events.PriceUpdated(initialPrice);
         emit PGC1Events.MaxSupplyInitialized(initialMaxSupply);
 
-        // initial contract-level metadata commit
+        // Publish initial contract-level metadata commit (append-only history starts here)
         _publishContractMetadata(
             initialContractMetaHash,
             initialContractMetaURI
@@ -147,17 +127,17 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     // -------------------------
     function publishContractMetadata(
         bytes32 newHash,
-        string calldata uri_
+        string calldata uri
     ) external override onlyOwner {
-        _publishContractMetadata(newHash, uri_);
+        _publishContractMetadata(newHash, uri);
     }
 
     function _publishContractMetadata(
         bytes32 newHash,
-        string memory uri_
+        string memory uri
     ) internal {
         if (newHash == bytes32(0)) revert PGC1Errors.EmptyMetadataHash();
-        if (bytes(uri_).length == 0) revert PGC1Errors.EmptyMetadataURI();
+        if (bytes(uri).length == 0) revert PGC1Errors.EmptyMetadataURI();
 
         bytes32 parent = contractMetaHeadHash;
 
@@ -171,7 +151,7 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
             contractMetaHeadVersion,
             newHash,
             parent,
-            uri_,
+            uri,
             uint64(block.timestamp)
         );
     }
@@ -181,10 +161,10 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     // -------------------------
     function publishMetadata(
         bytes32 newHash,
-        string calldata uri_
+        string calldata uri
     ) external override onlyOwner {
         if (newHash == bytes32(0)) revert PGC1Errors.EmptyMetadataHash();
-        if (bytes(uri_).length == 0) revert PGC1Errors.EmptyMetadataURI();
+        if (bytes(uri).length == 0) revert PGC1Errors.EmptyMetadataURI();
 
         bytes32 parent = metadataHeadHash;
 
@@ -198,7 +178,7 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
             metadataHeadVersion,
             newHash,
             parent,
-            uri_,
+            uri,
             uint64(block.timestamp)
         );
     }
