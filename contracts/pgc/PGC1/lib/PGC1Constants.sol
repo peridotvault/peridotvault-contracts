@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
 library PGC1Constants {
     uint256 internal constant LICENSE_ID = 1;
