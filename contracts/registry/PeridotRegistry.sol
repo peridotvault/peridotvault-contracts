@@ -11,14 +11,25 @@ contract PeridotRegistry is Ownable {
         bool active;
     }
 
+    /* ======================================================
+       STORAGE
+    ====================================================== */
+
     // gameId => record
     mapping(bytes32 => GameRecord) public games;
 
     // pgc1 => gameId (reverse lookup)
     mapping(address => bytes32) public gameIdOf;
 
-    // Only factory can register (set via owner)
+    // iterable index
+    bytes32[] private _allGameIds;
+
+    // Only factory can register
     address public factory;
+
+    /* ======================================================
+       EVENTS (OPTIONAL, TETAP BAGUS)
+    ====================================================== */
 
     event FactorySet(address indexed factory);
     event GameRegistered(
@@ -27,6 +38,10 @@ contract PeridotRegistry is Ownable {
         address indexed publisher
     );
     event GameStatusSet(bytes32 indexed gameId, bool active);
+
+    /* ======================================================
+       ERRORS
+    ====================================================== */
 
     error NotFactory();
     error ZeroAddress();
@@ -42,11 +57,19 @@ contract PeridotRegistry is Ownable {
 
     constructor() Ownable(msg.sender) {}
 
+    /* ======================================================
+       ADMIN
+    ====================================================== */
+
     function setFactory(address factory_) external onlyOwner {
         if (factory_ == address(0)) revert ZeroAddress();
         factory = factory_;
         emit FactorySet(factory_);
     }
+
+    /* ======================================================
+       REGISTRATION
+    ====================================================== */
 
     function registerGame(
         bytes32 gameId,
@@ -56,10 +79,7 @@ contract PeridotRegistry is Ownable {
         if (pgc1 == address(0) || publisher == address(0)) revert ZeroAddress();
         if (pgc1.code.length == 0) revert InvalidPGC1();
 
-        // gameId must be unique
         if (games[gameId].pgc1 != address(0)) revert GameAlreadyRegistered();
-
-        // pgc1 must also be unique
         if (gameIdOf[pgc1] != bytes32(0)) revert PGC1AlreadyRegistered();
 
         games[gameId] = GameRecord({
@@ -70,14 +90,34 @@ contract PeridotRegistry is Ownable {
         });
 
         gameIdOf[pgc1] = gameId;
+        _allGameIds.push(gameId);
 
         emit GameRegistered(gameId, pgc1, publisher);
     }
 
-    /// @dev optional moderation / delisting
+    /* ======================================================
+       MODERATION
+    ====================================================== */
+
     function setGameActive(bytes32 gameId, bool active) external onlyOwner {
         if (games[gameId].pgc1 == address(0)) revert GameNotRegistered();
         games[gameId].active = active;
         emit GameStatusSet(gameId, active);
+    }
+
+    /* ======================================================
+       READ HELPERS (INI YANG PENTING UNTUK FRONTEND)
+    ====================================================== */
+
+    function gameCount() external view returns (uint256) {
+        return _allGameIds.length;
+    }
+
+    function gameIdAt(uint256 index) external view returns (bytes32) {
+        return _allGameIds[index];
+    }
+
+    function allGameIds() external view returns (bytes32[] memory) {
+        return _allGameIds;
     }
 }

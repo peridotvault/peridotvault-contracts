@@ -67,6 +67,17 @@ async function main() {
         console.log("tx:", txHash);
         console.log("block:", receipt.blockNumber.toString(), "status:", receipt.status);
 
+        const record = await registry.read.games([gameId]);
+        const pgc1ss = record[0];
+        const publisherStored = record[1];
+
+        console.log("PGC1 (registry):", pgc1ss);
+        console.log("Publisher (registry):", publisherStored);
+
+        if (publisherStored.toLowerCase() !== publisher.account.address.toLowerCase()) {
+            console.log("WARNING: Registry publisher mismatch!");
+        }
+
         // Read GamePublished event in that block to get pgc1 address
         const logs = await publicClient.getContractEvents({
             address: factory.address,

@@ -24,7 +24,7 @@ async function main() {
     // 3) Deploy Factory (ETH fee mode default)
     const feeRecipient = deployer.account.address as `0x${string}`;
     const feeToken = "0x0000000000000000000000000000000000000000" as `0x${string}`; // ETH
-    const publishFee = parseEther("0.01"); // adjust if needed
+    const publishFee = parseEther("0.001"); // adjust if needed
 
     const factory = await viem.deployContract("PGC1Factory", [
         pgc1Impl.address,

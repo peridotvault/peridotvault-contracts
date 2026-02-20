@@ -1,0 +1,3 @@
+pnpm hardhat compile
+pnpm hardhat run scripts/deploy.ts --network liskSepolia
+pnpm hardhat run scripts/deploy.ts --network baseSepolia

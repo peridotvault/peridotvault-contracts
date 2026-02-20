@@ -1,0 +1,14 @@
+{
+  "networkName": "localhost",
+  "chainId": 31337,
+  "confirmations": 1,
+  "deployer": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+  "pgc1Implementation": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+  "registry": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+  "factory": "0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0",
+  "treasuryRouter": "0xe55a693527d8CD166a9b814BfFdAA5Adb65DB5aB",
+  "feeToken": "0x0000000000000000000000000000000000000000",
+  "publishFeeWei": "1000000000000",
+  "platformFeeBps": 500,
+  "deployedAt": "2026-01-22T08:28:33.954Z"
+}

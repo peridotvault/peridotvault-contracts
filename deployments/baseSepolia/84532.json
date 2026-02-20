@@ -1,0 +1,14 @@
+{
+  "networkName": "baseSepolia",
+  "chainId": 84532,
+  "confirmations": 1,
+  "deployer": "0xe55a693527d8cd166a9b814bffdaa5adb65db5ab",
+  "pgc1Implementation": "0xd865893f64d33bfcc848ff8afeab0554eb10ff2b",
+  "registry": "0xb44449094d7872d4ef52237d633c7ac55f207bdb",
+  "factory": "0x04800d2a81efe428be5a629e787db460823f1556",
+  "treasuryRouter": "0xe55a693527d8CD166a9b814BfFdAA5Adb65DB5aB",
+  "feeToken": "0x0000000000000000000000000000000000000000",
+  "publishFeeWei": "1000000000000",
+  "platformFeeBps": 500,
+  "deployedAt": "2026-01-22T08:32:50.863Z"
+}

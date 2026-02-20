@@ -22,9 +22,10 @@ import {PGC1Events} from "./lib/PGC1Events.sol";
 contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     using SafeERC20 for IERC20;
 
-    // -------------------------
-    // Storage (clone-ready: NOT immutable)
-    // -------------------------
+    /* ======================================================
+       CORE CONFIG
+    ====================================================== */
+
     bytes32 public gameId;
 
     address public override paymentToken;
@@ -32,15 +33,29 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     address public override developerRecipient;
     uint16 public override platformFeeBps;
     uint256 public override maxSupply; // 0 = unlimited
-
     uint256 public override price;
 
-    // ERC1155 base URI (we manage ourselves)
     string private _tokenBaseURI;
 
-    // -------------------------
-    // Contract-level metadata commits (append-only)
-    // -------------------------
+    bool private _initialized;
+
+    /* ======================================================
+       METADATA COMMIT STRUCT
+    ====================================================== */
+
+    struct MetadataCommit {
+        bytes32 hash;
+        bytes32 parentHash;
+        uint64 timestamp;
+        string uri;
+    }
+
+    /* ======================================================
+       CONTRACT-LEVEL METADATA (ITERABLE)
+    ====================================================== */
+
+    MetadataCommit[] private _contractMetadataHistory;
+
     uint32 public override contractMetaHeadVersion;
     bytes32 public override contractMetaHeadHash;
     bytes32 public override contractMetaHeadParentHash;
@@ -53,9 +68,12 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         uint64 timestamp
     );
 
-    // -------------------------
-    // Game metadata commits (append-only)
-    // -------------------------
+    /* ======================================================
+       GAME METADATA (ITERABLE)
+    ====================================================== */
+
+    MetadataCommit[] private _metadataHistory;
+
     uint32 public override metadataHeadVersion;
     bytes32 public override metadataHeadHash;
     bytes32 public override metadataHeadParentHash;
@@ -68,23 +86,31 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         uint64 timestamp
     );
 
-    bool private _initialized;
+    /* ======================================================
+       PURCHASE TRACKING (OPTIONAL UI INDEX)
+    ====================================================== */
 
-    // -------------------------
-    // Constructor (minimal for implementation)
-    // -------------------------
+    address[] private _buyers;
+    mapping(address => uint64) public purchasedAt;
+
+    /* ======================================================
+       CONSTRUCTOR
+    ====================================================== */
+
     constructor() ERC1155("") Ownable(msg.sender) {}
 
-    // -------------------------
-    // ERC1155 metadata
-    // -------------------------
+    /* ======================================================
+       ERC1155 METADATA
+    ====================================================== */
+
     function uri(uint256) public view override returns (string memory) {
         return _tokenBaseURI;
     }
 
-    // -------------------------
-    // Initializer (for clones)
-    // -------------------------
+    /* ======================================================
+       INITIALIZER (CLONE-READY)
+    ====================================================== */
+
     function initialize(
         string calldata tokenURI1155,
         bytes32 initialContractMetaHash,
@@ -101,16 +127,12 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         if (_initialized) revert PGC1Errors.AlreadyInitialized();
         _initialized = true;
 
-        if (
-            treasuryRouter_ == address(0) || developerRecipient_ == address(0)
-        ) {
+        if (treasuryRouter_ == address(0) || developerRecipient_ == address(0))
             revert PGC1Errors.ZeroAddress();
-        }
-        if (platformFeeBps_ > PGC1Constants.PLATFORM_FEE_BPS_CAP) {
-            revert PGC1Errors.FeeTooHigh();
-        }
 
-        // set config
+        if (platformFeeBps_ > PGC1Constants.PLATFORM_FEE_BPS_CAP)
+            revert PGC1Errors.FeeTooHigh();
+
         gameId = gameId_;
         paymentToken = paymentToken_;
         treasuryRouter = treasuryRouter_;
@@ -119,32 +141,31 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
 
         price = initialPrice;
         maxSupply = initialMaxSupply;
-
         _tokenBaseURI = tokenURI1155;
 
-        // transfer ownership to developer/publisher
         _transferOwnership(owner_);
 
         emit PGC1Events.PriceUpdated(initialPrice);
         emit PGC1Events.MaxSupplyInitialized(initialMaxSupply);
 
-        // initial contract-level metadata commit
         _publishContractMetadata(
             initialContractMetaHash,
             initialContractMetaURI
         );
     }
 
-    // -------------------------
-    // Identity
-    // -------------------------
+    /* ======================================================
+       VERSION
+    ====================================================== */
+
     function pgcVersion() external pure override returns (uint256) {
         return 1;
     }
 
-    // -------------------------
-    // Contract metadata commits (admin)
-    // -------------------------
+    /* ======================================================
+       CONTRACT METADATA (ADMIN)
+    ====================================================== */
+
     function publishContractMetadata(
         bytes32 newHash,
         string calldata uri_
@@ -164,8 +185,18 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         unchecked {
             contractMetaHeadVersion += 1;
         }
+
         contractMetaHeadParentHash = parent;
         contractMetaHeadHash = newHash;
+
+        _contractMetadataHistory.push(
+            MetadataCommit({
+                hash: newHash,
+                parentHash: parent,
+                timestamp: uint64(block.timestamp),
+                uri: uri_
+            })
+        );
 
         emit ContractMetadataPublished(
             contractMetaHeadVersion,
@@ -176,9 +207,10 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         );
     }
 
-    // -------------------------
-    // Game metadata commits (admin)
-    // -------------------------
+    /* ======================================================
+       GAME METADATA (ADMIN)
+    ====================================================== */
+
     function publishMetadata(
         bytes32 newHash,
         string calldata uri_
@@ -191,8 +223,18 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         unchecked {
             metadataHeadVersion += 1;
         }
+
         metadataHeadParentHash = parent;
         metadataHeadHash = newHash;
+
+        _metadataHistory.push(
+            MetadataCommit({
+                hash: newHash,
+                parentHash: parent,
+                timestamp: uint64(block.timestamp),
+                uri: uri_
+            })
+        );
 
         emit MetadataPublished(
             metadataHeadVersion,
@@ -203,18 +245,21 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         );
     }
 
-    // -------------------------
-    // User purchase (self-mint)
-    // -------------------------
-    function buy() external payable override nonReentrant {
-        if (metadataHeadVersion == 0) revert PGC1Errors.NoMetadataPublished();
+    /* ======================================================
+       PURCHASE
+    ====================================================== */
 
-        if (balanceOf(msg.sender, PGC1Constants.LICENSE_ID) != 0) {
+    function buy() external payable override nonReentrant {
+        if (balanceOf(msg.sender, PGC1Constants.LICENSE_ID) != 0)
             revert PGC1Errors.AlreadyOwned();
-        }
 
         _enforceCap();
         _mint(msg.sender, PGC1Constants.LICENSE_ID, 1, "");
+
+        if (purchasedAt[msg.sender] == 0) {
+            purchasedAt[msg.sender] = uint64(block.timestamp);
+            _buyers.push(msg.sender);
+        }
 
         if (paymentToken == address(0)) {
             if (msg.value != price) revert PGC1Errors.InvalidPayment();
@@ -231,17 +276,51 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         _burn(msg.sender, PGC1Constants.LICENSE_ID, 1);
     }
 
-    // -------------------------
-    // Admin controls
-    // -------------------------
+    /* ======================================================
+       ADMIN
+    ====================================================== */
+
     function setPrice(uint256 newPrice) external override onlyOwner {
         price = newPrice;
         emit PGC1Events.PriceUpdated(newPrice);
     }
 
-    // -------------------------
-    // Internal helpers
-    // -------------------------
+    /* ======================================================
+       READ HELPERS (UI-FRIENDLY)
+    ====================================================== */
+
+    function contractMetadataCount() external view returns (uint256) {
+        return _contractMetadataHistory.length;
+    }
+
+    function contractMetadataAt(
+        uint256 index
+    ) external view returns (MetadataCommit memory) {
+        return _contractMetadataHistory[index];
+    }
+
+    function metadataCount() external view returns (uint256) {
+        return _metadataHistory.length;
+    }
+
+    function metadataAt(
+        uint256 index
+    ) external view returns (MetadataCommit memory) {
+        return _metadataHistory[index];
+    }
+
+    function buyerCount() external view returns (uint256) {
+        return _buyers.length;
+    }
+
+    function buyerAt(uint256 index) external view returns (address) {
+        return _buyers[index];
+    }
+
+    /* ======================================================
+       INTERNAL HELPERS
+    ====================================================== */
+
     function _enforceCap() internal view {
         uint256 cap = maxSupply;
         if (cap == 0) return;
@@ -251,6 +330,7 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
 
     function _splitEth(uint256 amount) internal {
         uint256 fee = (amount * platformFeeBps) / PGC1Constants.BPS_DENOMINATOR;
+
         uint256 devAmt = amount - fee;
 
         (bool ok1, ) = payable(treasuryRouter).call{value: fee}("");
@@ -262,6 +342,7 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
 
     function _splitErc20(IERC20 token, uint256 amount) internal {
         uint256 fee = (amount * platformFeeBps) / PGC1Constants.BPS_DENOMINATOR;
+
         uint256 devAmt = amount - fee;
 
         token.safeTransferFrom(msg.sender, address(this), amount);
@@ -269,18 +350,18 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         if (devAmt != 0) token.safeTransfer(developerRecipient, devAmt);
     }
 
-    // -------------------------
-    // Soulbound enforcement
-    // -------------------------
+    /* ======================================================
+       SOULBOUND ENFORCEMENT
+    ====================================================== */
+
     function _update(
         address from,
         address to,
         uint256[] memory ids,
         uint256[] memory values
     ) internal override(ERC1155Supply) {
-        if (from != address(0) && to != address(0)) {
+        if (from != address(0) && to != address(0))
             revert PGC1Errors.NonTransferable();
-        }
         super._update(from, to, ids, values);
     }
 }

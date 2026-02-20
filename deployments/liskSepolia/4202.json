@@ -1,0 +1,13 @@
+{
+  "networkName": "liskSepolia",
+  "chainId": 4202,
+  "confirmations": 1,
+  "deployer": "0xe63be104d1f4b4b817041b021cb4fcf8b882bc25",
+  "pgc1Implementation": "0x8425d3a36c6034fae3de350e04ee568a7abc2c96",
+  "registry": "0x1c01234773707382d909325b6df4616e6d511698",
+  "factory": "0x0aa1f6a1a2e27812f5c7b3238d60e88aceffffc3",
+  "feeRecipient": "0xe63be104d1f4b4b817041b021cb4fcf8b882bc25",
+  "feeToken": "0x0000000000000000000000000000000000000000",
+  "publishFeeWei": "10000000000000",
+  "deployedAt": "2026-01-11T04:09:48.409Z"
+}

@@ -1,0 +1,30 @@
+======================MAINNET======================
+
+======================SEPOLIA======================
+Deploying Peridot contracts to liskSepolia...
+Deployer: 0xe63be104d1f4b4b817041b021cb4fcf8b882bc25
+ChainId: 4202
+Balance: 0.01
+
+[1/5] Deploying PGC1 implementation...
+PGC1_IMPL: 0x8425d3a36c6034fae3de350e04ee568a7abc2c96
+
+[2/5] Deploying PeridotRegistry...
+REGISTRY: 0x1c01234773707382d909325b6df4616e6d511698
+
+[3/5] Deploying PGC1Factory...
+FACTORY: 0x0aa1f6a1a2e27812f5c7b3238d60e88aceffffc3
+
+[4/5] Wiring registry <-> factory...
+Registry.setFactory tx: 0xca84aced30c06d6e3c4567139df960cefc9839ce8213a0e94d719e9a7de6c8e0
+Registry.setFactory OK
+Factory.setRegistry tx: 0x6431d9d0d10e6e05ba6f2f1d61c169432c42cf91e3974399222c57506b69c4e9
+Factory.setRegistry OK
+
+[5/5] Allowlisting deployer as publisher...
+Factory.setPublisher tx: 0xe455d2ef71690775084c45f0fe35f9fb5f2304d16eda6c9b601a0c9aeea223a3
+Factory.setPublisher(deployer,true) OK
+
+Saved deployments: /Users/ranaufal/MyWork/Business/__Antigane Inc__/PeridotVault/App/smart-contract/peridotvault-contracts/deployments/liskSepolia/4202.json
+
+Deployment successful!

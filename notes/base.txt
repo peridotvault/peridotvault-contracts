@@ -1,0 +1,33 @@
+Deploying Peridot contracts to baseSepolia...
+Deployer: 0xe55a693527d8cd166a9b814bffdaa5adb65db5ab
+ChainId: 84532
+Balance: 0.009987443360513964
+
+[1/5] Deploying PGC1 implementation...
+PGC1_IMPL: 0xd865893f64d33bfcc848ff8afeab0554eb10ff2b
+
+[2/5] Deploying PeridotRegistry...
+REGISTRY: 0xb44449094d7872d4ef52237d633c7ac55f207bdb
+
+[3/5] Deploying PGC1Factory...
+FACTORY: 0x04800d2a81efe428be5a629e787db460823f1556
+
+[4/5] Wiring registry <-> factory...
+Registry.setFactory tx: 0xff79b75612560872f31442409e023d7a1cb58feb6a1b6c7716ca1336d6e3da7d
+Registry.setFactory OK
+Factory.setRegistry tx: 0x24201fc1bd477577bd4f539ead2d75f1b14ca67cc8e193fb28954c74d559ef83
+Factory.setRegistry OK
+
+[5/5] Setting platform fee BPS...
+Factory.setPlatformFeeBps tx: 0x6d397d1273958c8413dad70f8bf0db4c1e1111a2bcd0ec3640faafeeaf8603f3
+Factory.setPlatformFeeBps OK
+
+Saved deployments: /Users/ranaufal/MyWork/Business/__Antigane Inc__/PeridotVault/App/smart-contract/peridotvault-contracts/deployments/baseSepolia/84532.json
+
+Deployment successful!
+
+
+
+Deployer: 0xe55a693527d8cd166a9b814bffdaa5adb65db5ab
+Chain ID: 84532
+IDRX deployed at: 0x48d9e3cacf63d8f9cb8897c6cca043a6a5835e26
