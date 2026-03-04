@@ -3,13 +3,13 @@ pragma solidity ^0.8.28;
 
 interface IPeridotRegistry {
     function registerGame(
-        bytes32 gameId,
+        string calldata gameId,
         address pgc1,
         address publisher
     ) external;
 
     function games(
-        bytes32 gameId
+        string calldata gameId
     )
         external
         view
@@ -20,7 +20,7 @@ interface IPeridotRegistry {
             bool active
         );
 
-    function gameIdOf(address pgc1) external view returns (bytes32);
+    function gameIdOf(address pgc1) external view returns (string memory);
 
     function factory() external view returns (address);
 }

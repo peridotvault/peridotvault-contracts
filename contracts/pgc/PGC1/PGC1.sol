@@ -26,7 +26,7 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
        CORE CONFIG
     ====================================================== */
 
-    bytes32 public gameId;
+    string public gameId;
 
     address public override paymentToken;
     address public override treasuryRouter;
@@ -115,7 +115,7 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         string calldata tokenURI1155,
         bytes32 initialContractMetaHash,
         string calldata initialContractMetaURI,
-        bytes32 gameId_,
+        string calldata gameId_,
         address paymentToken_,
         uint256 initialPrice,
         uint256 initialMaxSupply,

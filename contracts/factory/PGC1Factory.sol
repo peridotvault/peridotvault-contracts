@@ -14,81 +14,83 @@ import {IPeridotRegistry} from "../registry/IPeridotRegistry.sol";
 
 /// @title PGC1Factory
 /// @notice Permissionless factory for publishing PGC1 game contracts
-/// @dev Platform economics & routing are enforced at factory-level
+/// @dev Platform economics & routing enforced by factory
 contract PGC1Factory is Ownable {
     using Clones for address;
     using SafeERC20 for IERC20;
 
-    // =============================================================
-    // Core Config
-    // =============================================================
+    /* ======================================================
+       CORE CONFIG
+    ====================================================== */
 
-    /// @notice PGC1 implementation address (logic contract)
+    /// @notice PGC1 logic contract
     address public immutable pgc1Implementation;
 
-    /// @notice Global on-chain registry
+    /// @notice global game registry
     IPeridotRegistry public registry;
 
-    // =============================================================
-    // Platform Economics (ENFORCED)
-    // =============================================================
+    /* ======================================================
+       PLATFORM ECONOMICS
+    ====================================================== */
 
-    /// @notice Platform treasury router (can be same as feeRecipient)
+    /// @notice platform treasury router
     address public treasuryRouter;
 
-    /// @notice Platform fee in basis points (0–1_000)
-    uint16 public platformFeeBps = 1_000;
+    /// @notice platform fee (basis points)
+    uint16 public platformFeeBps = 500;
 
-    /// @notice Publish fee token (address(0) = ETH)
+    /// @notice publish fee token (0 = ETH)
     address public feeToken;
 
-    /// @notice Publish fee amount
+    /// @notice publish fee amount
     uint256 public publishFee;
 
-    // =============================================================
-    // Events
-    // =============================================================
+    /* ======================================================
+       EVENTS
+    ====================================================== */
 
     event RegistrySet(address indexed registry);
+
     event TreasuryRouterSet(address indexed router);
+
     event PlatformFeeBpsSet(uint16 newBps);
 
     event PublishFeeSet(uint256 newFee);
-    event FeeRecipientSet(address indexed newRecipient);
-    event FeeTokenSet(address indexed newToken);
+
+    event FeeTokenSet(address indexed token);
 
     event GamePublished(
         address indexed publisher,
         address indexed pgc1,
-        bytes32 indexed gameId
+        string gameId
     );
 
-    // =============================================================
-    // Errors
-    // =============================================================
+    /* ======================================================
+       ERRORS
+    ====================================================== */
 
     error RegistryNotSet();
     error EthNotAccepted();
     error InvalidPlatformFeeBps();
+    error InvalidGameId();
 
-    // =============================================================
-    // Init Struct (USER-SAFE)
-    // =============================================================
+    /* ======================================================
+       GAME INIT STRUCT
+    ====================================================== */
 
-    /// @notice Parameters provided by developer (NO platform control here)
     struct PGC1Init {
         string tokenURI1155;
         bytes32 initialContractMetaHash;
         string initialContractMetaURI;
-        bytes32 gameId;
+        string gameId;
         address paymentToken;
         uint256 price;
         uint256 maxSupply;
     }
 
-    // =============================================================
-    // Constructor
-    // =============================================================
+    /* ======================================================
+       CONSTRUCTOR
+    ====================================================== */
 
     constructor(
         address pgc1Implementation_,
@@ -109,58 +111,63 @@ contract PGC1Factory is Ownable {
         emit PublishFeeSet(publishFee_);
     }
 
-    // =============================================================
-    // Admin: Registry
-    // =============================================================
+    /* ======================================================
+       ADMIN
+    ====================================================== */
 
     function setRegistry(address registry_) external onlyOwner {
         if (registry_ == address(0)) revert PGC1Errors.ZeroAddress();
+
         registry = IPeridotRegistry(registry_);
+
         emit RegistrySet(registry_);
-    }
-
-    // =============================================================
-    // Admin: Platform Economics
-    // =============================================================
-
-    function setPlatformFeeBps(uint16 newBps) external onlyOwner {
-        if (newBps > 10_000) revert InvalidPlatformFeeBps();
-        platformFeeBps = newBps;
-        emit PlatformFeeBpsSet(newBps);
     }
 
     function setTreasuryRouter(address newRouter) external onlyOwner {
         if (newRouter == address(0)) revert PGC1Errors.ZeroAddress();
+
         treasuryRouter = newRouter;
+
         emit TreasuryRouterSet(newRouter);
+    }
+
+    function setPlatformFeeBps(uint16 newBps) external onlyOwner {
+        if (newBps > 10_000) revert InvalidPlatformFeeBps();
+
+        platformFeeBps = newBps;
+
+        emit PlatformFeeBpsSet(newBps);
     }
 
     function setPublishFee(uint256 newFee) external onlyOwner {
         publishFee = newFee;
+
         emit PublishFeeSet(newFee);
     }
 
     function setFeeToken(address newToken) external onlyOwner {
         feeToken = newToken;
+
         emit FeeTokenSet(newToken);
     }
 
-    // =============================================================
-    // Publish (PERMISSIONLESS)
-    // =============================================================
+    /* ======================================================
+       PUBLISH GAME
+    ====================================================== */
 
     function publishGame(
         PGC1Init calldata init
     ) external payable returns (address pgc1) {
         if (address(registry) == address(0)) revert RegistryNotSet();
-        if (treasuryRouter == address(0)) revert PGC1Errors.ZeroAddress();
+
+        if (bytes(init.gameId).length == 0) revert InvalidGameId();
 
         _collectPublishFee();
 
-        // Deploy minimal proxy
+        // deploy minimal proxy
         pgc1 = pgc1Implementation.clone();
 
-        // Initialize game contract
+        // initialize game contract
         PGC1(pgc1).initialize(
             init.tokenURI1155,
             init.initialContractMetaHash,
@@ -169,35 +176,36 @@ contract PGC1Factory is Ownable {
             init.paymentToken,
             init.price,
             init.maxSupply,
-            treasuryRouter, // 🔒 platform-controlled
-            msg.sender, // 🔒 developerRecipient
-            platformFeeBps, // 🔒 platform-controlled
-            msg.sender // owner
+            treasuryRouter,
+            msg.sender,
+            platformFeeBps,
+            msg.sender
         );
 
-        // Register atomically
+        // register game in registry
         registry.registerGame(init.gameId, pgc1, msg.sender);
 
         emit GamePublished(msg.sender, pgc1, init.gameId);
     }
 
-    // =============================================================
-    // Internal: Publish Fee
-    // =============================================================
+    /* ======================================================
+       INTERNAL: PUBLISH FEE
+    ====================================================== */
 
     function _collectPublishFee() internal {
         uint256 fee = publishFee;
+
         if (fee == 0) return;
 
         if (feeToken == address(0)) {
-            // ETH mode
             if (msg.value != fee) revert PGC1Errors.InvalidPayment();
 
             (bool ok, ) = payable(treasuryRouter).call{value: msg.value}("");
+
             if (!ok) revert PGC1Errors.PayoutFailed();
         } else {
-            // ERC20 mode
             if (msg.value != 0) revert EthNotAccepted();
+
             IERC20(feeToken).safeTransferFrom(msg.sender, treasuryRouter, fee);
         }
     }
