@@ -1,22 +1,22 @@
-# Node modules
-/node_modules
+.DS_Store
+**/.DS_Store
 
-# Compilation output
-/dist
+# EVM
+chains/evm/node_modules/
+chains/evm/artifacts/
+chains/evm/cache/
+chains/evm/coverage/
+chains/evm/types/
+chains/evm/dist/
+chains/evm/bundle/
+chains/evm/.env
 
-# pnpm deploy output
-/bundle
+# Solana
+chains/solana/.anchor/
+chains/solana/target/
+chains/solana/test-ledger/
+chains/solana/node_modules/
+chains/solana/.yarn/
 
-# Hardhat Build Artifacts
-/artifacts
-
-# Hardhat compilation (v2) support directory
-/cache
-
-# Typechain output
-/types
-
-# Hardhat coverage reports
-/coverage
-
-.env
+# Local nested git backups
+.git-backups/
