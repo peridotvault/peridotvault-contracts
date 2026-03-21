@@ -1,5 +1,6 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, AccountDeserialize};
 
+use crate::errors::Pgc1Error;
 use crate::states::{GameState, LicenseAccount, MinterAuthority};
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
@@ -20,7 +21,8 @@ pub struct GetMinterView<'info> {
 
 #[derive(Accounts)]
 pub struct GetLicenseView<'info> {
-    pub license_account: Account<'info, LicenseAccount>,
+    /// CHECK: manually deserialized to allow "not found" => false semantics
+    pub license_account: UncheckedAccount<'info>,
 }
 
 pub fn get_publisher(ctx: Context<GetGameStateView>) -> Result<Pubkey> {
@@ -40,7 +42,8 @@ pub fn is_minter(ctx: Context<GetMinterView>) -> Result<bool> {
 }
 
 pub fn get_license_policy(ctx: Context<GetLicenseView>) -> Result<LicensePolicyView> {
-    let license = &ctx.accounts.license_account;
+    let license = load_license(ctx.accounts.license_account.as_ref())?
+        .ok_or(error!(Pgc1Error::LicenseAccountNotFound))?;
     Ok(LicensePolicyView {
         issued_at: license.issued_at,
         expires_at: license.expires_at,
@@ -48,13 +51,28 @@ pub fn get_license_policy(ctx: Context<GetLicenseView>) -> Result<LicensePolicyV
 }
 
 pub fn has_license(ctx: Context<GetLicenseView>) -> Result<bool> {
+    let Some(license) = load_license(ctx.accounts.license_account.as_ref())? else {
+        return Ok(false);
+    };
     let now = Clock::get()?.unix_timestamp;
-    let license = &ctx.accounts.license_account;
     Ok(license.expires_at == 0 || license.expires_at > now)
 }
 
 pub fn can_access_game(ctx: Context<GetLicenseView>) -> Result<bool> {
+    let Some(license) = load_license(ctx.accounts.license_account.as_ref())? else {
+        return Ok(false);
+    };
     let now = Clock::get()?.unix_timestamp;
-    let license = &ctx.accounts.license_account;
     Ok(license.expires_at == 0 || license.expires_at > now)
+}
+
+fn load_license(account: &AccountInfo<'_>) -> Result<Option<LicenseAccount>> {
+    if account.owner != &crate::ID || account.data_is_empty() {
+        return Ok(None);
+    }
+
+    let mut license_data: &[u8] = &account.data.borrow();
+    let license = LicenseAccount::try_deserialize(&mut license_data)
+        .map_err(|_| error!(Pgc1Error::LicenseAccountMismatch))?;
+    Ok(Some(license))
 }

@@ -5,8 +5,13 @@ pub struct RegistryInitialized {
     pub governance: Pubkey,
     pub treasury: Pubkey,
     pub factory: Pubkey,
-    pub registration_fee: u64,
-    pub registration_fee_token: Pubkey,
+    pub registration_fee_options: Vec<RegistrationFeeOptionEvent>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct RegistrationFeeOptionEvent {
+    pub payment_method: Pubkey,
+    pub amount: u64,
 }
 
 #[event]
@@ -52,8 +57,9 @@ pub struct FactoryUpdated {
 
 #[event]
 pub struct RegistrationFeeUpdated {
+    pub payment_method: Pubkey,
     pub amount: u64,
-    pub token: Pubkey,
+    pub enabled: bool,
 }
 
 #[event]

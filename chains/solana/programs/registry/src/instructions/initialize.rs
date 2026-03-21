@@ -3,8 +3,8 @@ use anchor_lang::prelude::*;
 use crate::{
     constants::REGISTRY_STATE_SEED,
     errors::RegistryError,
-    events::RegistryInitialized,
-    states::RegistryState,
+    events::{RegistrationFeeOptionEvent, RegistryInitialized},
+    states::{RegistrationFeeOption, RegistryState},
 };
 
 #[derive(Accounts)]
@@ -36,18 +36,26 @@ pub fn handler(
     require!(governance != Pubkey::default(), RegistryError::InvalidGovernance);
     require!(treasury != Pubkey::default(), RegistryError::InvalidTreasury);
     require!(factory != Pubkey::default(), RegistryError::InvalidFactory);
-    require!(
-        registration_fee_token != Pubkey::default(),
-        RegistryError::InvalidRegistrationFeeToken
-    );
+    if registration_fee > 0 {
+        require!(
+            registration_fee_token != Pubkey::default(),
+            RegistryError::InvalidRegistrationPaymentMethod
+        );
+    }
 
     let registry_state = &mut ctx.accounts.registry_state;
     registry_state.bump = ctx.bumps.registry_state;
     registry_state.governance = governance;
     registry_state.treasury = treasury;
     registry_state.factory = factory;
-    registry_state.registration_fee = registration_fee;
-    registry_state.registration_fee_token = registration_fee_token;
+    registry_state.registration_fee_options = if registration_fee > 0 {
+        vec![RegistrationFeeOption {
+            payment_method: registration_fee_token,
+            amount: registration_fee,
+        }]
+    } else {
+        Vec::new()
+    };
     registry_state.admins = vec![governance];
     registry_state.fee_exemptions = Vec::new();
     registry_state.games = Vec::new();
@@ -57,8 +65,14 @@ pub fn handler(
         governance,
         treasury,
         factory,
-        registration_fee,
-        registration_fee_token,
+        registration_fee_options: registry_state
+            .registration_fee_options
+            .iter()
+            .map(|entry| RegistrationFeeOptionEvent {
+                payment_method: entry.payment_method,
+                amount: entry.amount,
+            })
+            .collect(),
     });
 
     Ok(())

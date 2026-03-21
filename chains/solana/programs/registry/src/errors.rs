@@ -29,8 +29,8 @@ pub enum RegistryError {
     #[msg("Invalid fee exemption address")]
     InvalidFeeExemptionAccount,
 
-    #[msg("Invalid registration fee token")]
-    InvalidRegistrationFeeToken,
+    #[msg("Invalid registration payment method")]
+    InvalidRegistrationPaymentMethod,
 
     #[msg("Unauthorized")]
     Unauthorized,
@@ -62,8 +62,17 @@ pub enum RegistryError {
     #[msg("Missing required fee accounts")]
     MissingFeeAccounts,
 
+    #[msg("Registration fee option was not found")]
+    RegistrationFeeOptionNotFound,
+
+    #[msg("Registration fee option limit reached")]
+    RegistrationFeeOptionLimitReached,
+
     #[msg("Invalid fee payer token account")]
     InvalidFeePayerTokenAccount,
+
+    #[msg("Invalid treasury account")]
+    InvalidTreasuryAccount,
 
     #[msg("Invalid treasury token account")]
     InvalidTreasuryTokenAccount,

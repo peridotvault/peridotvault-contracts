@@ -1,15 +1,17 @@
 use anchor_lang::prelude::*;
 
 use crate::{
+    constants::is_native_sol_payment_method,
     constants::REGISTRY_STATE_SEED,
     errors::RegistryError,
-    states::{RegistryGame, RegistryState},
+    states::{RegistrationFeeOption, RegistryGame, RegistryState},
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
 pub struct RegistrationFeeView {
+    pub payment_method: Pubkey,
     pub amount: u64,
-    pub token: Pubkey,
+    pub is_native_sol: bool,
 }
 
 #[derive(Accounts)]
@@ -65,11 +67,35 @@ pub fn get_factory(ctx: Context<GetRegistryView>) -> Result<Pubkey> {
     Ok(ctx.accounts.registry_state.factory)
 }
 
-pub fn get_registration_fee(ctx: Context<GetRegistryView>) -> Result<RegistrationFeeView> {
-    Ok(RegistrationFeeView {
-        amount: ctx.accounts.registry_state.registration_fee,
-        token: ctx.accounts.registry_state.registration_fee_token,
-    })
+pub fn get_registration_fee(
+    ctx: Context<GetRegistryView>,
+    payment_method: Pubkey,
+) -> Result<RegistrationFeeView> {
+    let option = ctx
+        .accounts
+        .registry_state
+        .registration_fee_option(&payment_method)
+        .ok_or(error!(RegistryError::RegistrationFeeOptionNotFound))?;
+    Ok(registration_fee_view(option))
+}
+
+pub fn get_registration_fees(ctx: Context<GetRegistryView>) -> Result<Vec<RegistrationFeeView>> {
+    Ok(
+        ctx.accounts
+            .registry_state
+            .registration_fee_options
+            .iter()
+            .map(registration_fee_view)
+            .collect(),
+    )
+}
+
+fn registration_fee_view(option: &RegistrationFeeOption) -> RegistrationFeeView {
+    RegistrationFeeView {
+        payment_method: option.payment_method,
+        amount: option.amount,
+        is_native_sol: is_native_sol_payment_method(&option.payment_method),
+    }
 }
 
 pub fn is_fee_exempt(ctx: Context<GetRegistryView>, account: Pubkey) -> Result<bool> {

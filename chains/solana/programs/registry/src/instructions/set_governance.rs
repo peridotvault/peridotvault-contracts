@@ -27,6 +27,9 @@ pub fn handler(ctx: Context<SetGovernance>, governance: Pubkey) -> Result<()> {
     let old_governance = registry_state.governance;
     registry_state.governance = governance;
     registry_state.set_admin(governance, true)?;
+    if old_governance != governance {
+        registry_state.set_admin(old_governance, false)?;
+    }
 
     emit!(GovernanceUpdated {
         old_governance,

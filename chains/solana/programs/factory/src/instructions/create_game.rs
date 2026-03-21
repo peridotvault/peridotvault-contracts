@@ -24,7 +24,7 @@ use crate::{
 };
 
 #[derive(Accounts)]
-#[instruction(game_id: String, _metadata_uri: String)]
+#[instruction(game_id: String, _metadata_uri: String, _registration_payment_method: Pubkey)]
 pub struct CreateGame<'info> {
     #[account(mut)]
     pub publisher: Signer<'info>,
@@ -62,6 +62,10 @@ pub struct CreateGame<'info> {
     #[account(mut, address = factory_state.registry)]
     pub registry_state: Account<'info, RegistryState>,
 
+    /// CHECK: validated against registry_state.treasury by registry CPI
+    #[account(mut, address = registry_state.treasury)]
+    pub treasury: UncheckedAccount<'info>,
+
     /// CHECK: target minter address; must match factory state
     #[account(address = factory_state.game_store)]
     pub game_store: UncheckedAccount<'info>,
@@ -70,14 +74,19 @@ pub struct CreateGame<'info> {
     pub publisher_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
     pub treasury_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
-    pub registration_fee_mint: Option<InterfaceAccount<'info, Mint>>,
+    pub fee_payment_mint: Option<InterfaceAccount<'info, Mint>>,
     pub payment_token_program: Option<Interface<'info, TokenInterface>>,
 
     pub license_token_program: Program<'info, Token2022>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: String) -> Result<Pubkey> {
+pub fn handler(
+    ctx: Context<CreateGame>,
+    game_id: String,
+    metadata_uri: String,
+    registration_payment_method: Pubkey,
+) -> Result<Pubkey> {
     require!(!game_id.trim().is_empty(), FactoryError::EmptyGameId);
     require!(!metadata_uri.trim().is_empty(), FactoryError::EmptyMetadataUri);
     require!(game_id.len() <= MAX_GAME_ID_LEN, FactoryError::GameIdTooLong);
@@ -136,6 +145,7 @@ pub fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: String) 
                 fee_payer: ctx.accounts.publisher.to_account_info(),
                 registry_state: ctx.accounts.registry_state.to_account_info(),
                 pgc_game_state: ctx.accounts.pgc_game_state.to_account_info(),
+                treasury: ctx.accounts.treasury.to_account_info(),
                 fee_payer_token_account: ctx
                     .accounts
                     .publisher_fee_token_account
@@ -146,9 +156,9 @@ pub fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: String) 
                     .treasury_fee_token_account
                     .as_ref()
                     .map(ToAccountInfo::to_account_info),
-                registration_fee_mint: ctx
+                fee_payment_mint: ctx
                     .accounts
-                    .registration_fee_mint
+                    .fee_payment_mint
                     .as_ref()
                     .map(ToAccountInfo::to_account_info),
                 token_program: ctx
@@ -156,12 +166,14 @@ pub fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: String) 
                     .payment_token_program
                     .as_ref()
                     .map(ToAccountInfo::to_account_info),
+                system_program: ctx.accounts.system_program.to_account_info(),
             },
             &[factory_signer_seeds],
         ),
         game_id.clone(),
         ctx.accounts.pgc_game_state.key(),
         ctx.accounts.publisher.key(),
+        registration_payment_method,
     )?;
 
     emit!(GameCreated {

@@ -1,7 +1,9 @@
 use anchor_lang::prelude::*;
+use anchor_lang::system_program;
 use anchor_spl::token_interface::Mint;
 
 use crate::{
+    constants::is_native_sol_payment_method,
     constants::REGISTRY_STATE_SEED,
     errors::RegistryError,
     events::RegistrationFeeUpdated,
@@ -22,25 +24,41 @@ pub struct SetRegistrationFee<'info> {
     pub registry_state: Account<'info, RegistryState>,
 
     #[account(address = token)]
-    pub registration_fee_mint: InterfaceAccount<'info, Mint>,
+    pub registration_fee_mint: Option<InterfaceAccount<'info, Mint>>,
 }
 
 pub fn handler(ctx: Context<SetRegistrationFee>, amount: u64, token: Pubkey) -> Result<()> {
     require!(
         token != Pubkey::default(),
-        RegistryError::InvalidRegistrationFeeToken
+        RegistryError::InvalidRegistrationPaymentMethod
     );
-    require_keys_eq!(
-        ctx.accounts.registration_fee_mint.key(),
-        token,
-        RegistryError::InvalidRegistrationFeeToken
-    );
+    if is_native_sol_payment_method(&token) {
+        require_keys_eq!(
+            token,
+            system_program::ID,
+            RegistryError::InvalidRegistrationPaymentMethod
+        );
+    } else {
+        let registration_fee_mint = ctx
+            .accounts
+            .registration_fee_mint
+            .as_ref()
+            .ok_or(error!(RegistryError::MissingFeeAccounts))?;
+        require_keys_eq!(
+            registration_fee_mint.key(),
+            token,
+            RegistryError::InvalidRegistrationPaymentMethod
+        );
+    }
 
     let registry_state = &mut ctx.accounts.registry_state;
-    registry_state.registration_fee = amount;
-    registry_state.registration_fee_token = token;
+    let enabled = registry_state.upsert_registration_fee_option(token, amount)?;
 
-    emit!(RegistrationFeeUpdated { amount, token });
+    emit!(RegistrationFeeUpdated {
+        payment_method: token,
+        amount,
+        enabled,
+    });
 
     Ok(())
 }

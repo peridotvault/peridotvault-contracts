@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Accounts)]
-#[instruction(game_id: String, contract_address: Pubkey, publisher: Pubkey)]
+#[instruction(game_id: String, contract_address: Pubkey, publisher: Pubkey, _payment_method: Pubkey)]
 pub struct RegisterGameByFactory<'info> {
     pub factory: Signer<'info>,
 
@@ -28,12 +28,17 @@ pub struct RegisterGameByFactory<'info> {
     #[account(address = contract_address)]
     pub pgc_game_state: Account<'info, PgcGameState>,
 
+    /// CHECK: validated against registry_state.treasury
+    #[account(mut, address = registry_state.treasury)]
+    pub treasury: UncheckedAccount<'info>,
+
     #[account(mut)]
     pub fee_payer_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
     pub treasury_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
-    pub registration_fee_mint: Option<InterfaceAccount<'info, Mint>>,
+    pub fee_payment_mint: Option<InterfaceAccount<'info, Mint>>,
     pub token_program: Option<Interface<'info, TokenInterface>>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn handler(
@@ -41,6 +46,7 @@ pub fn handler(
     game_id: String,
     contract_address: Pubkey,
     publisher: Pubkey,
+    payment_method: Pubkey,
 ) -> Result<()> {
     require!(!game_id.trim().is_empty(), RegistryError::EmptyGameId);
     require!(game_id.len() <= MAX_GAME_ID_LEN, RegistryError::GameIdTooLong);
@@ -70,11 +76,14 @@ pub fn handler(
     collect_registration_fee(
         registry_state,
         canonical_publisher,
+        payment_method,
         ctx.accounts.fee_payer.to_account_info(),
+        ctx.accounts.treasury.to_account_info(),
         ctx.accounts.fee_payer_token_account.as_ref(),
         ctx.accounts.treasury_fee_token_account.as_ref(),
-        ctx.accounts.registration_fee_mint.as_ref(),
+        ctx.accounts.fee_payment_mint.as_ref(),
         ctx.accounts.token_program.as_ref(),
+        ctx.accounts.system_program.to_account_info(),
     )?;
 
     registry_state.add_game(game_id.clone(), contract_address, STATUS_PENDING)?;

@@ -19,7 +19,7 @@ pub use instructions::{
     set_treasury::SetTreasury,
     views::{GetRegistryView, RegistrationFeeView},
 };
-pub use states::RegistryGame;
+pub use states::{RegistrationFeeOption, RegistryGame};
 #[allow(unused_imports)]
 use instructions::{
     initialize::__cpi_client_accounts_initialize,
@@ -74,8 +74,9 @@ pub mod registry {
         ctx: Context<RegisterGame>,
         game_id: String,
         contract_address: Pubkey,
+        payment_method: Pubkey,
     ) -> Result<()> {
-        instructions::register_game::handler(ctx, game_id, contract_address)
+        instructions::register_game::handler(ctx, game_id, contract_address, payment_method)
     }
 
     pub fn register_game_by_factory(
@@ -83,8 +84,15 @@ pub mod registry {
         game_id: String,
         contract_address: Pubkey,
         publisher: Pubkey,
+        payment_method: Pubkey,
     ) -> Result<()> {
-        instructions::register_game_by_factory::handler(ctx, game_id, contract_address, publisher)
+        instructions::register_game_by_factory::handler(
+            ctx,
+            game_id,
+            contract_address,
+            publisher,
+            payment_method,
+        )
     }
 
     pub fn set_status(ctx: Context<SetStatus>, game_id: String, status: u8) -> Result<()> {
@@ -156,8 +164,15 @@ pub mod registry {
 
     pub fn get_registration_fee(
         ctx: Context<GetRegistryView>,
+        payment_method: Pubkey,
     ) -> Result<RegistrationFeeView> {
-        instructions::views::get_registration_fee(ctx)
+        instructions::views::get_registration_fee(ctx, payment_method)
+    }
+
+    pub fn get_registration_fees(
+        ctx: Context<GetRegistryView>,
+    ) -> Result<Vec<RegistrationFeeView>> {
+        instructions::views::get_registration_fees(ctx)
     }
 
     pub fn is_fee_exempt(ctx: Context<GetRegistryView>, account: Pubkey) -> Result<bool> {

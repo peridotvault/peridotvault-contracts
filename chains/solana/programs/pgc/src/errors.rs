@@ -25,4 +25,7 @@ pub enum Pgc1Error {
 
     #[msg("License account mismatch")]
     LicenseAccountMismatch,
+
+    #[msg("License account not found")]
+    LicenseAccountNotFound,
 }

@@ -342,7 +342,7 @@ export async function ensureGameCreated(base: BaseFixture): Promise<GameFixture>
 
   if (!(await accountExists(base.provider.connection, game.gameStatePda))) {
     await base.factoryProgram.methods
-      .createGame(game.gameId, game.metadataUri)
+      .createGame(game.gameId, game.metadataUri, base.paymentMint)
       .accounts({
         publisher: base.publisher.publicKey,
         factoryState: base.factoryStatePda,
@@ -354,10 +354,11 @@ export async function ensureGameCreated(base: BaseFixture): Promise<GameFixture>
         gameStoreMinterAuth: game.storeMinterAuthPda,
         registryProgram: base.registryProgram.programId,
         registryState: base.registryStatePda,
+        treasury: base.treasury.publicKey,
         gameStore: base.storeStatePda,
         publisherFeeTokenAccount: base.publisherPaymentTokenAccount,
         treasuryFeeTokenAccount: base.treasuryPaymentTokenAccount,
-        registrationFeeMint: base.paymentMint,
+        feePaymentMint: base.paymentMint,
         paymentTokenProgram: TOKEN_PROGRAM_ID,
         licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,

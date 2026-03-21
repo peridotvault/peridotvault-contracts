@@ -7,6 +7,7 @@ const {
   getAccount,
   getAssociatedTokenAddressSync,
   getOrCreateAssociatedTokenAccount,
+  mintTo,
 } = require("@solana/spl-token");
 const { Keypair, PublicKey, SystemProgram, Transaction } = require("@solana/web3.js");
 const { createHash } = require("crypto");
@@ -30,7 +31,7 @@ const GAME_AUTHORITY_SEED = Buffer.from("game_authority");
 const MINTER_AUTH_SEED = Buffer.from("minter_auth");
 const LICENSE_SEED = Buffer.from("license");
 
-const STATUS_PENDING = 0;
+const STATUS_PENDING = 0
 const STATUS_APPROVED = 1;
 const STATUS_BANNED = 2;
 
@@ -38,6 +39,7 @@ const PAYMENT_DECIMALS = 6;
 const DEFAULT_PLATFORM_FEE_BPS = 1000;
 const DEFAULT_REGISTRATION_FEE = 5_000_000;
 const DEFAULT_METADATA_URI_BASE = "https://peridot.local/metadata";
+const FAUCET_AMOUNT = 20_000_000;
 
 function shortAddress(pubkey) {
   const value = pubkey.toBase58();
@@ -76,6 +78,18 @@ function formatStatus(status) {
 
 function formatAmount(amount) {
   return (Number(amount) / 10 ** PAYMENT_DECIMALS).toFixed(2);
+}
+
+function formatSolAmount(lamports) {
+  return (Number(lamports) / anchor.web3.LAMPORTS_PER_SOL).toFixed(4);
+}
+
+function isNativeSolPaymentMethod(paymentMethod) {
+  return paymentMethod.equals(SystemProgram.programId);
+}
+
+function formatPaymentMethod(paymentMethod) {
+  return isNativeSolPaymentMethod(paymentMethod) ? "SOL" : shortAddress(paymentMethod);
 }
 
 async function sleep(ms) {
@@ -295,8 +309,18 @@ async function bootstrap() {
 
   if (await accountExists(provider.connection, registryStatePda)) {
     const registryState = await programs.registryProgram.account.registryState.fetch(registryStatePda);
-    paymentMint = registryState.registrationFeeToken;
     treasuryAddress = registryState.treasury;
+    const tokenFeeOption = registryState.registrationFeeOptions.find(
+      (entry) => !isNativeSolPaymentMethod(entry.paymentMethod),
+    );
+    if (tokenFeeOption) {
+      paymentMint = tokenFeeOption.paymentMethod;
+    } else {
+      const created = await createPaymentMintAndAtas(provider, treasuryAddress, user.publicKey);
+      paymentMint = created.paymentMint;
+      treasuryPaymentTokenAccount = created.treasuryPaymentTokenAccount;
+      userPaymentTokenAccount = created.userPaymentTokenAccount;
+    }
   } else {
     const created = await createPaymentMintAndAtas(provider, treasuryAddress, user.publicKey);
     paymentMint = created.paymentMint;
@@ -404,7 +428,6 @@ async function createGameFlow(ctx, rl) {
     TOKEN_PROGRAM_ID,
   );
   const registryState = await ctx.registryProgram.account.registryState.fetch(ctx.registryStatePda);
-  const registrationFee = Number(registryState.registrationFee.toString());
   const isFeeExempt = registryState.feeExemptions.some((entry) =>
     entry.equals(ctx.user.publicKey),
   );
@@ -415,18 +438,54 @@ async function createGameFlow(ctx, rl) {
     return;
   }
 
-  if (!isFeeExempt && userBalance < registrationFee) {
-    console.log("insufficient payment token balance for registration fee");
-    console.log(`required: ${formatAmount(registrationFee)} tokens`);
-    console.log(`current : ${formatAmount(userBalance)} tokens`);
-    console.log("ask governance to reduce the registration fee or grant a fee exemption");
-    return;
+  let registrationPaymentMethod = ctx.paymentMint;
+  if (!isFeeExempt && registryState.registrationFeeOptions.length > 0) {
+    console.log("");
+    console.log("registration fee options");
+    registryState.registrationFeeOptions.forEach((entry, index) => {
+      console.log(
+        `${index + 1}. ${formatPaymentMethod(entry.paymentMethod)} - ${
+          isNativeSolPaymentMethod(entry.paymentMethod)
+            ? `${formatSolAmount(entry.amount)} SOL`
+            : `${formatAmount(entry.amount)} tokens`
+        }`,
+      );
+    });
+    console.log("");
+
+    const optionInput = (
+      await rl.question(`choose payment method (1-${registryState.registrationFeeOptions.length}): `)
+    ).trim();
+    const optionIndex = Number(optionInput) - 1;
+    const feeOption = registryState.registrationFeeOptions[optionIndex];
+    if (!feeOption) {
+      console.log("invalid payment method");
+      return;
+    }
+
+    registrationPaymentMethod = feeOption.paymentMethod;
+    const requiredAmount = Number(feeOption.amount.toString());
+    if (isNativeSolPaymentMethod(registrationPaymentMethod)) {
+      const solBalance = await ctx.provider.connection.getBalance(ctx.user.publicKey);
+      if (solBalance < requiredAmount) {
+        console.log("insufficient SOL balance for registration fee");
+        console.log(`required: ${formatSolAmount(requiredAmount)} SOL`);
+        console.log(`current : ${formatSolAmount(solBalance)} SOL`);
+        return;
+      }
+    } else if (userBalance < requiredAmount) {
+      console.log("insufficient payment token balance for registration fee");
+      console.log(`required: ${formatAmount(requiredAmount)} tokens`);
+      console.log(`current : ${formatAmount(userBalance)} tokens`);
+      console.log("ask governance to reduce the registration fee or grant a fee exemption");
+      return;
+    }
   }
 
   const accounts = deriveGameAccounts(ctx, gameId);
 
   const tx = await ctx.factoryProgram.methods
-    .createGame(gameId, metadataUri)
+    .createGame(gameId, metadataUri, registrationPaymentMethod)
     .accounts({
       publisher: ctx.user.publicKey,
       factoryState: ctx.factoryStatePda,
@@ -438,10 +497,11 @@ async function createGameFlow(ctx, rl) {
       gameStoreMinterAuth: accounts.storeMinterAuthPda,
       registryProgram: ctx.registryProgram.programId,
       registryState: ctx.registryStatePda,
+      treasury: ctx.treasury,
       gameStore: ctx.storeStatePda,
       publisherFeeTokenAccount: ctx.userPaymentTokenAccount,
       treasuryFeeTokenAccount: ctx.treasuryPaymentTokenAccount,
-      registrationFeeMint: ctx.paymentMint,
+      feePaymentMint: ctx.paymentMint,
       paymentTokenProgram: TOKEN_PROGRAM_ID,
       licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
@@ -564,6 +624,19 @@ async function buyGameFlow(ctx, rl) {
   await sleep(500);
 }
 
+async function faucetFlow(ctx) {
+  await mintTo(
+    ctx.provider.connection,
+    ctx.provider.wallet.payer,
+    ctx.paymentMint,
+    ctx.userPaymentTokenAccount,
+    ctx.provider.wallet.payer,
+    FAUCET_AMOUNT,
+  );
+
+  console.log(`minted ${formatAmount(FAUCET_AMOUNT)} tokens to ${shortAddress(ctx.user.publicKey)}`);
+}
+
 async function printAllGames(ctx) {
   const catalog = await getCatalog(ctx);
   if (catalog.length === 0) {
@@ -623,6 +696,7 @@ async function printHeader(ctx) {
   console.log("2. my games");
   console.log("3. buy game");
   console.log("4. create game");
+  console.log("5. Faucet 20 Sol");
   console.log("0. exit");
   console.log("");
 }
@@ -660,6 +734,8 @@ async function main() {
           await buyGameFlow(ctx, rl);
         } else if (choice === "4") {
           await createGameFlow(ctx, rl);
+        } else if (choice === "5") {
+          await faucetFlow(ctx);
         } else {
           console.log("unknown menu");
         }
