@@ -9,13 +9,19 @@ skip-lint = false
 factory = "3EaXmAr9wAvYgXhz1BH4Kpa5DDCc5oTykeeGtBHeqYXA"
 pgc = "BDqzDEUTfzskChktZwNsceHj3Vnr7g3322JgPKrMqsip"
 registry = "3bUSqLjWxUgmruzuRwhtWwhV93b4RXVN7bE5qHxHHxLj"
-solana = "DSiyompbYR2k2GsS69FWkvE9N3vf32Da4JNqZKYvn2Pp"
+game_store = "DSiyompbYR2k2GsS69FWkvE9N3vf32Da4JNqZKYvn2Pp"
+
+[programs.devnet]
+factory = "3EaXmAr9wAvYgXhz1BH4Kpa5DDCc5oTykeeGtBHeqYXA"
+pgc = "BDqzDEUTfzskChktZwNsceHj3Vnr7g3322JgPKrMqsip"
+registry = "3bUSqLjWxUgmruzuRwhtWwhV93b4RXVN7bE5qHxHHxLj"
+game_store = "DSiyompbYR2k2GsS69FWkvE9N3vf32Da4JNqZKYvn2Pp"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

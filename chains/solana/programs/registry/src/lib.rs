@@ -17,7 +17,6 @@ pub use instructions::{
     set_registration_fee::SetRegistrationFee,
     set_status::SetStatus,
     set_treasury::SetTreasury,
-    views::{GetRegistryView, RegistrationFeeView},
 };
 pub use states::{RegistrationFeeOption, RegistryGame};
 #[allow(unused_imports)]
@@ -42,8 +41,6 @@ use instructions::{
     set_status::__client_accounts_set_status,
     set_treasury::__cpi_client_accounts_set_treasury,
     set_treasury::__client_accounts_set_treasury,
-    views::__cpi_client_accounts_get_registry_view,
-    views::__client_accounts_get_registry_view,
 };
 
 declare_id!("3bUSqLjWxUgmruzuRwhtWwhV93b4RXVN7bE5qHxHHxLj");
@@ -129,57 +126,5 @@ pub mod registry {
         is_exempt: bool,
     ) -> Result<()> {
         instructions::set_fee_exemption::handler(ctx, account, is_exempt)
-    }
-
-    pub fn get_game(ctx: Context<GetRegistryView>, game_id: String) -> Result<RegistryGame> {
-        instructions::views::get_game(ctx, game_id)
-    }
-
-    pub fn get_all_games(ctx: Context<GetRegistryView>) -> Result<Vec<RegistryGame>> {
-        instructions::views::get_all_games(ctx)
-    }
-
-    pub fn get_contract_address(
-        ctx: Context<GetRegistryView>,
-        game_id: String,
-    ) -> Result<Pubkey> {
-        instructions::views::get_contract_address(ctx, game_id)
-    }
-
-    pub fn get_status(ctx: Context<GetRegistryView>, game_id: String) -> Result<u8> {
-        instructions::views::get_status(ctx, game_id)
-    }
-
-    pub fn get_governance(ctx: Context<GetRegistryView>) -> Result<Pubkey> {
-        instructions::views::get_governance(ctx)
-    }
-
-    pub fn get_treasury(ctx: Context<GetRegistryView>) -> Result<Pubkey> {
-        instructions::views::get_treasury(ctx)
-    }
-
-    pub fn get_factory(ctx: Context<GetRegistryView>) -> Result<Pubkey> {
-        instructions::views::get_factory(ctx)
-    }
-
-    pub fn get_registration_fee(
-        ctx: Context<GetRegistryView>,
-        payment_method: Pubkey,
-    ) -> Result<RegistrationFeeView> {
-        instructions::views::get_registration_fee(ctx, payment_method)
-    }
-
-    pub fn get_registration_fees(
-        ctx: Context<GetRegistryView>,
-    ) -> Result<Vec<RegistrationFeeView>> {
-        instructions::views::get_registration_fees(ctx)
-    }
-
-    pub fn is_fee_exempt(ctx: Context<GetRegistryView>, account: Pubkey) -> Result<bool> {
-        instructions::views::is_fee_exempt(ctx, account)
-    }
-
-    pub fn is_admin(ctx: Context<GetRegistryView>, account: Pubkey) -> Result<bool> {
-        instructions::views::is_admin(ctx, account)
     }
 }

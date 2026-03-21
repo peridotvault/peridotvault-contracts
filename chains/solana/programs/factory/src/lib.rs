@@ -12,7 +12,6 @@ pub use instructions::{
     set_game_store::SetGameStore,
     set_governance::SetGovernance,
     set_registry::SetRegistry,
-    views::GetFactoryView,
 };
 use instructions::{
     create_game::__client_accounts_create_game,
@@ -20,7 +19,6 @@ use instructions::{
     set_game_store::__client_accounts_set_game_store,
     set_governance::__client_accounts_set_governance,
     set_registry::__client_accounts_set_registry,
-    views::__client_accounts_get_factory_view,
 };
 
 declare_id!("3EaXmAr9wAvYgXhz1BH4Kpa5DDCc5oTykeeGtBHeqYXA");
@@ -57,17 +55,5 @@ pub mod factory {
 
     pub fn set_governance(ctx: Context<SetGovernance>, governance: Pubkey) -> Result<()> {
         instructions::set_governance::handler(ctx, governance)
-    }
-
-    pub fn get_registry(ctx: Context<GetFactoryView>) -> Result<Pubkey> {
-        instructions::views::get_registry(ctx)
-    }
-
-    pub fn get_game_store(ctx: Context<GetFactoryView>) -> Result<Pubkey> {
-        instructions::views::get_game_store(ctx)
-    }
-
-    pub fn get_governance(ctx: Context<GetFactoryView>) -> Result<Pubkey> {
-        instructions::views::get_governance(ctx)
     }
 }

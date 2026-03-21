@@ -12,7 +12,6 @@ pub use instructions::{
     set_metadata_uri::SetMetadataUri,
     set_minter::SetMinter,
     set_publisher::SetPublisher,
-    views::{GetGameStateView, GetLicenseView, GetMinterView, LicensePolicyView},
 };
 #[allow(unused_imports)]
 use instructions::{
@@ -26,12 +25,6 @@ use instructions::{
     set_minter::__client_accounts_set_minter,
     set_publisher::__cpi_client_accounts_set_publisher,
     set_publisher::__client_accounts_set_publisher,
-    views::{
-        __cpi_client_accounts_get_game_state_view, __cpi_client_accounts_get_license_view,
-        __cpi_client_accounts_get_minter_view,
-        __client_accounts_get_game_state_view, __client_accounts_get_license_view,
-        __client_accounts_get_minter_view,
-    },
 };
 
 declare_id!("BDqzDEUTfzskChktZwNsceHj3Vnr7g3322JgPKrMqsip");
@@ -63,33 +56,5 @@ pub mod pgc1 {
 
     pub fn set_metadata_uri(ctx: Context<SetMetadataUri>, metadata_uri: String) -> Result<()> {
         instructions::set_metadata_uri::handler(ctx, metadata_uri)
-    }
-
-    pub fn get_publisher(ctx: Context<GetGameStateView>) -> Result<Pubkey> {
-        instructions::views::get_publisher(ctx)
-    }
-
-    pub fn get_game_id(ctx: Context<GetGameStateView>) -> Result<String> {
-        instructions::views::get_game_id(ctx)
-    }
-
-    pub fn get_metadata_uri(ctx: Context<GetGameStateView>) -> Result<String> {
-        instructions::views::get_metadata_uri(ctx)
-    }
-
-    pub fn is_minter(ctx: Context<GetMinterView>) -> Result<bool> {
-        instructions::views::is_minter(ctx)
-    }
-
-    pub fn get_license_policy(ctx: Context<GetLicenseView>) -> Result<LicensePolicyView> {
-        instructions::views::get_license_policy(ctx)
-    }
-
-    pub fn has_license(ctx: Context<GetLicenseView>) -> Result<bool> {
-        instructions::views::has_license(ctx)
-    }
-
-    pub fn can_access_game(ctx: Context<GetLicenseView>) -> Result<bool> {
-        instructions::views::can_access_game(ctx)
     }
 }

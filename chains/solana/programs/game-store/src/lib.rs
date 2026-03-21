@@ -8,32 +8,34 @@ pub mod states;
 
 pub use instructions::{
     buy_game::BuyGame,
+    buy_game_native_sol::BuyGameNativeSol,
     initialize::Initialize,
     set_discount::SetDiscount,
     set_governance::SetGovernance,
     set_platform_fee::SetPlatformFee,
     set_price::SetPrice,
     set_treasury::SetTreasury,
-    views::GetStoreView,
     withdraw::Withdraw,
+    withdraw_sol::WithdrawSol,
 };
 pub use states::PriceConfig;
 use instructions::{
     buy_game::__client_accounts_buy_game,
+    buy_game_native_sol::__client_accounts_buy_game_native_sol,
     initialize::__client_accounts_initialize,
     set_discount::__client_accounts_set_discount,
     set_governance::__client_accounts_set_governance,
     set_platform_fee::__client_accounts_set_platform_fee,
     set_price::__client_accounts_set_price,
     set_treasury::__client_accounts_set_treasury,
-    views::__client_accounts_get_store_view,
     withdraw::__client_accounts_withdraw,
+    withdraw_sol::__client_accounts_withdraw_sol,
 };
 
 declare_id!("DSiyompbYR2k2GsS69FWkvE9N3vf32Da4JNqZKYvn2Pp");
 
 #[program]
-pub mod solana {
+pub mod game_store {
     use super::*;
 
     pub fn initialize(
@@ -67,6 +69,13 @@ pub mod solana {
         instructions::buy_game::handler(ctx, game_id)
     }
 
+    pub fn buy_game_native_sol(
+        ctx: Context<BuyGameNativeSol>,
+        game_id: String,
+    ) -> Result<()> {
+        instructions::buy_game_native_sol::handler(ctx, game_id)
+    }
+
     pub fn set_platform_fee(ctx: Context<SetPlatformFee>, fee_bps: u16) -> Result<()> {
         instructions::set_platform_fee::handler(ctx, fee_bps)
     }
@@ -75,43 +84,15 @@ pub mod solana {
         instructions::withdraw::handler(ctx, token)
     }
 
+    pub fn withdraw_sol(ctx: Context<WithdrawSol>) -> Result<()> {
+        instructions::withdraw_sol::handler(ctx)
+    }
+
     pub fn set_governance(ctx: Context<SetGovernance>, governance: Pubkey) -> Result<()> {
         instructions::set_governance::handler(ctx, governance)
     }
 
     pub fn set_treasury(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
         instructions::set_treasury::handler(ctx, treasury)
-    }
-
-    pub fn get_price_config(ctx: Context<GetStoreView>, game_id: String) -> Result<PriceConfig> {
-        instructions::views::get_price_config(ctx, game_id)
-    }
-
-    pub fn get_publisher_balance(
-        ctx: Context<GetStoreView>,
-        publisher: Pubkey,
-        token: Pubkey,
-    ) -> Result<u64> {
-        instructions::views::get_publisher_balance(ctx, publisher, token)
-    }
-
-    pub fn get_platform_fee(ctx: Context<GetStoreView>) -> Result<u16> {
-        instructions::views::get_platform_fee(ctx)
-    }
-
-    pub fn get_treasury(ctx: Context<GetStoreView>) -> Result<Pubkey> {
-        instructions::views::get_treasury(ctx)
-    }
-
-    pub fn get_governance(ctx: Context<GetStoreView>) -> Result<Pubkey> {
-        instructions::views::get_governance(ctx)
-    }
-
-    pub fn get_registry(ctx: Context<GetStoreView>) -> Result<Pubkey> {
-        instructions::views::get_registry(ctx)
-    }
-
-    pub fn get_final_price(ctx: Context<GetStoreView>, game_id: String) -> Result<u64> {
-        instructions::views::get_final_price(ctx, game_id)
     }
 }

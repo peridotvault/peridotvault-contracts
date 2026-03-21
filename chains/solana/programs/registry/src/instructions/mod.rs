@@ -18,7 +18,6 @@ pub mod set_governance;
 pub mod set_registration_fee;
 pub mod set_status;
 pub mod set_treasury;
-pub mod views;
 
 pub(crate) fn collect_registration_fee<'info>(
     registry_state: &RegistryState,

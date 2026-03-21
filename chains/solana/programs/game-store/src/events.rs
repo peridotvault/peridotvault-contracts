@@ -57,3 +57,9 @@ pub struct PublisherWithdrawn {
     pub token: Pubkey,
     pub amount: u64,
 }
+
+#[event]
+pub struct NativeSolPublisherWithdrawn {
+    pub publisher: Pubkey,
+    pub amount: u64,
+}

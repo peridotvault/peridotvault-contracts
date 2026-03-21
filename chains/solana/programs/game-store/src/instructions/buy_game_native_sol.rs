@@ -1,8 +1,7 @@
-use anchor_lang::{prelude::*, AccountDeserialize};
+use anchor_lang::{prelude::*, system_program, AccountDeserialize};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_2022::Token2022,
-    token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 use pgc::{
     constants::LICENSE_SEED,
@@ -11,10 +10,7 @@ use pgc::{
     program::Pgc1,
     states::{GameState as PgcGameState, LicenseAccount as PgcLicenseAccount, MinterAuthority},
 };
-use registry::{
-    constants::STATUS_APPROVED,
-    states::RegistryState,
-};
+use registry::{constants::STATUS_APPROVED, states::RegistryState};
 
 use crate::{
     constants::{is_native_sol_payment_method, STORE_STATE_SEED},
@@ -25,7 +21,7 @@ use crate::{
 
 #[derive(Accounts)]
 #[instruction(game_id: String)]
-pub struct BuyGame<'info> {
+pub struct BuyGameNativeSol<'info> {
     #[account(mut)]
     pub buyer: Signer<'info>,
 
@@ -65,38 +61,16 @@ pub struct BuyGame<'info> {
     #[account(mut)]
     pub game_mint: InterfaceAccount<'info, anchor_spl::token_interface::Mint>,
 
-    pub payment_mint: InterfaceAccount<'info, Mint>,
+    /// CHECK: validated against store_state.treasury
+    #[account(mut, address = store_state.treasury)]
+    pub treasury: UncheckedAccount<'info>,
 
-    #[account(
-        mut,
-        constraint = buyer_payment_token_account.owner == buyer.key() @ GameStoreError::InvalidBuyerTokenAccount,
-        constraint = buyer_payment_token_account.mint == payment_mint.key() @ GameStoreError::InvalidPaymentMint
-    )]
-    pub buyer_payment_token_account: InterfaceAccount<'info, TokenAccount>,
-
-    #[account(
-        mut,
-        constraint = treasury_token_account.owner == store_state.treasury @ GameStoreError::InvalidTreasuryTokenAccount,
-        constraint = treasury_token_account.mint == payment_mint.key() @ GameStoreError::InvalidPaymentMint
-    )]
-    pub treasury_token_account: InterfaceAccount<'info, TokenAccount>,
-
-    #[account(
-        init_if_needed,
-        payer = buyer,
-        associated_token::mint = payment_mint,
-        associated_token::authority = store_state,
-        associated_token::token_program = payment_token_program
-    )]
-    pub store_vault_token_account: InterfaceAccount<'info, TokenAccount>,
-
-    pub payment_token_program: Interface<'info, TokenInterface>,
     pub license_token_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<BuyGame>, game_id: String) -> Result<()> {
+pub fn handler(ctx: Context<BuyGameNativeSol>, game_id: String) -> Result<()> {
     let registry_game = ctx
         .accounts
         .registry_state
@@ -123,24 +97,8 @@ pub fn handler(ctx: Context<BuyGame>, game_id: String) -> Result<()> {
         .ok_or(error!(GameStoreError::PriceConfigNotFound))?;
 
     require!(
-        !is_native_sol_payment_method(&price_config.currency),
-        GameStoreError::NativeSolRequiresDedicatedInstruction
-    );
-
-    require_keys_eq!(
-        price_config.currency,
-        ctx.accounts.payment_mint.key(),
-        GameStoreError::InvalidPaymentMint
-    );
-    require_keys_eq!(
-        ctx.accounts.store_vault_token_account.owner,
-        ctx.accounts.store_state.key(),
-        GameStoreError::InvalidStoreVaultTokenAccount
-    );
-    require_keys_eq!(
-        ctx.accounts.store_vault_token_account.mint,
-        ctx.accounts.payment_mint.key(),
-        GameStoreError::InvalidPaymentMint
+        is_native_sol_payment_method(&price_config.currency),
+        GameStoreError::InvalidCurrency
     );
 
     let (expected_license_account, _) = Pubkey::find_program_address(
@@ -180,34 +138,28 @@ pub fn handler(ctx: Context<BuyGame>, game_id: String) -> Result<()> {
     let publisher = ctx.accounts.pgc_game_state.publisher;
 
     if platform_fee > 0 {
-        token_interface::transfer_checked(
+        system_program::transfer(
             CpiContext::new(
-                ctx.accounts.payment_token_program.to_account_info(),
-                TransferChecked {
-                    from: ctx.accounts.buyer_payment_token_account.to_account_info(),
-                    mint: ctx.accounts.payment_mint.to_account_info(),
-                    to: ctx.accounts.treasury_token_account.to_account_info(),
-                    authority: ctx.accounts.buyer.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.buyer.to_account_info(),
+                    to: ctx.accounts.treasury.to_account_info(),
                 },
             ),
             platform_fee,
-            ctx.accounts.payment_mint.decimals,
         )?;
     }
 
     if publisher_revenue > 0 {
-        token_interface::transfer_checked(
+        system_program::transfer(
             CpiContext::new(
-                ctx.accounts.payment_token_program.to_account_info(),
-                TransferChecked {
-                    from: ctx.accounts.buyer_payment_token_account.to_account_info(),
-                    mint: ctx.accounts.payment_mint.to_account_info(),
-                    to: ctx.accounts.store_vault_token_account.to_account_info(),
-                    authority: ctx.accounts.buyer.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.buyer.to_account_info(),
+                    to: ctx.accounts.store_state.to_account_info(),
                 },
             ),
             publisher_revenue,
-            ctx.accounts.payment_mint.decimals,
         )?;
     }
 

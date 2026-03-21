@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    constants::REGISTRY_STATE_SEED,
+    constants::{is_native_sol_payment_method, REGISTRY_STATE_SEED},
     errors::RegistryError,
     events::{RegistrationFeeOptionEvent, RegistryInitialized},
     states::{RegistrationFeeOption, RegistryState},
@@ -38,7 +38,8 @@ pub fn handler(
     require!(factory != Pubkey::default(), RegistryError::InvalidFactory);
     if registration_fee > 0 {
         require!(
-            registration_fee_token != Pubkey::default(),
+            is_native_sol_payment_method(&registration_fee_token)
+                || registration_fee_token != Pubkey::default(),
             RegistryError::InvalidRegistrationPaymentMethod
         );
     }

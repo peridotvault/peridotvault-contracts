@@ -20,7 +20,7 @@ const { stdin: input, stdout: output } = require("process");
 const factoryIdl = require("../target/idl/factory.json");
 const pgcIdl = require("../target/idl/pgc1.json");
 const registryIdl = require("../target/idl/registry.json");
-const storeIdl = require("../target/idl/solana.json");
+const storeIdl = require("../target/idl/game_store.json");
 
 const REGISTRY_STATE_SEED = Buffer.from("registry_state");
 const STORE_STATE_SEED = Buffer.from("game_store_state");

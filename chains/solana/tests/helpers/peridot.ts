@@ -14,9 +14,9 @@ import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
 import { createHash } from "crypto";
 
 import { Factory } from "../../target/types/factory";
+import { GameStore } from "../../target/types/game_store";
 import { Pgc1 } from "../../target/types/pgc1";
 import { Registry } from "../../target/types/registry";
-import { Solana } from "../../target/types/solana";
 
 export const REGISTRY_STATE_SEED = Buffer.from("registry_state");
 export const STORE_STATE_SEED = Buffer.from("game_store_state");
@@ -46,7 +46,7 @@ export type WorkspacePrograms = {
   factoryProgram: Program<Factory>;
   pgcProgram: Program<Pgc1>;
   registryProgram: Program<Registry>;
-  storeProgram: Program<Solana>;
+  storeProgram: Program<GameStore>;
 };
 
 export type BaseFixture = WorkspacePrograms & {
@@ -203,7 +203,7 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
   anchor.setProvider(provider);
 
   const registryProgram = workspaceProgram<Registry>("Registry");
-  const storeProgram = workspaceProgram<Solana>("Solana");
+  const storeProgram = workspaceProgram<GameStore>("GameStore");
   const factoryProgram = workspaceProgram<Factory>("Factory");
   const pgcProgram = workspaceProgram<Pgc1>("Pgc1");
 

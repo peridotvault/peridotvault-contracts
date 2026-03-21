@@ -62,6 +62,9 @@ pub enum GameStoreError {
     #[msg("Invalid treasury token account")]
     InvalidTreasuryTokenAccount,
 
+    #[msg("Invalid treasury account")]
+    InvalidTreasuryAccount,
+
     #[msg("Invalid store vault token account")]
     InvalidStoreVaultTokenAccount,
 
@@ -73,4 +76,10 @@ pub enum GameStoreError {
 
     #[msg("Invalid license account")]
     InvalidLicenseAccount,
+
+    #[msg("Use the native SOL instruction for this game price")]
+    NativeSolRequiresDedicatedInstruction,
+
+    #[msg("Store account does not have enough SOL escrow")]
+    InsufficientStoreLamports,
 }

@@ -29,7 +29,7 @@ pub struct SetRegistrationFee<'info> {
 
 pub fn handler(ctx: Context<SetRegistrationFee>, amount: u64, token: Pubkey) -> Result<()> {
     require!(
-        token != Pubkey::default(),
+        is_native_sol_payment_method(&token) || token != Pubkey::default(),
         RegistryError::InvalidRegistrationPaymentMethod
     );
     if is_native_sol_payment_method(&token) {

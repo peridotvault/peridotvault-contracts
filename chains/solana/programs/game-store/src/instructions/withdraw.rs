@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, system_program};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{self, Mint, TokenAccount, TokenInterface, TransferChecked},
@@ -49,6 +49,10 @@ pub struct Withdraw<'info> {
 }
 
 pub fn handler(ctx: Context<Withdraw>, token: Pubkey) -> Result<()> {
+    require!(
+        token != system_program::ID,
+        GameStoreError::NativeSolRequiresDedicatedInstruction
+    );
     require_keys_eq!(
         ctx.accounts.payment_mint.key(),
         token,
