@@ -16,6 +16,9 @@ use crate::{
 #[derive(Accounts)]
 pub struct MintLicense<'info> {
     #[account(mut)]
+    pub payer: Signer<'info>,
+
+    #[account(mut)]
     pub signer: Signer<'info>,
 
     #[account(mut)]
@@ -49,7 +52,7 @@ pub struct MintLicense<'info> {
 
     #[account(
         init_if_needed,
-        payer = signer,
+        payer = payer,
         space = LicenseAccount::SPACE,
         seeds = [LICENSE_SEED, game_state.key().as_ref(), user.key().as_ref()],
         bump
@@ -58,7 +61,7 @@ pub struct MintLicense<'info> {
 
     #[account(
         init_if_needed,
-        payer = signer,
+        payer = payer,
         associated_token::mint = mint,
         associated_token::authority = user,
         associated_token::token_program = token_program,

@@ -28,7 +28,9 @@ pub struct RegisterGameByFactory<'info> {
     #[account(address = contract_address)]
     pub pgc_game_state: Account<'info, PgcGameState>,
 
+    #[account(mut)]
     pub fee_payer_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
+    #[account(mut)]
     pub treasury_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
     pub registration_fee_mint: Option<InterfaceAccount<'info, Mint>>,
     pub token_program: Option<Interface<'info, TokenInterface>>,

@@ -20,17 +20,29 @@ pub use instructions::{
     views::{GetRegistryView, RegistrationFeeView},
 };
 pub use states::RegistryGame;
+#[allow(unused_imports)]
 use instructions::{
+    initialize::__cpi_client_accounts_initialize,
     initialize::__client_accounts_initialize,
+    register_game::__cpi_client_accounts_register_game,
     register_game::__client_accounts_register_game,
+    register_game_by_factory::__cpi_client_accounts_register_game_by_factory,
     register_game_by_factory::__client_accounts_register_game_by_factory,
+    set_admin::__cpi_client_accounts_set_admin,
     set_admin::__client_accounts_set_admin,
+    set_factory::__cpi_client_accounts_set_factory,
     set_factory::__client_accounts_set_factory,
+    set_fee_exemption::__cpi_client_accounts_set_fee_exemption,
     set_fee_exemption::__client_accounts_set_fee_exemption,
+    set_governance::__cpi_client_accounts_set_governance,
     set_governance::__client_accounts_set_governance,
+    set_registration_fee::__cpi_client_accounts_set_registration_fee,
     set_registration_fee::__client_accounts_set_registration_fee,
+    set_status::__cpi_client_accounts_set_status,
     set_status::__client_accounts_set_status,
+    set_treasury::__cpi_client_accounts_set_treasury,
     set_treasury::__client_accounts_set_treasury,
+    views::__cpi_client_accounts_get_registry_view,
     views::__client_accounts_get_registry_view,
 };
 

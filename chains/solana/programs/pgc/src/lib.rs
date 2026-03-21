@@ -14,13 +14,21 @@ pub use instructions::{
     set_publisher::SetPublisher,
     views::{GetGameStateView, GetLicenseView, GetMinterView, LicensePolicyView},
 };
+#[allow(unused_imports)]
 use instructions::{
+    initialize::__cpi_client_accounts_initialize,
     initialize::__client_accounts_initialize,
+    mint_license::__cpi_client_accounts_mint_license,
     mint_license::__client_accounts_mint_license,
+    set_metadata_uri::__cpi_client_accounts_set_metadata_uri,
     set_metadata_uri::__client_accounts_set_metadata_uri,
+    set_minter::__cpi_client_accounts_set_minter,
     set_minter::__client_accounts_set_minter,
+    set_publisher::__cpi_client_accounts_set_publisher,
     set_publisher::__client_accounts_set_publisher,
     views::{
+        __cpi_client_accounts_get_game_state_view, __cpi_client_accounts_get_license_view,
+        __cpi_client_accounts_get_minter_view,
         __client_accounts_get_game_state_view, __client_accounts_get_license_view,
         __client_accounts_get_minter_view,
     },

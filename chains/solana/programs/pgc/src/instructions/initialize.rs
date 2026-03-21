@@ -110,7 +110,7 @@ pub fn handler(
             },
         ),
         lamports,
-        total_space as u64,
+        mint_space as u64,
         &ctx.accounts.token_program.key(),
     )?;
 
