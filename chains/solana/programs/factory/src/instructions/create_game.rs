@@ -3,6 +3,12 @@ use anchor_spl::{
     token_2022::Token2022,
     token_interface::{Mint, TokenAccount, TokenInterface},
 };
+use game_store::{
+    cpi as game_store_cpi,
+    cpi::accounts::SetPrice as GameStoreSetPriceAccounts,
+    program::GameStore,
+    states::StoreState,
+};
 use pgc::{
     cpi as pgc_cpi,
     cpi::accounts::{Initialize as PgcInitializeAccounts, SetMinter as PgcSetMinterAccounts},
@@ -24,7 +30,13 @@ use crate::{
 };
 
 #[derive(Accounts)]
-#[instruction(game_id: String, _metadata_uri: String, _registration_payment_method: Pubkey)]
+#[instruction(
+    game_id: String,
+    _metadata_uri: String,
+    _initial_price: u64,
+    _initial_price_currency: Pubkey,
+    _registration_payment_method: Pubkey
+)]
 pub struct CreateGame<'info> {
     #[account(mut)]
     pub publisher: Signer<'info>,
@@ -66,9 +78,10 @@ pub struct CreateGame<'info> {
     #[account(mut, address = registry_state.treasury)]
     pub treasury: UncheckedAccount<'info>,
 
-    /// CHECK: target minter address; must match factory state
-    #[account(address = factory_state.game_store)]
-    pub game_store: UncheckedAccount<'info>,
+    #[account(mut, address = factory_state.game_store)]
+    pub game_store: Account<'info, StoreState>,
+
+    pub game_store_program: Program<'info, GameStore>,
 
     #[account(mut)]
     pub publisher_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
@@ -76,6 +89,7 @@ pub struct CreateGame<'info> {
     pub treasury_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
     pub fee_payment_mint: Option<InterfaceAccount<'info, Mint>>,
     pub payment_token_program: Option<Interface<'info, TokenInterface>>,
+    pub price_currency_mint: Option<InterfaceAccount<'info, Mint>>,
 
     pub license_token_program: Program<'info, Token2022>,
     pub system_program: Program<'info, System>,
@@ -85,6 +99,8 @@ pub fn handler(
     ctx: Context<CreateGame>,
     game_id: String,
     metadata_uri: String,
+    initial_price: u64,
+    initial_price_currency: Pubkey,
     registration_payment_method: Pubkey,
 ) -> Result<Pubkey> {
     require!(!game_id.trim().is_empty(), FactoryError::EmptyGameId);
@@ -174,6 +190,26 @@ pub fn handler(
         ctx.accounts.pgc_game_state.key(),
         ctx.accounts.publisher.key(),
         registration_payment_method,
+    )?;
+
+    game_store_cpi::set_price(
+        CpiContext::new(
+            ctx.accounts.game_store_program.to_account_info(),
+            GameStoreSetPriceAccounts {
+                publisher: ctx.accounts.publisher.to_account_info(),
+                store_state: ctx.accounts.game_store.to_account_info(),
+                registry_state: ctx.accounts.registry_state.to_account_info(),
+                pgc_game_state: ctx.accounts.pgc_game_state.to_account_info(),
+                currency_mint: ctx
+                    .accounts
+                    .price_currency_mint
+                    .as_ref()
+                    .map(ToAccountInfo::to_account_info),
+            },
+        ),
+        game_id.clone(),
+        initial_price,
+        initial_price_currency,
     )?;
 
     emit!(GameCreated {

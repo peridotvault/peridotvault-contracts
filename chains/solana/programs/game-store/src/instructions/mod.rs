@@ -1,5 +1,4 @@
 pub mod buy_game;
-pub mod buy_game_native_sol;
 pub mod initialize;
 pub mod set_discount;
 pub mod set_governance;

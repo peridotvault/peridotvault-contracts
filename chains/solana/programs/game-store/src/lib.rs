@@ -8,7 +8,6 @@ pub mod states;
 
 pub use instructions::{
     buy_game::BuyGame,
-    buy_game_native_sol::BuyGameNativeSol,
     initialize::Initialize,
     set_discount::SetDiscount,
     set_governance::SetGovernance,
@@ -19,16 +18,25 @@ pub use instructions::{
     withdraw_sol::WithdrawSol,
 };
 pub use states::PriceConfig;
+#[allow(unused_imports)]
 use instructions::{
+    buy_game::__cpi_client_accounts_buy_game,
     buy_game::__client_accounts_buy_game,
-    buy_game_native_sol::__client_accounts_buy_game_native_sol,
+    initialize::__cpi_client_accounts_initialize,
     initialize::__client_accounts_initialize,
+    set_discount::__cpi_client_accounts_set_discount,
     set_discount::__client_accounts_set_discount,
+    set_governance::__cpi_client_accounts_set_governance,
     set_governance::__client_accounts_set_governance,
+    set_platform_fee::__cpi_client_accounts_set_platform_fee,
     set_platform_fee::__client_accounts_set_platform_fee,
+    set_price::__cpi_client_accounts_set_price,
     set_price::__client_accounts_set_price,
+    set_treasury::__cpi_client_accounts_set_treasury,
     set_treasury::__client_accounts_set_treasury,
+    withdraw::__cpi_client_accounts_withdraw,
     withdraw::__client_accounts_withdraw,
+    withdraw_sol::__cpi_client_accounts_withdraw_sol,
     withdraw_sol::__client_accounts_withdraw_sol,
 };
 
@@ -67,13 +75,6 @@ pub mod game_store {
 
     pub fn buy_game(ctx: Context<BuyGame>, game_id: String) -> Result<()> {
         instructions::buy_game::handler(ctx, game_id)
-    }
-
-    pub fn buy_game_native_sol(
-        ctx: Context<BuyGameNativeSol>,
-        game_id: String,
-    ) -> Result<()> {
-        instructions::buy_game_native_sol::handler(ctx, game_id)
     }
 
     pub fn set_platform_fee(ctx: Context<SetPlatformFee>, fee_bps: u16) -> Result<()> {

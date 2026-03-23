@@ -40,9 +40,18 @@ pub mod factory {
         ctx: Context<CreateGame>,
         game_id: String,
         metadata_uri: String,
+        initial_price: u64,
+        initial_price_currency: Pubkey,
         registration_payment_method: Pubkey,
     ) -> Result<Pubkey> {
-        instructions::create_game::handler(ctx, game_id, metadata_uri, registration_payment_method)
+        instructions::create_game::handler(
+            ctx,
+            game_id,
+            metadata_uri,
+            initial_price,
+            initial_price_currency,
+            registration_payment_method,
+        )
     }
 
     pub fn set_registry(ctx: Context<SetRegistry>, registry: Pubkey) -> Result<()> {

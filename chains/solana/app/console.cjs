@@ -92,6 +92,15 @@ function formatPaymentMethod(paymentMethod) {
   return isNativeSolPaymentMethod(paymentMethod) ? "SOL" : shortAddress(paymentMethod);
 }
 
+function formatPricedAmount(amount, currency) {
+  if (amount === null) {
+    return "-";
+  }
+  return isNativeSolPaymentMethod(currency)
+    ? `${formatSolAmount(amount)} SOL`
+    : `${formatAmount(amount)} tokens`;
+}
+
 async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -237,6 +246,7 @@ async function getCatalog(ctx) {
   return registryState.games.map((game) => {
     const priceConfig = storeState.prices.find((entry) => entry.gameId === game.gameId);
     const price = priceConfig ? Number(priceConfig.price.toString()) : null;
+    const currency = priceConfig ? priceConfig.currency : null;
     const discountBps = priceConfig ? priceConfig.discountBps : null;
     const finalPrice =
       price === null || discountBps === null
@@ -247,6 +257,7 @@ async function getCatalog(ctx) {
       contractAddress: game.contractAddress,
       status: game.status,
       price,
+      currency,
       discountBps,
       finalPrice,
     };
@@ -485,7 +496,7 @@ async function createGameFlow(ctx, rl) {
   const accounts = deriveGameAccounts(ctx, gameId);
 
   const tx = await ctx.factoryProgram.methods
-    .createGame(gameId, metadataUri, registrationPaymentMethod)
+    .createGame(gameId, metadataUri, new anchor.BN(price), ctx.paymentMint, registrationPaymentMethod)
     .accounts({
       publisher: ctx.user.publicKey,
       factoryState: ctx.factoryStatePda,
@@ -497,12 +508,14 @@ async function createGameFlow(ctx, rl) {
       gameStoreMinterAuth: accounts.storeMinterAuthPda,
       registryProgram: ctx.registryProgram.programId,
       registryState: ctx.registryStatePda,
+      gameStoreProgram: ctx.storeProgram.programId,
       treasury: ctx.treasury,
       gameStore: ctx.storeStatePda,
       publisherFeeTokenAccount: ctx.userPaymentTokenAccount,
       treasuryFeeTokenAccount: ctx.treasuryPaymentTokenAccount,
       feePaymentMint: ctx.paymentMint,
       paymentTokenProgram: TOKEN_PROGRAM_ID,
+      priceCurrencyMint: ctx.paymentMint,
       licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
@@ -515,18 +528,6 @@ async function createGameFlow(ctx, rl) {
       admin: ctx.governance.publicKey,
       registryState: ctx.registryStatePda,
     })
-    .rpc();
-
-  await ctx.storeProgram.methods
-    .setPrice(gameId, new anchor.BN(price), ctx.paymentMint)
-    .accounts({
-      publisher: ctx.user.publicKey,
-      storeState: ctx.storeStatePda,
-      registryState: ctx.registryStatePda,
-      pgcGameState: accounts.gameStatePda,
-      currencyMint: ctx.paymentMint,
-    })
-    .signers([ctx.user])
     .rpc();
 
   if (discountBps > 0) {
@@ -546,6 +547,7 @@ async function createGameFlow(ctx, rl) {
   console.log(`tx: ${tx}`);
   console.log(`game state: ${accounts.gameStatePda.toBase58()}`);
   console.log(`status: Approved`);
+  console.log(`price : ${formatAmount(price)} tokens`);
 }
 
 async function buyGameFlow(ctx, rl) {
@@ -569,15 +571,18 @@ async function buyGameFlow(ctx, rl) {
     console.log(`game ${gameId} has no price configured`);
     return;
   }
-  const userBalance = await fetchTokenAmount(
-    ctx.provider.connection,
-    ctx.userPaymentTokenAccount,
-    TOKEN_PROGRAM_ID,
-  );
+  const isSolPriced = game.currency && isNativeSolPaymentMethod(game.currency);
+  const userBalance = isSolPriced
+    ? await ctx.provider.connection.getBalance(ctx.user.publicKey)
+    : await fetchTokenAmount(
+        ctx.provider.connection,
+        ctx.userPaymentTokenAccount,
+        TOKEN_PROGRAM_ID,
+      );
   if (userBalance < game.finalPrice) {
-    console.log("insufficient payment token balance");
-    console.log(`required: ${formatAmount(game.finalPrice)} tokens`);
-    console.log(`current : ${formatAmount(userBalance)} tokens`);
+    console.log(isSolPriced ? "insufficient SOL balance" : "insufficient payment token balance");
+    console.log(`required: ${formatPricedAmount(game.finalPrice, game.currency)}`);
+    console.log(`current : ${formatPricedAmount(userBalance, game.currency)}`);
     return;
   }
 
@@ -593,33 +598,40 @@ async function buyGameFlow(ctx, rl) {
     }
   }
 
+  const buyAccounts = {
+    buyer: ctx.user.publicKey,
+    storeState: ctx.storeStatePda,
+    registryState: ctx.registryStatePda,
+    pgcProgram: ctx.pgcProgram.programId,
+    pgcGameState: accounts.gameStatePda,
+    gameAuthority: accounts.gameAuthorityPda,
+    storeMinterAuth: accounts.storeMinterAuthPda,
+    licenseAccount: accounts.licensePda,
+    userGameTokenAccount: accounts.userGameTokenAccount,
+    gameMint: accounts.mintPda,
+    treasury: ctx.treasury,
+    licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
+    associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+    ...(isSolPriced
+      ? {}
+      : {
+          paymentMint: game.currency,
+          buyerPaymentTokenAccount: ctx.userPaymentTokenAccount,
+          treasuryTokenAccount: ctx.treasuryPaymentTokenAccount,
+          storeVaultTokenAccount: accounts.storeVaultTokenAccount,
+          paymentTokenProgram: TOKEN_PROGRAM_ID,
+        }),
+  };
+
   const tx = await ctx.storeProgram.methods
     .buyGame(gameId)
-    .accounts({
-      buyer: ctx.user.publicKey,
-      storeState: ctx.storeStatePda,
-      registryState: ctx.registryStatePda,
-      pgcProgram: ctx.pgcProgram.programId,
-      pgcGameState: accounts.gameStatePda,
-      gameAuthority: accounts.gameAuthorityPda,
-      storeMinterAuth: accounts.storeMinterAuthPda,
-      licenseAccount: accounts.licensePda,
-      userGameTokenAccount: accounts.userGameTokenAccount,
-      gameMint: accounts.mintPda,
-      paymentMint: ctx.paymentMint,
-      buyerPaymentTokenAccount: ctx.userPaymentTokenAccount,
-      treasuryTokenAccount: ctx.treasuryPaymentTokenAccount,
-      storeVaultTokenAccount: accounts.storeVaultTokenAccount,
-      paymentTokenProgram: TOKEN_PROGRAM_ID,
-      licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
-      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-    })
+    .accounts(buyAccounts)
     .signers([ctx.user])
     .rpc();
 
   console.log(`bought ${gameId}`);
-  console.log(`paid: ${formatAmount(game.finalPrice)} tokens`);
+  console.log(`paid: ${formatPricedAmount(game.finalPrice, game.currency)}`);
   console.log(`tx: ${tx}`);
   await sleep(500);
 }
@@ -650,13 +662,10 @@ async function printAllGames(ctx) {
     console.log(`- gameId: ${game.gameId}`);
     console.log(`  status: ${formatStatus(game.status)}`);
     console.log(`  contract: ${game.contractAddress.toBase58()}`);
-    console.log(
-      `  price: ${game.price === null ? "not set" : `${formatAmount(game.price)} tokens`}`,
-    );
+    console.log(`  currency: ${game.currency === null ? "-" : formatPaymentMethod(game.currency)}`);
+    console.log(`  price: ${formatPricedAmount(game.price, game.currency)}`);
     console.log(`  discount: ${game.discountBps === null ? "-" : `${game.discountBps} bps`}`);
-    console.log(
-      `  final price: ${game.finalPrice === null ? "-" : `${formatAmount(game.finalPrice)} tokens`}`,
-    );
+    console.log(`  final price: ${formatPricedAmount(game.finalPrice, game.currency)}`);
   }
 }
 
@@ -673,9 +682,8 @@ async function printMyGames(ctx) {
     console.log(`- gameId: ${game.gameId}`);
     console.log(`  contract: ${game.contractAddress.toBase58()}`);
     console.log(`  status: ${formatStatus(game.status)}`);
-    console.log(
-      `  final price: ${game.finalPrice === null ? "-" : `${formatAmount(game.finalPrice)} tokens`}`,
-    );
+    console.log(`  currency: ${game.currency === null ? "-" : formatPaymentMethod(game.currency)}`);
+    console.log(`  final price: ${formatPricedAmount(game.finalPrice, game.currency)}`);
     console.log(`  license: ${game.licenseAddress.toBase58()}`);
   }
 }

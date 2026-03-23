@@ -3,7 +3,7 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use pgc::states::GameState as PgcGameState;
 
 use crate::{
-    constants::{MAX_GAME_ID_LEN, REGISTRY_STATE_SEED, STATUS_PENDING},
+    constants::{MAX_GAME_ID_LEN, REGISTRY_STATE_SEED, STATUS_APPROVED, STATUS_PENDING},
     errors::RegistryError,
     events::GameRegistered,
     instructions::collect_registration_fee,
@@ -73,6 +73,8 @@ pub fn handler(
         RegistryError::GameAlreadyRegistered
     );
 
+    let is_fee_exempt = registry_state.is_fee_exempt(&canonical_publisher);
+
     collect_registration_fee(
         registry_state,
         canonical_publisher,
@@ -86,13 +88,19 @@ pub fn handler(
         ctx.accounts.system_program.to_account_info(),
     )?;
 
-    registry_state.add_game(game_id.clone(), contract_address, STATUS_PENDING)?;
+    let initial_status = if is_fee_exempt {
+        STATUS_APPROVED
+    } else {
+        STATUS_PENDING
+    };
+
+    registry_state.add_game(game_id.clone(), contract_address, initial_status)?;
 
     emit!(GameRegistered {
         game_id,
         contract_address,
         publisher: canonical_publisher,
-        status: STATUS_PENDING,
+        status: initial_status,
         registered_by_factory: true,
     });
 

@@ -70,7 +70,7 @@ describe("native SOL store flow", () => {
     );
 
     await base.storeProgram.methods
-      .buyGameNativeSol(TEST_GAME_ID)
+      .buyGame(TEST_GAME_ID)
       .accounts({
         buyer: base.gamer.publicKey,
         storeState: base.storeStatePda,

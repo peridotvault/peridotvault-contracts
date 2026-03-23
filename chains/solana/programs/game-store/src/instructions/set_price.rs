@@ -76,11 +76,6 @@ pub fn handler(
             .currency_mint
             .as_ref()
             .ok_or(error!(GameStoreError::InvalidPaymentMint))?;
-        require_keys_eq!(
-            ctx.accounts.currency_mint.as_ref().unwrap().key(),
-            currency,
-            GameStoreError::InvalidPaymentMint
-        );
         require_keys_eq!(currency_mint.key(), currency, GameStoreError::InvalidPaymentMint);
     }
 

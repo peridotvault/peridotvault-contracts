@@ -342,7 +342,13 @@ export async function ensureGameCreated(base: BaseFixture): Promise<GameFixture>
 
   if (!(await accountExists(base.provider.connection, game.gameStatePda))) {
     await base.factoryProgram.methods
-      .createGame(game.gameId, game.metadataUri, base.paymentMint)
+      .createGame(
+        game.gameId,
+        game.metadataUri,
+        new anchor.BN(DEFAULT_GAME_PRICE),
+        base.paymentMint,
+        base.paymentMint,
+      )
       .accounts({
         publisher: base.publisher.publicKey,
         factoryState: base.factoryStatePda,
@@ -354,12 +360,14 @@ export async function ensureGameCreated(base: BaseFixture): Promise<GameFixture>
         gameStoreMinterAuth: game.storeMinterAuthPda,
         registryProgram: base.registryProgram.programId,
         registryState: base.registryStatePda,
+        gameStoreProgram: base.storeProgram.programId,
         treasury: base.treasury.publicKey,
         gameStore: base.storeStatePda,
         publisherFeeTokenAccount: base.publisherPaymentTokenAccount,
         treasuryFeeTokenAccount: base.treasuryPaymentTokenAccount,
         feePaymentMint: base.paymentMint,
         paymentTokenProgram: TOKEN_PROGRAM_ID,
+        priceCurrencyMint: base.paymentMint,
         licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       } as any)
@@ -474,6 +482,7 @@ export async function buyGameForGamer(base: BaseFixture): Promise<{
         licenseAccount: licensePda,
         userGameTokenAccount,
         gameMint: game.mintPda,
+        treasury: base.treasury.publicKey,
         paymentMint: base.paymentMint,
         buyerPaymentTokenAccount: base.gamerPaymentTokenAccount,
         treasuryTokenAccount: base.treasuryPaymentTokenAccount,

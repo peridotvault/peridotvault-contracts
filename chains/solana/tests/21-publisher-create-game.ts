@@ -1,6 +1,7 @@
 import { expect } from "chai";
 
 import {
+  DEFAULT_GAME_PRICE,
   STATUS_PENDING,
   TEST_GAME_ID,
   TEST_METADATA_URI,
@@ -17,12 +18,16 @@ describe("publisher factory flow", () => {
     const registryState = (await base.registryProgram.account.registryState.fetch(
       base.registryStatePda,
     )) as any;
+    const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
     const registryGame = registryState.games.find((entry: any) => entry.gameId === TEST_GAME_ID);
+    const priceConfig = storeState.prices.find((entry: any) => entry.gameId === TEST_GAME_ID);
 
     expect(pgcGameState.gameId).to.equal(TEST_GAME_ID);
     expect(pgcGameState.publisher.toBase58()).to.equal(base.publisher.publicKey.toBase58());
     expect(pgcGameState.metadataUri).to.equal(TEST_METADATA_URI);
     expect(registryGame.contractAddress.toBase58()).to.equal(game.gameStatePda.toBase58());
     expect(registryGame.status).to.equal(STATUS_PENDING);
+    expect(Number(priceConfig.price.toString())).to.equal(DEFAULT_GAME_PRICE);
+    expect(priceConfig.discountBps).to.equal(0);
   });
 });
