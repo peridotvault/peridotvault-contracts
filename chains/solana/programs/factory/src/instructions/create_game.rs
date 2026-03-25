@@ -83,6 +83,9 @@ pub struct CreateGame<'info> {
 
     pub game_store_program: Program<'info, GameStore>,
 
+    pub license_token_program: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+
     #[account(mut)]
     pub publisher_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
@@ -90,9 +93,6 @@ pub struct CreateGame<'info> {
     pub fee_payment_mint: Option<InterfaceAccount<'info, Mint>>,
     pub payment_token_program: Option<Interface<'info, TokenInterface>>,
     pub price_currency_mint: Option<InterfaceAccount<'info, Mint>>,
-
-    pub license_token_program: Program<'info, Token2022>,
-    pub system_program: Program<'info, System>,
 }
 
 pub fn handler(

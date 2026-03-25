@@ -32,13 +32,14 @@ pub struct RegisterGameByFactory<'info> {
     #[account(mut, address = registry_state.treasury)]
     pub treasury: UncheckedAccount<'info>,
 
+    pub system_program: Program<'info, System>,
+
     #[account(mut)]
     pub fee_payer_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
     pub treasury_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
     pub fee_payment_mint: Option<InterfaceAccount<'info, Mint>>,
     pub token_program: Option<Interface<'info, TokenInterface>>,
-    pub system_program: Program<'info, System>,
 }
 
 pub fn handler(

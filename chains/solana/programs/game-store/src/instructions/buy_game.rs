@@ -69,22 +69,19 @@ pub struct BuyGame<'info> {
     #[account(mut, address = store_state.treasury)]
     pub treasury: UncheckedAccount<'info>,
 
-    pub payment_mint: Option<InterfaceAccount<'info, Mint>>,
-
-    #[account(mut)]
-    pub buyer_payment_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
-
-    #[account(mut)]
-    pub treasury_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
-
-    /// CHECK: validated manually and created idempotently for SPL-token purchases
-    #[account(mut)]
-    pub store_vault_token_account: Option<UncheckedAccount<'info>>,
-
-    pub payment_token_program: Option<Interface<'info, TokenInterface>>,
     pub license_token_program: Program<'info, Token2022>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
+
+    pub payment_mint: Option<InterfaceAccount<'info, Mint>>,
+    #[account(mut)]
+    pub buyer_payment_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
+    #[account(mut)]
+    pub treasury_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
+    /// CHECK: validated manually and created idempotently for SPL-token purchases
+    #[account(mut)]
+    pub store_vault_token_account: Option<UncheckedAccount<'info>>,
+    pub payment_token_program: Option<Interface<'info, TokenInterface>>,
 }
 
 pub fn handler(ctx: Context<BuyGame>, game_id: String) -> Result<()> {
