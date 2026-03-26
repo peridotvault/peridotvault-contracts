@@ -1,22 +1,28 @@
 use anchor_lang::prelude::*;
-
 use crate::{
-    constants::{is_valid_status, REGISTRY_STATE_SEED},
+    constants::{is_valid_status, GAME_REGISTRATION_SEED, REGISTRY_STATE_SEED},
     errors::RegistryError,
     events::GameStatusUpdated,
-    states::RegistryState,
+    states::{GameRegistration, RegistryState},
 };
 
 #[derive(Accounts)]
+#[instruction(game_id: String)]
 pub struct SetStatus<'info> {
     pub admin: Signer<'info>,
 
     #[account(
-        mut,
         seeds = [REGISTRY_STATE_SEED],
         bump = registry_state.bump
     )]
     pub registry_state: Account<'info, RegistryState>,
+
+    #[account(
+        mut,
+        seeds = [GAME_REGISTRATION_SEED, game_id.as_bytes()],
+        bump = game_registration.bump
+    )]
+    pub game_registration: Account<'info, GameRegistration>,
 }
 
 pub fn handler(ctx: Context<SetStatus>, game_id: String, status: u8) -> Result<()> {
@@ -28,11 +34,9 @@ pub fn handler(ctx: Context<SetStatus>, game_id: String, status: u8) -> Result<(
         RegistryError::Unauthorized
     );
 
-    let game_index = registry_state
-        .game_index(&game_id)
-        .ok_or(error!(RegistryError::GameNotFound))?;
-    let old_status = registry_state.games[game_index].status;
-    registry_state.games[game_index].status = status;
+    let game_registration = &mut ctx.accounts.game_registration;
+    let old_status = game_registration.status;
+    game_registration.status = status;
 
     emit!(GameStatusUpdated {
         game_id,

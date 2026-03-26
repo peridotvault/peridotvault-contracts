@@ -1,3 +1,4 @@
+import * as anchor from "@coral-xyz/anchor";
 import { expect } from "chai";
 
 import {
@@ -17,11 +18,14 @@ describe("publisher registry and store views", () => {
     await ensurePriceConfigured(base);
     await approveGame(base, TEST_GAME_ID);
 
-    const registryState = (await base.registryProgram.account.registryState.fetch(
-      base.registryStatePda,
-    )) as any;
+    const [gameRegistrationPda] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("game_registration"), Buffer.from(TEST_GAME_ID)],
+      base.registryProgram.programId,
+    );
+    const registryGame = await base.registryProgram.account.gameRegistration.fetch(
+      gameRegistrationPda,
+    );
     const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
-    const registryGame = registryState.games.find((entry: any) => entry.gameId === TEST_GAME_ID);
     const priceConfig = storeState.prices.find((entry: any) => entry.gameId === TEST_GAME_ID);
     const catalog = await getCatalogWithPrices(base);
     const catalogGame = catalog.find((entry) => entry.gameId === TEST_GAME_ID);

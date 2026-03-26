@@ -15,11 +15,10 @@ describe("publisher factory flow", () => {
     const game = await ensureGameCreated(base);
 
     const pgcGameState = (await base.pgcProgram.account.gameState.fetch(game.gameStatePda)) as any;
-    const registryState = (await base.registryProgram.account.registryState.fetch(
-      base.registryStatePda,
-    )) as any;
+    const registryGame = await base.registryProgram.account.gameRegistration.fetch(
+      game.gameRegistrationPda,
+    );
     const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
-    const registryGame = registryState.games.find((entry: any) => entry.gameId === TEST_GAME_ID);
     const priceConfig = storeState.prices.find((entry: any) => entry.gameId === TEST_GAME_ID);
 
     expect(pgcGameState.gameId).to.equal(TEST_GAME_ID);

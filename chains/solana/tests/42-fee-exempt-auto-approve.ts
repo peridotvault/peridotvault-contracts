@@ -22,6 +22,7 @@ describe("fee exempt auto approval", () => {
         governance: base.governance.publicKey,
         registryState: base.registryStatePda,
       } as any)
+      .signers([base.governance])
       .rpc();
 
     await base.factoryProgram.methods
@@ -51,16 +52,16 @@ describe("fee exempt auto approval", () => {
         feePaymentMint: base.paymentMint,
         paymentTokenProgram: TOKEN_PROGRAM_ID,
         priceCurrencyMint: base.paymentMint,
+        gameRegistration: game.gameRegistrationPda,
         licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       } as any)
       .signers([base.publisher])
       .rpc();
 
-    const registryState = (await base.registryProgram.account.registryState.fetch(
-      base.registryStatePda,
-    )) as any;
-    const registryGame = registryState.games.find((entry: any) => entry.gameId === TEST_GAME_ID);
+    const registryGame = await base.registryProgram.account.gameRegistration.fetch(
+      game.gameRegistrationPda,
+    );
 
     expect(registryGame.status).to.equal(STATUS_APPROVED);
   });

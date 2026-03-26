@@ -2,21 +2,22 @@ use anchor_lang::prelude::*;
 
 use crate::{
     constants::{
-        MAX_ADMINS, MAX_FEE_EXEMPTIONS, MAX_GAME_ID_LEN, MAX_GAMES,
+        MAX_ADMINS, MAX_FEE_EXEMPTIONS, MAX_GAME_ID_LEN,
         MAX_REGISTRATION_FEE_OPTIONS,
     },
     errors::RegistryError,
 };
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
-pub struct RegistryGame {
+#[account]
+pub struct GameRegistration {
+    pub bump: u8,
     pub game_id: String,
     pub contract_address: Pubkey,
     pub status: u8,
 }
 
-impl RegistryGame {
-    pub const SPACE: usize = 4 + MAX_GAME_ID_LEN + 32 + 1;
+impl GameRegistration {
+    pub const SPACE: usize = 8 + 1 + 4 + MAX_GAME_ID_LEN + 32 + 1;
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug, PartialEq, Eq)]
@@ -38,8 +39,6 @@ pub struct RegistryState {
     pub registration_fee_options: Vec<RegistrationFeeOption>,
     pub admins: Vec<Pubkey>,
     pub fee_exemptions: Vec<Pubkey>,
-    pub games: Vec<RegistryGame>,
-    pub all_game_ids: Vec<String>,
 }
 
 impl RegistryState {
@@ -48,23 +47,11 @@ impl RegistryState {
         4 + (MAX_REGISTRATION_FEE_OPTIONS * RegistrationFeeOption::SPACE);
     const ADMINS_SPACE: usize = 4 + (MAX_ADMINS * 32);
     const FEE_EXEMPTIONS_SPACE: usize = 4 + (MAX_FEE_EXEMPTIONS * 32);
-    const GAMES_SPACE: usize = 4 + (MAX_GAMES * RegistryGame::SPACE);
-    const GAME_IDS_SPACE: usize = 4 + (MAX_GAMES * (4 + MAX_GAME_ID_LEN));
 
     pub const SPACE: usize = Self::FIXED_SPACE
         + Self::REGISTRATION_FEE_OPTIONS_SPACE
         + Self::ADMINS_SPACE
-        + Self::FEE_EXEMPTIONS_SPACE
-        + Self::GAMES_SPACE
-        + Self::GAME_IDS_SPACE;
-
-    pub fn game_index(&self, game_id: &str) -> Option<usize> {
-        self.games.iter().position(|game| game.game_id == game_id)
-    }
-
-    pub fn get_game(&self, game_id: &str) -> Option<&RegistryGame> {
-        self.games.iter().find(|game| game.game_id == game_id)
-    }
+        + Self::FEE_EXEMPTIONS_SPACE;
 
     pub fn is_admin(&self, account: &Pubkey) -> bool {
         self.admins.iter().any(|admin| admin == account)
@@ -78,18 +65,6 @@ impl RegistryState {
         self.registration_fee_options
             .iter()
             .find(|entry| &entry.payment_method == payment_method)
-    }
-
-    pub fn add_game(&mut self, game_id: String, contract_address: Pubkey, status: u8) -> Result<()> {
-        require!(self.games.len() < MAX_GAMES, RegistryError::RegistryFull);
-
-        self.games.push(RegistryGame {
-            game_id: game_id.clone(),
-            contract_address,
-            status,
-        });
-        self.all_game_ids.push(game_id);
-        Ok(())
     }
 
     pub fn set_admin(&mut self, account: Pubkey, is_admin: bool) -> Result<()> {

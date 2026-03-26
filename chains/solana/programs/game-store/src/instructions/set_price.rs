@@ -1,8 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
-use anchor_spl::token_interface::Mint;
 use pgc::states::GameState as PgcGameState;
-use registry::states::RegistryState;
+use registry::states::{GameRegistration, RegistryState};
 
 use crate::{
     constants::is_native_sol_payment_method,
@@ -31,7 +30,8 @@ pub struct SetPrice<'info> {
     pub pgc_game_state: Account<'info, PgcGameState>,
 
     #[account(address = currency)]
-    pub currency_mint: Option<InterfaceAccount<'info, Mint>>,
+    pub currency_mint: Option<UncheckedAccount<'info>>,
+    pub game_registration: Account<'info, GameRegistration>,
 }
 
 pub fn handler(
@@ -47,11 +47,8 @@ pub fn handler(
         GameStoreError::InvalidCurrency
     );
 
-    let registry_game = ctx
-        .accounts
-        .registry_state
-        .get_game(&game_id)
-        .ok_or(error!(GameStoreError::GameNotFound))?;
+    let registry_game = &ctx.accounts.game_registration;
+    require!(registry_game.game_id == game_id, GameStoreError::GameNotFound);
 
     require_keys_eq!(
         registry_game.contract_address,
@@ -71,12 +68,11 @@ pub fn handler(
             GameStoreError::InvalidCurrency
         );
     } else {
-        let currency_mint = ctx
+        let _currency_mint = ctx
             .accounts
             .currency_mint
             .as_ref()
             .ok_or(error!(GameStoreError::InvalidPaymentMint))?;
-        require_keys_eq!(currency_mint.key(), currency, GameStoreError::InvalidPaymentMint);
     }
 
     let store_state = &mut ctx.accounts.store_state;

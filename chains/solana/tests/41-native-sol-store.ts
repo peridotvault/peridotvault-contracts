@@ -8,6 +8,7 @@ import {
   LICENSE_SEED,
   MINTER_AUTH_SEED,
   TEST_GAME_ID,
+  GAME_REGISTRATION_SEED,
   ensureGameCreated,
   setupPeridotFixture,
 } from "./helpers/peridot";
@@ -17,12 +18,19 @@ describe("native SOL store flow", () => {
     const base = await setupPeridotFixture();
     const game = await ensureGameCreated(base);
 
+    const [gameRegistrationPda] = PublicKey.findProgramAddressSync(
+      [GAME_REGISTRATION_SEED, Buffer.from(TEST_GAME_ID)],
+      base.registryProgram.programId,
+    );
+
     await base.registryProgram.methods
       .setStatus(TEST_GAME_ID, 1)
       .accounts({
         admin: base.governance.publicKey,
         registryState: base.registryStatePda,
+        gameRegistration: gameRegistrationPda,
       } as any)
+      .signers([base.governance])
       .rpc();
 
     await base.storeProgram.methods
@@ -32,6 +40,7 @@ describe("native SOL store flow", () => {
         storeState: base.storeStatePda,
         registryState: base.registryStatePda,
         pgcGameState: game.gameStatePda,
+        gameRegistration: gameRegistrationPda,
       } as any)
       .signers([base.publisher])
       .rpc();
@@ -43,6 +52,7 @@ describe("native SOL store flow", () => {
         storeState: base.storeStatePda,
         registryState: base.registryStatePda,
         pgcGameState: game.gameStatePda,
+        gameRegistration: gameRegistrationPda,
       } as any)
       .signers([base.publisher])
       .rpc();
@@ -86,6 +96,7 @@ describe("native SOL store flow", () => {
         licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
         systemProgram: SystemProgram.programId,
+        gameRegistration: gameRegistrationPda,
       } as any)
       .signers([base.gamer])
       .rpc();
@@ -104,7 +115,7 @@ describe("native SOL store flow", () => {
     expect(Number(publisherBalance.amount.toString())).to.equal(72_000_000);
 
     await base.storeProgram.methods
-      .withdrawSol()
+      .withdraw(SystemProgram.programId)
       .accounts({
         publisher: base.publisher.publicKey,
         storeState: base.storeStatePda,

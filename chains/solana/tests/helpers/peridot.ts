@@ -25,6 +25,7 @@ export const FACTORY_MINT_SEED = Buffer.from("factory_mint");
 export const GAME_STATE_SEED = Buffer.from("game_state");
 export const GAME_AUTHORITY_SEED = Buffer.from("game_authority");
 export const MINTER_AUTH_SEED = Buffer.from("minter_auth");
+export const GAME_REGISTRATION_SEED = Buffer.from("game_registration");
 export const LICENSE_SEED = Buffer.from("license");
 
 export const STATUS_PENDING = 0;
@@ -75,6 +76,7 @@ export type GameFixture = {
   gameAuthorityPda: PublicKey;
   publisherMinterAuthPda: PublicKey;
   storeMinterAuthPda: PublicKey;
+  gameRegistrationPda: PublicKey;
 };
 
 let baseFixturePromise: Promise<BaseFixture> | null = null;
@@ -334,6 +336,10 @@ export function deriveGameFixture(base: BaseFixture, gameId = TEST_GAME_ID): Gam
     gameAuthorityPda,
     publisherMinterAuthPda,
     storeMinterAuthPda,
+    gameRegistrationPda: derivePda(
+      [GAME_REGISTRATION_SEED, Buffer.from(gameId)],
+      base.registryProgram.programId,
+    ),
   };
 }
 
@@ -363,6 +369,7 @@ export async function ensureGameCreated(base: BaseFixture): Promise<GameFixture>
         gameStoreProgram: base.storeProgram.programId,
         treasury: base.treasury.publicKey,
         gameStore: base.storeStatePda,
+        gameRegistration: game.gameRegistrationPda,
         publisherFeeTokenAccount: base.publisherPaymentTokenAccount,
         treasuryFeeTokenAccount: base.treasuryPaymentTokenAccount,
         feePaymentMint: base.paymentMint,
@@ -379,11 +386,16 @@ export async function ensureGameCreated(base: BaseFixture): Promise<GameFixture>
 }
 
 export async function approveGame(base: BaseFixture, gameId = TEST_GAME_ID): Promise<void> {
-  const registryState = (await base.registryProgram.account.registryState.fetch(
-    base.registryStatePda,
-  )) as any;
-  const game = registryState.games.find((entry: any) => entry.gameId === gameId);
-  if (!game || game.status === STATUS_APPROVED) {
+  const gameRegistrationPda = derivePda(
+    [GAME_REGISTRATION_SEED, Buffer.from(gameId)],
+    base.registryProgram.programId,
+  );
+  
+  if (!(await accountExists(base.provider.connection, gameRegistrationPda))) {
+    return;
+  }
+  const reg = await base.registryProgram.account.gameRegistration.fetch(gameRegistrationPda);
+  if (reg.status === STATUS_APPROVED) {
     return;
   }
 
@@ -392,7 +404,9 @@ export async function approveGame(base: BaseFixture, gameId = TEST_GAME_ID): Pro
     .accounts({
       admin: base.governance.publicKey,
       registryState: base.registryStatePda,
+      gameRegistration: gameRegistrationPda,
     } as any)
+    .signers([base.governance])
     .rpc();
 }
 
@@ -415,6 +429,7 @@ export async function ensurePriceConfigured(base: BaseFixture): Promise<void> {
         storeState: base.storeStatePda,
         registryState: base.registryStatePda,
         pgcGameState: game.gameStatePda,
+        gameRegistration: game.gameRegistrationPda,
         currencyMint: base.paymentMint,
       } as any)
       .signers([base.publisher])
@@ -436,6 +451,7 @@ export async function ensurePriceConfigured(base: BaseFixture): Promise<void> {
         storeState: base.storeStatePda,
         registryState: base.registryStatePda,
         pgcGameState: game.gameStatePda,
+        gameRegistration: game.gameRegistrationPda,
       } as any)
       .signers([base.publisher])
       .rpc();
@@ -491,6 +507,7 @@ export async function buyGameForGamer(base: BaseFixture): Promise<{
         licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
+        gameRegistration: game.gameRegistrationPda,
       } as any)
       .signers([base.gamer])
       .rpc();
@@ -514,12 +531,11 @@ export async function getCatalogWithPrices(base: BaseFixture): Promise<
     finalPrice: number | null;
   }>
 > {
-  const registryState = (await base.registryProgram.account.registryState.fetch(
-    base.registryStatePda,
-  )) as any;
+  const registrations = await base.registryProgram.account.gameRegistration.all();
   const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
 
-  return registryState.games.map((game: any) => {
+  return registrations.map((reg: any) => {
+    const game = reg.account;
     const priceConfig = storeState.prices.find(
       (entry: any) => entry.gameId === game.gameId,
     );

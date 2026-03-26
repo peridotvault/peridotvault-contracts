@@ -15,7 +15,6 @@ pub use instructions::{
     set_price::SetPrice,
     set_treasury::SetTreasury,
     withdraw::Withdraw,
-    withdraw_sol::WithdrawSol,
 };
 pub use states::PriceConfig;
 #[allow(unused_imports)]
@@ -36,8 +35,6 @@ use instructions::{
     set_treasury::__client_accounts_set_treasury,
     withdraw::__cpi_client_accounts_withdraw,
     withdraw::__client_accounts_withdraw,
-    withdraw_sol::__cpi_client_accounts_withdraw_sol,
-    withdraw_sol::__client_accounts_withdraw_sol,
 };
 
 declare_id!("DSiyompbYR2k2GsS69FWkvE9N3vf32Da4JNqZKYvn2Pp");
@@ -85,9 +82,6 @@ pub mod game_store {
         instructions::withdraw::handler(ctx, token)
     }
 
-    pub fn withdraw_sol(ctx: Context<WithdrawSol>) -> Result<()> {
-        instructions::withdraw_sol::handler(ctx)
-    }
 
     pub fn set_governance(ctx: Context<SetGovernance>, governance: Pubkey) -> Result<()> {
         instructions::set_governance::handler(ctx, governance)

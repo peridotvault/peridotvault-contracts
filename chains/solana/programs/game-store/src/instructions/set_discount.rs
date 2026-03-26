@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use pgc::states::GameState as PgcGameState;
-use registry::states::RegistryState;
+use registry::states::{GameRegistration, RegistryState};
 
 use crate::{
     constants::{MAX_FEE_BPS, MAX_GAME_ID_LEN, STORE_STATE_SEED},
@@ -26,6 +26,7 @@ pub struct SetDiscount<'info> {
     pub registry_state: Account<'info, RegistryState>,
 
     pub pgc_game_state: Account<'info, PgcGameState>,
+    pub game_registration: Account<'info, GameRegistration>,
 }
 
 pub fn handler(ctx: Context<SetDiscount>, game_id: String, discount_bps: u16) -> Result<()> {
@@ -33,11 +34,8 @@ pub fn handler(ctx: Context<SetDiscount>, game_id: String, discount_bps: u16) ->
     require!(game_id.len() <= MAX_GAME_ID_LEN, GameStoreError::GameIdTooLong);
     require!(discount_bps <= MAX_FEE_BPS, GameStoreError::InvalidDiscountBps);
 
-    let registry_game = ctx
-        .accounts
-        .registry_state
-        .get_game(&game_id)
-        .ok_or(error!(GameStoreError::GameNotFound))?;
+    let registry_game = &ctx.accounts.game_registration;
+    require!(registry_game.game_id == game_id, GameStoreError::GameNotFound);
 
     require_keys_eq!(
         registry_game.contract_address,

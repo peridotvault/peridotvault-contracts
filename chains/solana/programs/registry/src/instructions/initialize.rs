@@ -59,8 +59,6 @@ pub fn handler(
     };
     registry_state.admins = vec![governance];
     registry_state.fee_exemptions = Vec::new();
-    registry_state.games = Vec::new();
-    registry_state.all_game_ids = Vec::new();
 
     emit!(RegistryInitialized {
         governance,

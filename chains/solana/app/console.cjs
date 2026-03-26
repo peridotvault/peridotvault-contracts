@@ -23,6 +23,7 @@ const registryIdl = require("../target/idl/registry.json");
 const storeIdl = require("../target/idl/game_store.json");
 
 const REGISTRY_STATE_SEED = Buffer.from("registry_state");
+const GAME_REGISTRATION_SEED = Buffer.from("game_registration");
 const STORE_STATE_SEED = Buffer.from("game_store_state");
 const FACTORY_STATE_SEED = Buffer.from("factory_state");
 const FACTORY_MINT_SEED = Buffer.from("factory_mint");
@@ -226,6 +227,10 @@ function deriveGameAccounts(ctx, gameId) {
     true,
     TOKEN_PROGRAM_ID,
   );
+  const gameRegistrationPda = derivePda(
+    [GAME_REGISTRATION_SEED, Buffer.from(gameId)],
+    ctx.registryProgram.programId,
+  );
 
   return {
     mintPda,
@@ -236,14 +241,16 @@ function deriveGameAccounts(ctx, gameId) {
     licensePda,
     userGameTokenAccount,
     storeVaultTokenAccount,
+    gameRegistrationPda,
   };
 }
 
 async function getCatalog(ctx) {
-  const registryState = await ctx.registryProgram.account.registryState.fetch(ctx.registryStatePda);
+  const registrations = await ctx.registryProgram.account.gameRegistration.all();
   const storeState = await ctx.storeProgram.account.storeState.fetch(ctx.storeStatePda);
 
-  return registryState.games.map((game) => {
+  return registrations.map((reg) => {
+    const game = reg.account;
     const priceConfig = storeState.prices.find((entry) => entry.gameId === game.gameId);
     const price = priceConfig ? Number(priceConfig.price.toString()) : null;
     const currency = priceConfig ? priceConfig.currency : null;
@@ -262,6 +269,71 @@ async function getCatalog(ctx) {
       finalPrice,
     };
   });
+}
+
+async function withdrawFlow(ctx, rl) {
+  const storeState = await ctx.storeProgram.account.storeState.fetch(ctx.storeStatePda);
+  const balances = storeState.publisherBalances.filter(
+    (b) => b.publisher.equals(ctx.user.publicKey) && b.amount.toNumber() > 0,
+  );
+
+  if (balances.length === 0) {
+    console.log("you have no balance to withdraw");
+    return;
+  }
+
+  console.log("");
+  console.log("your balances");
+  balances.forEach((b, index) => {
+    console.log(
+      `${index + 1}. ${formatPaymentMethod(b.token)}: ${
+        isNativeSolPaymentMethod(b.token)
+          ? `${formatSolAmount(b.amount)} SOL`
+          : `${formatAmount(b.amount)} tokens`
+      }`,
+    );
+  });
+  console.log("");
+
+  const choiceInput = (await rl.question(`choose balance to withdraw (1-${balances.length}): `)).trim();
+  const balance = balances[Number(choiceInput) - 1];
+  if (!balance) {
+    console.log("invalid choice");
+    return;
+  }
+
+  const token = balance.token;
+  const isSol = isNativeSolPaymentMethod(token);
+
+  let withdrawAccounts = {
+    publisher: ctx.user.publicKey,
+    storeState: ctx.storeStatePda,
+    systemProgram: SystemProgram.programId,
+  };
+
+  if (!isSol) {
+    const accounts = deriveGameAccounts(ctx, "any"); // just for vault derivation
+    const userAta = getAssociatedTokenAddressSync(token, ctx.user.publicKey);
+    const storeVault = getAssociatedTokenAddressSync(token, ctx.storeStatePda, true);
+
+    withdrawAccounts = {
+      ...withdrawAccounts,
+      paymentMint: token,
+      publisherTokenAccount: userAta,
+      storeVaultTokenAccount: storeVault,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+    };
+  }
+
+  const tx = await ctx.storeProgram.methods
+    .withdraw(token)
+    .accounts(withdrawAccounts)
+    .signers([ctx.user])
+    .rpc();
+
+  console.log(`withdrawn ${isSol ? formatSolAmount(balance.amount) : formatAmount(balance.amount)} ${isSol ? "SOL" : "tokens"}`);
+  console.log(`tx: ${tx}`);
 }
 
 async function getMyGames(ctx) {
@@ -495,30 +567,44 @@ async function createGameFlow(ctx, rl) {
 
   const accounts = deriveGameAccounts(ctx, gameId);
 
+  const isSolRegistration = isNativeSolPaymentMethod(registrationPaymentMethod);
+  const createAccounts = {
+    publisher: ctx.user.publicKey,
+    factoryState: ctx.factoryStatePda,
+    mint: accounts.mintPda,
+    pgcProgram: ctx.pgcProgram.programId,
+    pgcGameState: accounts.gameStatePda,
+    pgcGameAuthority: accounts.gameAuthorityPda,
+    publisherMinterAuth: accounts.publisherMinterAuthPda,
+    gameStoreMinterAuth: accounts.storeMinterAuthPda,
+    registryProgram: ctx.registryProgram.programId,
+    registryState: ctx.registryStatePda,
+    gameStoreProgram: ctx.storeProgram.programId,
+    treasury: ctx.treasury,
+    gameStore: ctx.storeStatePda,
+    licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
+    systemProgram: SystemProgram.programId,
+    gameRegistration: accounts.gameRegistrationPda,
+    ...(isSolRegistration
+      ? {}
+      : {
+          publisherFeeTokenAccount: ctx.userPaymentTokenAccount,
+          treasuryFeeTokenAccount: ctx.treasuryPaymentTokenAccount,
+          feePaymentMint: ctx.paymentMint,
+          paymentTokenProgram: TOKEN_PROGRAM_ID,
+          priceCurrencyMint: ctx.paymentMint,
+        }),
+  };
+
   const tx = await ctx.factoryProgram.methods
-    .createGame(gameId, metadataUri, new anchor.BN(price), ctx.paymentMint, registrationPaymentMethod)
-    .accounts({
-      publisher: ctx.user.publicKey,
-      factoryState: ctx.factoryStatePda,
-      mint: accounts.mintPda,
-      pgcProgram: ctx.pgcProgram.programId,
-      pgcGameState: accounts.gameStatePda,
-      pgcGameAuthority: accounts.gameAuthorityPda,
-      publisherMinterAuth: accounts.publisherMinterAuthPda,
-      gameStoreMinterAuth: accounts.storeMinterAuthPda,
-      registryProgram: ctx.registryProgram.programId,
-      registryState: ctx.registryStatePda,
-      gameStoreProgram: ctx.storeProgram.programId,
-      treasury: ctx.treasury,
-      gameStore: ctx.storeStatePda,
-      publisherFeeTokenAccount: ctx.userPaymentTokenAccount,
-      treasuryFeeTokenAccount: ctx.treasuryPaymentTokenAccount,
-      feePaymentMint: ctx.paymentMint,
-      paymentTokenProgram: TOKEN_PROGRAM_ID,
-      priceCurrencyMint: ctx.paymentMint,
-      licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-    })
+    .createGame(
+      gameId,
+      metadataUri,
+      new anchor.BN(price),
+      ctx.paymentMint,
+      registrationPaymentMethod,
+    )
+    .accounts(createAccounts)
     .signers([ctx.user])
     .rpc();
 
@@ -527,6 +613,7 @@ async function createGameFlow(ctx, rl) {
     .accounts({
       admin: ctx.governance.publicKey,
       registryState: ctx.registryStatePda,
+      gameRegistration: accounts.gameRegistrationPda,
     })
     .rpc();
 
@@ -538,6 +625,7 @@ async function createGameFlow(ctx, rl) {
         storeState: ctx.storeStatePda,
         registryState: ctx.registryStatePda,
         pgcGameState: accounts.gameStatePda,
+        gameRegistration: accounts.gameRegistrationPda,
       })
       .signers([ctx.user])
       .rpc();
@@ -613,6 +701,7 @@ async function buyGameFlow(ctx, rl) {
     licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
     associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
     systemProgram: SystemProgram.programId,
+    gameRegistration: accounts.gameRegistrationPda,
     ...(isSolPriced
       ? {}
       : {
@@ -704,7 +793,8 @@ async function printHeader(ctx) {
   console.log("2. my games");
   console.log("3. buy game");
   console.log("4. create game");
-  console.log("5. Faucet 20 Sol");
+  console.log("5. withdraw");
+  console.log("6. Faucet 20 Sol");
   console.log("0. exit");
   console.log("");
 }
@@ -743,6 +833,8 @@ async function main() {
         } else if (choice === "4") {
           await createGameFlow(ctx, rl);
         } else if (choice === "5") {
+          await withdrawFlow(ctx, rl);
+        } else if (choice === "6") {
           await faucetFlow(ctx);
         } else {
           console.log("unknown menu");

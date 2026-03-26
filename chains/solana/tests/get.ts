@@ -97,8 +97,8 @@ describe("PeridotVault - GET TEST (DEVNET, READ ONLY)", () => {
                 console.log("Registration Fee:", fee.amount.toString());
             }
 
-            console.log("Total Games:", registry.games.length);
-            console.log("All Game IDs:", registry.allGameIds);
+            const registrations = await registryProgram.account.gameRegistration.all();
+            console.log("Total Games:", registrations.length);
         }
 
         // ==============================
@@ -154,19 +154,19 @@ describe("PeridotVault - GET TEST (DEVNET, READ ONLY)", () => {
         // GAMES
         // ==============================
 
-        if (registry) {
-            console.log("\n===== GAMES =====");
+        const registrations = await registryProgram.account.gameRegistration.all();
+        console.log("\n===== GAMES =====");
 
-            if (registry.games.length === 0) {
-                console.log("⚠️ No games found");
-            }
+        if (registrations.length === 0) {
+            console.log("⚠️ No games found");
+        }
 
-            for (const game of registry.games) {
-                console.log("----------------------");
-                console.log("Game ID:", game.gameId);
-                console.log("Contract:", game.contractAddress.toBase58());
-                console.log("Status:", game.status);
-            }
+        for (const reg of registrations) {
+            const game = reg.account;
+            console.log("----------------------");
+            console.log("Game ID:", game.gameId);
+            console.log("Contract:", game.contractAddress.toBase58());
+            console.log("Status:", game.status);
         }
 
         // ==============================

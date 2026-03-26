@@ -1,8 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    token_2022::Token2022,
-    token_interface::{Mint, TokenAccount, TokenInterface},
-};
+use anchor_spl::token_2022::Token2022;
 use game_store::{
     cpi as game_store_cpi,
     cpi::accounts::SetPrice as GameStoreSetPriceAccounts,
@@ -87,12 +84,15 @@ pub struct CreateGame<'info> {
     pub system_program: Program<'info, System>,
 
     #[account(mut)]
-    pub publisher_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
+    pub publisher_fee_token_account: Option<UncheckedAccount<'info>>,
     #[account(mut)]
-    pub treasury_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
-    pub fee_payment_mint: Option<InterfaceAccount<'info, Mint>>,
-    pub payment_token_program: Option<Interface<'info, TokenInterface>>,
-    pub price_currency_mint: Option<InterfaceAccount<'info, Mint>>,
+    pub treasury_fee_token_account: Option<UncheckedAccount<'info>>,
+    pub fee_payment_mint: Option<UncheckedAccount<'info>>,
+    pub payment_token_program: Option<UncheckedAccount<'info>>,
+    pub price_currency_mint: Option<UncheckedAccount<'info>>,
+    /// CHECK: validated by registry CPI
+    #[account(mut)]
+    pub game_registration: UncheckedAccount<'info>,
 }
 
 pub fn handler(
@@ -183,6 +183,7 @@ pub fn handler(
                     .as_ref()
                     .map(ToAccountInfo::to_account_info),
                 system_program: ctx.accounts.system_program.to_account_info(),
+                game_registration: ctx.accounts.game_registration.to_account_info(),
             },
             &[factory_signer_seeds],
         ),
@@ -205,6 +206,7 @@ pub fn handler(
                     .price_currency_mint
                     .as_ref()
                     .map(ToAccountInfo::to_account_info),
+                game_registration: ctx.accounts.game_registration.to_account_info(),
             },
         ),
         game_id.clone(),

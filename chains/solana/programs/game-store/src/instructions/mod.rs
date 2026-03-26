@@ -6,4 +6,3 @@ pub mod set_platform_fee;
 pub mod set_price;
 pub mod set_treasury;
 pub mod withdraw;
-pub mod withdraw_sol;

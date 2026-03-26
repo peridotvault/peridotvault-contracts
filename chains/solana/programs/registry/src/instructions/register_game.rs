@@ -3,11 +3,11 @@ use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 use pgc::states::GameState as PgcGameState;
 
 use crate::{
-    constants::{MAX_GAME_ID_LEN, REGISTRY_STATE_SEED, STATUS_APPROVED, STATUS_PENDING},
+    constants::{GAME_REGISTRATION_SEED, MAX_GAME_ID_LEN, REGISTRY_STATE_SEED, STATUS_APPROVED, STATUS_PENDING},
     errors::RegistryError,
     events::GameRegistered,
     instructions::collect_registration_fee,
-    states::RegistryState,
+    states::{GameRegistration, RegistryState},
 };
 
 #[derive(Accounts)]
@@ -30,11 +30,23 @@ pub struct RegisterGame<'info> {
     #[account(mut, address = registry_state.treasury)]
     pub treasury: UncheckedAccount<'info>,
 
-    pub publisher_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
-    pub treasury_fee_token_account: Option<InterfaceAccount<'info, TokenAccount>>,
-    pub fee_payment_mint: Option<InterfaceAccount<'info, Mint>>,
-    pub token_program: Option<Interface<'info, TokenInterface>>,
+    #[account(
+        init,
+        payer = publisher,
+        space = GameRegistration::SPACE,
+        seeds = [GAME_REGISTRATION_SEED, game_id.as_bytes()],
+        bump
+    )]
+    pub game_registration: Account<'info, GameRegistration>,
+
     pub system_program: Program<'info, System>,
+
+    #[account(mut)]
+    pub publisher_fee_token_account: Option<UncheckedAccount<'info>>,
+    #[account(mut)]
+    pub treasury_fee_token_account: Option<UncheckedAccount<'info>>,
+    pub fee_payment_mint: Option<UncheckedAccount<'info>>,
+    pub token_program: Option<UncheckedAccount<'info>>,
 }
 
 pub fn handler(
@@ -61,10 +73,6 @@ pub fn handler(
     require!(game_id == canonical_game_id, RegistryError::GameIdMismatch);
 
     let registry_state = &mut ctx.accounts.registry_state;
-    require!(
-        registry_state.get_game(&game_id).is_none(),
-        RegistryError::GameAlreadyRegistered
-    );
 
     let is_fee_exempt = registry_state.is_fee_exempt(&canonical_publisher);
 
@@ -87,7 +95,11 @@ pub fn handler(
         STATUS_PENDING
     };
 
-    registry_state.add_game(game_id.clone(), contract_address, initial_status)?;
+    let game_registration = &mut ctx.accounts.game_registration;
+    game_registration.bump = ctx.bumps.game_registration;
+    game_registration.game_id = game_id.clone();
+    game_registration.contract_address = contract_address;
+    game_registration.status = initial_status;
 
     emit!(GameRegistered {
         game_id,

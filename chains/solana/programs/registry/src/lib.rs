@@ -18,7 +18,7 @@ pub use instructions::{
     set_status::SetStatus,
     set_treasury::SetTreasury,
 };
-pub use states::{RegistrationFeeOption, RegistryGame};
+pub use states::{GameRegistration, RegistrationFeeOption};
 #[allow(unused_imports)]
 use instructions::{
     initialize::__cpi_client_accounts_initialize,
