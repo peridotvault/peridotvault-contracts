@@ -657,18 +657,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
-name = "factory"
-version = "0.1.0"
-dependencies = [
- "anchor-lang",
- "anchor-spl",
- "game-store",
- "pgc",
- "registry",
- "sha2 0.10.9",
-]
-
-[[package]]
 name = "feature-probe"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -728,7 +716,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "pgc",
+ "pgc1",
  "registry",
 ]
 
@@ -1075,7 +1063,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "pgc"
+name = "pgc1"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
@@ -1263,7 +1251,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "pgc",
+ "pgc1",
 ]
 
 [[package]]

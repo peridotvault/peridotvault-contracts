@@ -6,12 +6,13 @@ import {
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
-
 import {
-  LICENSE_SEED,
-  TEST_GAME_ID,
-  ensureGameCreated,
   setupPeridotFixture,
+  ensureGameCreated,
+  deriveGameFixture,
+  MINTER_AUTH_SEED,
+  LICENSE_SEED,
+  TEST_GAME_ID
 } from "./helpers/peridot";
 
 describe("remediation regressions", () => {
@@ -24,17 +25,21 @@ describe("remediation regressions", () => {
       .accounts({
         governance: base.governance.publicKey,
         registryState: base.registryStatePda,
-      })
+      } as any)
+      .signers([base.governance])
       .rpc();
 
     let failed = false;
     try {
       await base.registryProgram.methods
-      .setStatus(TEST_GAME_ID, 1)
+        .setStatus(TEST_GAME_ID, 1)
         .accounts({
           admin: base.governance.publicKey,
           registryState: base.registryStatePda,
+          gameRegistration: deriveGameFixture(base, TEST_GAME_ID).gameRegistrationPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
         } as any)
+        .signers([base.governance])
         .rpc();
     } catch (error) {
       failed = true;
@@ -42,12 +47,13 @@ describe("remediation regressions", () => {
 
     expect(failed).to.equal(true);
 
+    // Restore
     await base.registryProgram.methods
       .setGovernance(base.governance.publicKey)
       .accounts({
         governance: base.nextGovernance.publicKey,
         registryState: base.registryStatePda,
-      })
+      } as any)
       .signers([base.nextGovernance])
       .rpc();
   });
@@ -79,24 +85,26 @@ describe("remediation regressions", () => {
 
     const oldPublisherMinterAuth = PublicKey.findProgramAddressSync(
       [Buffer.from("minter_auth"), game.gameStatePda.toBuffer(), base.publisher.publicKey.toBuffer()],
-      base.pgcProgram.programId,
+      base.pgc1Program.programId,
     )[0];
     const newPublisherMinterAuth = PublicKey.findProgramAddressSync(
       [Buffer.from("minter_auth"), game.gameStatePda.toBuffer(), newPublisher.publicKey.toBuffer()],
-      base.pgcProgram.programId,
+      base.pgc1Program.programId,
     )[0];
     const licensePda = PublicKey.findProgramAddressSync(
       [LICENSE_SEED, game.gameStatePda.toBuffer(), freshUser.publicKey.toBuffer()],
-      base.pgcProgram.programId,
+      base.pgc1Program.programId,
     )[0];
+    
+    const gameState = await base.pgc1Program.account.gameState.fetch(game.gameStatePda);
     const userGameTokenAccount = getAssociatedTokenAddressSync(
-      game.mintPda,
+      gameState.mint,
       freshUser.publicKey,
       false,
       TOKEN_2022_PROGRAM_ID,
     );
 
-    await base.pgcProgram.methods
+    await base.pgc1Program.methods
       .setPublisher()
       .accounts({
         publisher: base.publisher.publicKey,
@@ -104,14 +112,13 @@ describe("remediation regressions", () => {
         newPublisher: newPublisher.publicKey,
         oldPublisherMinterAuth,
         newPublisherMinterAuth,
-        systemProgram: SystemProgram.programId,
       } as any)
       .signers([base.publisher])
       .rpc();
 
     let failed = false;
     try {
-      await base.pgcProgram.methods
+      await base.pgc1Program.methods
         .mintLicense(new anchor.BN(0))
         .accounts({
           payer: base.publisher.publicKey,
@@ -120,7 +127,7 @@ describe("remediation regressions", () => {
           user: freshUser.publicKey,
           gameAuthority: game.gameAuthorityPda,
           minterAuth: oldPublisherMinterAuth,
-          mint: game.mintPda,
+          mint: gameState.mint,
           licenseAccount: licensePda,
           userTokenAccount: userGameTokenAccount,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,

@@ -14,7 +14,7 @@ cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "pgc/idl-build", "registry/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "pgc1/idl-build", "registry/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
@@ -23,7 +23,7 @@ custom-panic = []
 [dependencies]
 anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.32.1", features = ["associated_token", "token", "token_2022", "token_2022_extensions"] }
-pgc = { path = "../pgc", features = ["cpi"] }
+pgc1 = { path = "../pgc1", features = ["cpi"] }
 registry = { path = "../registry", features = ["no-entrypoint"] }
 
 

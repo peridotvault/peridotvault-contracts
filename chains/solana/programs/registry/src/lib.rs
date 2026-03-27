@@ -3,47 +3,16 @@ use anchor_lang::prelude::*;
 pub mod constants;
 pub mod errors;
 pub mod events;
+pub mod state;
 pub mod instructions;
-pub mod states;
 
-pub use instructions::{
-    initialize::Initialize,
-    register_game::RegisterGame,
-    register_game_by_factory::RegisterGameByFactory,
-    set_admin::SetAdmin,
-    set_factory::SetFactory,
-    set_fee_exemption::SetFeeExemption,
-    set_governance::SetGovernance,
-    set_registration_fee::SetRegistrationFee,
-    set_status::SetStatus,
-    set_treasury::SetTreasury,
-};
-pub use states::{GameRegistration, RegistrationFeeOption};
-#[allow(unused_imports)]
-use instructions::{
-    initialize::__cpi_client_accounts_initialize,
-    initialize::__client_accounts_initialize,
-    register_game::__cpi_client_accounts_register_game,
-    register_game::__client_accounts_register_game,
-    register_game_by_factory::__cpi_client_accounts_register_game_by_factory,
-    register_game_by_factory::__client_accounts_register_game_by_factory,
-    set_admin::__cpi_client_accounts_set_admin,
-    set_admin::__client_accounts_set_admin,
-    set_factory::__cpi_client_accounts_set_factory,
-    set_factory::__client_accounts_set_factory,
-    set_fee_exemption::__cpi_client_accounts_set_fee_exemption,
-    set_fee_exemption::__client_accounts_set_fee_exemption,
-    set_governance::__cpi_client_accounts_set_governance,
-    set_governance::__client_accounts_set_governance,
-    set_registration_fee::__cpi_client_accounts_set_registration_fee,
-    set_registration_fee::__client_accounts_set_registration_fee,
-    set_status::__cpi_client_accounts_set_status,
-    set_status::__client_accounts_set_status,
-    set_treasury::__cpi_client_accounts_set_treasury,
-    set_treasury::__client_accounts_set_treasury,
-};
+pub use constants::*;
+pub use errors::*;
+pub use events::*;
+pub use state::*;
+pub use instructions::*;
 
-declare_id!("3bUSqLjWxUgmruzuRwhtWwhV93b4RXVN7bE5qHxHHxLj");
+declare_id!("CrHcKzUfp9ykApDFt5tBzs1MK41QAjbrPVxdoYifzE2r");
 
 #[program]
 pub mod registry {
@@ -51,80 +20,107 @@ pub mod registry {
 
     pub fn initialize(
         ctx: Context<Initialize>,
-        governance: Pubkey,
-        treasury: Pubkey,
-        factory: Pubkey,
-        registration_fee: u64,
-        registration_fee_token: Pubkey,
+        authority: Pubkey,
     ) -> Result<()> {
-        instructions::initialize::handler(
-            ctx,
-            governance,
-            treasury,
-            factory,
-            registration_fee,
-            registration_fee_token,
-        )
+        crate::instructions::initialize_handler(ctx, authority)
     }
 
     pub fn register_game(
         ctx: Context<RegisterGame>,
         game_id: String,
-        contract_address: Pubkey,
-        payment_method: Pubkey,
+        pgc_program: Pubkey,
+        pgc_game: Pubkey,
     ) -> Result<()> {
-        instructions::register_game::handler(ctx, game_id, contract_address, payment_method)
+        crate::instructions::register_game_handler(ctx, game_id, pgc_program, pgc_game)
     }
 
-    pub fn register_game_by_factory(
-        ctx: Context<RegisterGameByFactory>,
-        game_id: String,
-        contract_address: Pubkey,
-        publisher: Pubkey,
-        payment_method: Pubkey,
+    pub fn update_game(
+        ctx: Context<UpdateGame>,
+        pgc_program: Pubkey,
+        pgc_game: Pubkey,
     ) -> Result<()> {
-        instructions::register_game_by_factory::handler(
-            ctx,
-            game_id,
-            contract_address,
-            publisher,
-            payment_method,
-        )
+        crate::instructions::update_game_handler(ctx, pgc_program, pgc_game)
     }
 
-    pub fn set_status(ctx: Context<SetStatus>, game_id: String, status: u8) -> Result<()> {
-        instructions::set_status::handler(ctx, game_id, status)
-    }
-
-    pub fn set_admin(ctx: Context<SetAdmin>, account: Pubkey, is_admin: bool) -> Result<()> {
-        instructions::set_admin::handler(ctx, account, is_admin)
-    }
-
-    pub fn set_governance(ctx: Context<SetGovernance>, governance: Pubkey) -> Result<()> {
-        instructions::set_governance::handler(ctx, governance)
-    }
-
-    pub fn set_treasury(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
-        instructions::set_treasury::handler(ctx, treasury)
-    }
-
-    pub fn set_factory(ctx: Context<SetFactory>, factory: Pubkey) -> Result<()> {
-        instructions::set_factory::handler(ctx, factory)
-    }
-
-    pub fn set_registration_fee(
-        ctx: Context<SetRegistrationFee>,
-        amount: u64,
-        token: Pubkey,
+    pub fn set_status(
+        ctx: Context<SetStatus>,
+        active: bool,
     ) -> Result<()> {
-        instructions::set_registration_fee::handler(ctx, amount, token)
+        crate::instructions::set_status_handler(ctx, active)
     }
 
-    pub fn set_fee_exemption(
-        ctx: Context<SetFeeExemption>,
-        account: Pubkey,
-        is_exempt: bool,
+    pub fn transfer_publisher(
+        ctx: Context<TransferPublisher>,
+        new_publisher: Pubkey,
     ) -> Result<()> {
-        instructions::set_fee_exemption::handler(ctx, account, is_exempt)
+        crate::instructions::transfer_publisher_handler(ctx, new_publisher)
     }
+}
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        init, 
+        payer = payer, 
+        space = state::RegistryConfig::SPACE, 
+        seeds = [REGISTRY_CONFIG_SEED], 
+        bump
+    )]
+    pub registry_config: Account<'info, state::RegistryConfig>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(game_id: String)]
+pub struct RegisterGame<'info> {
+    #[account(mut)]
+    pub publisher: Signer<'info>,
+    #[account(
+        init, 
+        payer = publisher, 
+        space = state::RegistryGameAccount::SPACE, 
+        seeds = [GAME_SEED, game_id.as_bytes()], 
+        bump
+    )]
+    pub game_account: Account<'info, state::RegistryGameAccount>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateGame<'info> {
+    pub publisher: Signer<'info>,
+    #[account(
+        mut, 
+        seeds = [GAME_SEED, game_account.game_id.as_bytes()], 
+        bump = game_account.bump,
+        has_one = publisher @ RegistryError::Unauthorized
+    )]
+    pub game_account: Account<'info, state::RegistryGameAccount>,
+}
+
+#[derive(Accounts)]
+pub struct SetStatus<'info> {
+    pub authority: Signer<'info>,
+    #[account(seeds = [REGISTRY_CONFIG_SEED], bump = registry_config.bump, has_one = authority @ RegistryError::Unauthorized)]
+    pub registry_config: Account<'info, state::RegistryConfig>,
+    #[account(
+        mut, 
+        seeds = [GAME_SEED, game_account.game_id.as_bytes()], 
+        bump = game_account.bump
+    )]
+    pub game_account: Account<'info, state::RegistryGameAccount>,
+}
+
+#[derive(Accounts)]
+pub struct TransferPublisher<'info> {
+    pub publisher: Signer<'info>,
+    #[account(
+        mut, 
+        seeds = [GAME_SEED, game_account.game_id.as_bytes()], 
+        bump = game_account.bump,
+        has_one = publisher @ RegistryError::Unauthorized
+    )]
+    pub game_account: Account<'info, state::RegistryGameAccount>,
 }

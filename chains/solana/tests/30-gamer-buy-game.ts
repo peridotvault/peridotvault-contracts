@@ -1,11 +1,13 @@
 import { expect } from "chai";
-
+import * as anchor from "@coral-xyz/anchor";
+import { SystemProgram } from "@solana/web3.js";
 import {
+  BALANCE_SEED,
   buyGameForGamer,
   ensurePriceConfigured,
   licenseTokenBalance,
-  paymentTokenBalance,
   setupPeridotFixture,
+  deriveGameFixture,
 } from "./helpers/peridot";
 
 describe("gamer purchase flow", () => {
@@ -13,24 +15,21 @@ describe("gamer purchase flow", () => {
     const base = await setupPeridotFixture();
     await ensurePriceConfigured(base);
 
-    const treasuryBalanceBefore = await paymentTokenBalance(
-      base,
-      base.treasuryPaymentTokenAccount,
-    );
+    const treasuryBalanceBefore = await base.provider.connection.getBalance(base.treasury.publicKey);
     const purchase = await buyGameForGamer(base);
-    const treasuryBalanceAfter = await paymentTokenBalance(base, base.treasuryPaymentTokenAccount);
+    const treasuryBalanceAfter = await base.provider.connection.getBalance(base.treasury.publicKey);
 
-    const license = (await base.pgcProgram.account.licenseAccount.fetch(
+    const license = (await base.pgc1Program.account.licenseAccount.fetch(
       purchase.licensePda,
     )) as any;
     const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
     const badgeBalance = await licenseTokenBalance(base, purchase.userGameTokenAccount);
-    const priceConfig = storeState.prices.find(
-      (entry: any) => entry.gameId === purchase.game.gameId,
-    );
-    const basePrice = Number(priceConfig.price.toString());
-    const finalPrice =
-      basePrice - Math.floor((basePrice * priceConfig.discountBps) / 10_000);
+    
+    const fixture = deriveGameFixture(base);
+    const priceAccount = await base.storeProgram.account.priceAccount.fetch(fixture.pricePda);
+    const basePrice = Number(priceAccount.price.toString());
+    const finalPrice = basePrice; // No discount set in ensurePriceConfigured yet
+    
     const expectedPlatformFee = Math.floor(
       (finalPrice * storeState.platformFeeBps) / 10_000,
     );
@@ -43,11 +42,11 @@ describe("gamer purchase flow", () => {
     expect(badgeBalance).to.equal(1);
     expect(treasuryBalanceAfter - treasuryBalanceBefore).to.equal(expectedPlatformFee);
 
-    const publisherBalance = storeState.publisherBalances.find(
-      (entry: any) =>
-        entry.publisher.toBase58() === base.publisher.publicKey.toBase58() &&
-        entry.token.toBase58() === base.paymentMint.toBase58(),
-    );
-    expect(Number(publisherBalance.amount.toString())).to.equal(expectedPublisherRevenue);
+    const balancePda = anchor.web3.PublicKey.findProgramAddressSync(
+      [BALANCE_SEED, base.publisher.publicKey.toBuffer(), SystemProgram.programId.toBuffer()],
+      base.storeProgram.programId
+    )[0];
+    const publisherBalanceAccount = await base.storeProgram.account.publisherBalanceAccount.fetch(balancePda);
+    expect(Number(publisherBalanceAccount.amount.toString())).to.equal(expectedPublisherRevenue);
   });
 });

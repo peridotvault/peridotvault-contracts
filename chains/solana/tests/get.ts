@@ -4,16 +4,16 @@ import { PublicKey, Connection } from "@solana/web3.js";
 import { expect } from "chai";
 
 import { Registry } from "../target/types/registry";
-import { Factory } from "../target/types/factory";
 import { GameStore } from "../target/types/game_store";
+import { Pgc1 } from "../target/types/pgc1";
 
-describe("PeridotVault - GET TEST (DEVNET, READ ONLY)", () => {
+describe("PeridotVault - GET TEST (LOCALNET, READ ONLY)", () => {
     // ==============================
     // 🔥 CONNECTION (NO WALLET)
     // ==============================
 
     const connection = new Connection(
-        "https://api.devnet.solana.com",
+        "http://127.0.0.1:8899",
         "confirmed"
     );
 
@@ -31,7 +31,7 @@ describe("PeridotVault - GET TEST (DEVNET, READ ONLY)", () => {
     // ==============================
 
     const registryProgram = anchor.workspace.Registry as Program<Registry>;
-    const factoryProgram = anchor.workspace.Factory as Program<Factory>;
+    const pgcProgram = anchor.workspace.Pgc1 as Program<Pgc1>;
     const storeProgram = anchor.workspace.GameStore as Program<GameStore>;
 
     // ==============================
@@ -43,14 +43,14 @@ describe("PeridotVault - GET TEST (DEVNET, READ ONLY)", () => {
         registryProgram.programId
     );
 
-    const [factoryPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("factory_state")],
-        factoryProgram.programId
-    );
-
     const [storePda] = PublicKey.findProgramAddressSync(
         [Buffer.from("game_store_state")],
         storeProgram.programId
+    );
+
+    const [globalPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("global_state")],
+        pgcProgram.programId
     );
 
     // ==============================
@@ -90,31 +90,25 @@ describe("PeridotVault - GET TEST (DEVNET, READ ONLY)", () => {
             console.log("PDA:", registryPda.toBase58());
             console.log("Governance:", registry.governance.toBase58());
             console.log("Treasury:", registry.treasury.toBase58());
-            console.log("Factory:", registry.factory.toBase58());
-
-            if (registry.registrationFeeOptions.length > 0) {
-                const fee = registry.registrationFeeOptions[0];
-                console.log("Registration Fee:", fee.amount.toString());
-            }
 
             const registrations = await registryProgram.account.gameRegistration.all();
             console.log("Total Games:", registrations.length);
         }
 
         // ==============================
-        // FACTORY
+        // PGC1
         // ==============================
 
-        const factory = await safeFetch("FACTORY", () =>
-            factoryProgram.account.factoryState.fetch(factoryPda)
+        const global = await safeFetch("PGC1 GLOBAL", () =>
+            pgcProgram.account.globalState.fetch(globalPda)
         );
 
-        if (factory) {
-            console.log("\n===== FACTORY =====");
-            console.log("PDA:", factoryPda.toBase58());
-            console.log("Governance:", factory.governance.toBase58());
-            console.log("Registry:", factory.registry.toBase58());
-            console.log("Store:", factory.gameStore.toBase58());
+        if (global) {
+            console.log("\n===== PGC1 GLOBAL =====");
+            console.log("PDA:", globalPda.toBase58());
+            console.log("Governance:", global.governance.toBase58());
+            console.log("Registry:", global.registry.toBase58());
+            console.log("Store:", global.gameStore.toBase58());
         }
 
         // ==============================
@@ -138,16 +132,14 @@ describe("PeridotVault - GET TEST (DEVNET, READ ONLY)", () => {
         // CROSS VALIDATION
         // ==============================
 
-        if (registry && factory && store) {
+        if (registry && global && store) {
             console.log("\n===== CONSISTENCY CHECK =====");
 
-            expect(factory.registry.toBase58()).to.equal(registryPda.toBase58());
-            expect(factory.gameStore.toBase58()).to.equal(storePda.toBase58());
+            expect(global.registry.toBase58()).to.equal(registryProgram.programId.toBase58());
+            expect(global.gameStore.toBase58()).to.equal(storeProgram.programId.toBase58());
             expect(store.registry.toBase58()).to.equal(registryPda.toBase58());
 
             console.log("✅ All contracts are linked correctly");
-        } else {
-            console.log("\n⚠️ Skipping consistency check (some contracts not initialized)");
         }
 
         // ==============================
@@ -167,19 +159,6 @@ describe("PeridotVault - GET TEST (DEVNET, READ ONLY)", () => {
             console.log("Game ID:", game.gameId);
             console.log("Contract:", game.contractAddress.toBase58());
             console.log("Status:", game.status);
-        }
-
-        // ==============================
-        // ADMIN
-        // ==============================
-
-        if (registry) {
-            console.log("\n===== ADMIN =====");
-            console.log(
-                "Admins:",
-                registry.admins.map((a: any) => a.toBase58())
-            );
-            console.log("Fee Exemptions:", registry.feeExemptions);
         }
 
         console.log("\n==============================");

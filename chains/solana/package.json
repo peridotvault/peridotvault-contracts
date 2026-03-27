@@ -2,8 +2,8 @@
   "license": "ISC",
   "scripts": {
     "anchor:build": "anchor build",
-    "anchor:localnet": "anchor localnet --skip-build",
-    "console": "node app/console.cjs",
+    "anchor:localnet": "pnpm anchor:build && anchor localnet --skip-build",
+    "console": "pnpm anchor:build && node app/console.cjs",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },

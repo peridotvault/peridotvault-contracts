@@ -6,22 +6,20 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-factory = "3EaXmAr9wAvYgXhz1BH4Kpa5DDCc5oTykeeGtBHeqYXA"
-pgc = "BDqzDEUTfzskChktZwNsceHj3Vnr7g3322JgPKrMqsip"
-registry = "3bUSqLjWxUgmruzuRwhtWwhV93b4RXVN7bE5qHxHHxLj"
-game_store = "DSiyompbYR2k2GsS69FWkvE9N3vf32Da4JNqZKYvn2Pp"
+pgc1 = "3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA"
+registry = "CrHcKzUfp9ykApDFt5tBzs1MK41QAjbrPVxdoYifzE2r"
+game_store = "7Z9MDRw8oALQyZQGF6LDh9G1t9mQvN3pFsuXzfb31MnS"
 
 [programs.devnet]
-factory = "3EaXmAr9wAvYgXhz1BH4Kpa5DDCc5oTykeeGtBHeqYXA"
-pgc = "BDqzDEUTfzskChktZwNsceHj3Vnr7g3322JgPKrMqsip"
-registry = "3bUSqLjWxUgmruzuRwhtWwhV93b4RXVN7bE5qHxHHxLj"
-game_store = "DSiyompbYR2k2GsS69FWkvE9N3vf32Da4JNqZKYvn2Pp"
+pgc1 = "3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA"
+registry = "CrHcKzUfp9ykApDFt5tBzs1MK41QAjbrPVxdoYifzE2r"
+game_store = "7Z9MDRw8oALQyZQGF6LDh9G1t9mQvN3pFsuXzfb31MnS"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

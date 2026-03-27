@@ -1,89 +1,16 @@
 use anchor_lang::prelude::*;
-use anchor_lang::system_program;
-use pgc::states::GameState as PgcGameState;
-use registry::states::{GameRegistration, RegistryState};
-
-use crate::{
-    constants::is_native_sol_payment_method,
-    constants::{MAX_GAME_ID_LEN, STORE_STATE_SEED},
-    errors::GameStoreError,
-    events::PriceSet,
-    states::StoreState,
-};
-
-#[derive(Accounts)]
-#[instruction(game_id: String, _price: u64, currency: Pubkey)]
-pub struct SetPrice<'info> {
-    #[account(mut)]
-    pub publisher: Signer<'info>,
-
-    #[account(
-        mut,
-        seeds = [STORE_STATE_SEED],
-        bump = store_state.bump
-    )]
-    pub store_state: Account<'info, StoreState>,
-
-    #[account(address = store_state.registry)]
-    pub registry_state: Account<'info, RegistryState>,
-
-    pub pgc_game_state: Account<'info, PgcGameState>,
-
-    #[account(address = currency)]
-    pub currency_mint: Option<UncheckedAccount<'info>>,
-    pub game_registration: Account<'info, GameRegistration>,
-}
+use crate::SetPrice;
 
 pub fn handler(
     ctx: Context<SetPrice>,
-    game_id: String,
     price: u64,
     currency: Pubkey,
 ) -> Result<()> {
-    require!(!game_id.trim().is_empty(), GameStoreError::EmptyGameId);
-    require!(game_id.len() <= MAX_GAME_ID_LEN, GameStoreError::GameIdTooLong);
-    require!(
-        is_native_sol_payment_method(&currency) || currency != Pubkey::default(),
-        GameStoreError::InvalidCurrency
-    );
-
-    let registry_game = &ctx.accounts.game_registration;
-    require!(registry_game.game_id == game_id, GameStoreError::GameNotFound);
-
-    require_keys_eq!(
-        registry_game.contract_address,
-        ctx.accounts.pgc_game_state.key(),
-        GameStoreError::ContractAddressMismatch
-    );
-    require_keys_eq!(
-        ctx.accounts.publisher.key(),
-        ctx.accounts.pgc_game_state.publisher,
-        GameStoreError::Unauthorized
-    );
-    require!(ctx.accounts.pgc_game_state.game_id == game_id, GameStoreError::ContractAddressMismatch);
-    if is_native_sol_payment_method(&currency) {
-        require_keys_eq!(
-            currency,
-            system_program::ID,
-            GameStoreError::InvalidCurrency
-        );
-    } else {
-        let _currency_mint = ctx
-            .accounts
-            .currency_mint
-            .as_ref()
-            .ok_or(error!(GameStoreError::InvalidPaymentMint))?;
-    }
-
-    let store_state = &mut ctx.accounts.store_state;
-    store_state.upsert_price(game_id.clone(), price, currency)?;
-
-    emit!(PriceSet {
-        game_id,
-        publisher: ctx.accounts.publisher.key(),
-        price,
-        currency,
-    });
+    let price_account = &mut ctx.accounts.price_account;
+    price_account.game = ctx.accounts.pgc_game_state.key();
+    price_account.price = price;
+    price_account.currency = currency;
+    price_account.bump = ctx.bumps.price_account;
 
     Ok(())
 }

@@ -6,7 +6,7 @@ use crate::{
     constants::{MAX_FEE_BPS, MAX_GAME_ID_LEN, STORE_STATE_SEED},
     errors::GameStoreError,
     events::DiscountSet,
-    states::StoreState,
+    states::{PriceAccount, StoreState},
 };
 
 #[derive(Accounts)]
@@ -16,7 +16,6 @@ pub struct SetDiscount<'info> {
     pub publisher: Signer<'info>,
 
     #[account(
-        mut,
         seeds = [STORE_STATE_SEED],
         bump = store_state.bump
     )]
@@ -26,6 +25,19 @@ pub struct SetDiscount<'info> {
     pub registry_state: Account<'info, RegistryState>,
 
     pub pgc_game_state: Account<'info, PgcGameState>,
+
+    #[account(
+        mut,
+        seeds = [b"price", pgc_game_state.key().as_ref()],
+        bump = price_account.bump,
+    )]
+    pub price_account: Account<'info, PriceAccount>,
+
+    #[account(
+        seeds = [b"game", game_id.as_bytes()],
+        seeds::program = registry_state.key(),
+        bump = game_registration.bump
+    )]
     pub game_registration: Account<'info, GameRegistration>,
 }
 
@@ -48,8 +60,8 @@ pub fn handler(ctx: Context<SetDiscount>, game_id: String, discount_bps: u16) ->
         GameStoreError::Unauthorized
     );
 
-    let store_state = &mut ctx.accounts.store_state;
-    store_state.set_discount(&game_id, discount_bps)?;
+    let price_account = &mut ctx.accounts.price_account;
+    price_account.discount_bps = discount_bps;
 
     emit!(DiscountSet {
         game_id,

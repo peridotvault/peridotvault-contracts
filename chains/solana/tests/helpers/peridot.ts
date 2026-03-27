@@ -11,22 +11,21 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
-import { createHash } from "crypto";
 
-import { Factory } from "../../target/types/factory";
 import { GameStore } from "../../target/types/game_store";
 import { Pgc1 } from "../../target/types/pgc1";
 import { Registry } from "../../target/types/registry";
 
+export const GLOBAL_STATE_SEED = Buffer.from("global_program_state");
 export const REGISTRY_STATE_SEED = Buffer.from("registry_state");
 export const STORE_STATE_SEED = Buffer.from("game_store_state");
-export const FACTORY_STATE_SEED = Buffer.from("factory_state");
-export const FACTORY_MINT_SEED = Buffer.from("factory_mint");
 export const GAME_STATE_SEED = Buffer.from("game_state");
 export const GAME_AUTHORITY_SEED = Buffer.from("game_authority");
 export const MINTER_AUTH_SEED = Buffer.from("minter_auth");
-export const GAME_REGISTRATION_SEED = Buffer.from("game_registration");
+export const GAME_SEED = Buffer.from("game");
 export const LICENSE_SEED = Buffer.from("license");
+export const PRICE_SEED = Buffer.from("price");
+export const BALANCE_SEED = Buffer.from("balance");
 
 export const STATUS_PENDING = 0;
 export const STATUS_APPROVED = 1;
@@ -35,7 +34,7 @@ export const DEFAULT_PLATFORM_FEE_BPS = 1000;
 export const UPDATED_PLATFORM_FEE_BPS = 750;
 export const DEFAULT_REGISTRATION_FEE = 5_000_000;
 export const DEFAULT_GAME_PRICE = 20_000_000;
-export const DEFAULT_GAME_DISCOUNT_BPS = 1_500;
+export const DEFAULT_GAME_DISCOUNT_BPS = 1500;
 export const PAYMENT_DECIMALS = 6;
 
 export const TEST_GAME_ID = "peridot-localnet-alpha";
@@ -44,8 +43,7 @@ export const TEST_METADATA_URI = "https://peridot.local/metadata/peridot-localne
 type NodeWallet = anchor.Wallet & { payer: Keypair };
 
 export type WorkspacePrograms = {
-  factoryProgram: Program<Factory>;
-  pgcProgram: Program<Pgc1>;
+  pgc1Program: Program<Pgc1>;
   registryProgram: Program<Registry>;
   storeProgram: Program<GameStore>;
 };
@@ -60,23 +58,19 @@ export type BaseFixture = WorkspacePrograms & {
   publisher: Keypair;
   gamer: Keypair;
   paymentMint: PublicKey;
-  publisherPaymentTokenAccount: PublicKey;
-  gamerPaymentTokenAccount: PublicKey;
-  treasuryPaymentTokenAccount: PublicKey;
   registryStatePda: PublicKey;
   storeStatePda: PublicKey;
-  factoryStatePda: PublicKey;
+  pgcGlobalStatePda: PublicKey;
 };
 
 export type GameFixture = {
   gameId: string;
   metadataUri: string;
-  mintPda: PublicKey;
   gameStatePda: PublicKey;
   gameAuthorityPda: PublicKey;
   publisherMinterAuthPda: PublicKey;
-  storeMinterAuthPda: PublicKey;
   gameRegistrationPda: PublicKey;
+  pricePda: PublicKey;
 };
 
 let baseFixturePromise: Promise<BaseFixture> | null = null;
@@ -92,10 +86,6 @@ function workspaceProgram<T extends anchor.Idl>(name: string): Program<T> {
 
 function derivePda(seeds: Buffer[], programId: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(seeds, programId)[0];
-}
-
-function sha256Seed(value: string): Buffer {
-  return createHash("sha256").update(value).digest();
 }
 
 async function accountExists(
@@ -121,83 +111,26 @@ async function fundSigner(
 }
 
 async function maybeFundSigner(
-  provider: anchor.AnchorProvider,
-  recipient: Keypair,
+    provider: anchor.AnchorProvider,
+    recipient: Keypair,
 ): Promise<void> {
-  const balance = await provider.connection.getBalance(recipient.publicKey);
-  if (balance === 0) {
-    await fundSigner(provider, recipient.publicKey);
-  }
+    const balance = await provider.connection.getBalance(recipient.publicKey);
+    if (balance === 0) {
+        await fundSigner(provider, recipient.publicKey);
+    }
 }
 
-async function createPaymentMintAndAccounts(
+async function createPaymentMint(
   provider: anchor.AnchorProvider,
-  treasury: Keypair,
-  publisher: Keypair,
-  gamer: Keypair,
-): Promise<{
-  paymentMint: PublicKey;
-  treasuryPaymentTokenAccount: PublicKey;
-  publisherPaymentTokenAccount: PublicKey;
-  gamerPaymentTokenAccount: PublicKey;
-}> {
+): Promise<PublicKey> {
   const payer = providerWallet(provider).payer;
-  const paymentMint = await createMint(
+  return await createMint(
     provider.connection,
     payer,
     provider.publicKey,
     null,
     PAYMENT_DECIMALS,
   );
-
-  const treasuryPaymentTokenAccount = (
-    await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      payer,
-      paymentMint,
-      treasury.publicKey,
-    )
-  ).address;
-  const publisherPaymentTokenAccount = (
-    await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      payer,
-      paymentMint,
-      publisher.publicKey,
-    )
-  ).address;
-  const gamerPaymentTokenAccount = (
-    await getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      payer,
-      paymentMint,
-      gamer.publicKey,
-    )
-  ).address;
-
-  await mintTo(
-    provider.connection,
-    payer,
-    paymentMint,
-    publisherPaymentTokenAccount,
-    payer,
-    1_000_000_000,
-  );
-  await mintTo(
-    provider.connection,
-    payer,
-    paymentMint,
-    gamerPaymentTokenAccount,
-    payer,
-    1_000_000_000,
-  );
-
-  return {
-    paymentMint,
-    treasuryPaymentTokenAccount,
-    publisherPaymentTokenAccount,
-    gamerPaymentTokenAccount,
-  };
 }
 
 async function initializeBaseFixture(): Promise<BaseFixture> {
@@ -206,8 +139,7 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
 
   const registryProgram = workspaceProgram<Registry>("Registry");
   const storeProgram = workspaceProgram<GameStore>("GameStore");
-  const factoryProgram = workspaceProgram<Factory>("Factory");
-  const pgcProgram = workspaceProgram<Pgc1>("Pgc1");
+  const pgc1Program = workspaceProgram<Pgc1>("Pgc1");
 
   const payer = providerWallet(provider).payer;
   const governance = payer;
@@ -218,33 +150,24 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
   const gamer = Keypair.generate();
 
   await maybeFundSigner(provider, nextGovernance);
+  await maybeFundSigner(provider, nextTreasury);
   await maybeFundSigner(provider, publisher);
   await maybeFundSigner(provider, gamer);
 
   const registryStatePda = derivePda([REGISTRY_STATE_SEED], registryProgram.programId);
   const storeStatePda = derivePda([STORE_STATE_SEED], storeProgram.programId);
-  const factoryStatePda = derivePda([FACTORY_STATE_SEED], factoryProgram.programId);
+  const pgcGlobalStatePda = derivePda([GLOBAL_STATE_SEED], pgc1Program.programId);
 
-  const {
-    paymentMint,
-    treasuryPaymentTokenAccount,
-    publisherPaymentTokenAccount,
-    gamerPaymentTokenAccount,
-  } = await createPaymentMintAndAccounts(provider, treasury, publisher, gamer);
+  const paymentMint = await createPaymentMint(provider);
 
+  // Initialize programs if needed
   if (!(await accountExists(provider.connection, registryStatePda))) {
     await registryProgram.methods
-      .initialize(
-        governance.publicKey,
-        treasury.publicKey,
-        factoryStatePda,
-        new anchor.BN(DEFAULT_REGISTRATION_FEE),
-        paymentMint,
-      )
+      .initialize(governance.publicKey, treasury.publicKey)
       .accounts({
-        payer: provider.publicKey,
+        // payer: provider.publicKey, (implicitly handles via wallet)
         registryState: registryStatePda,
-        systemProgram: SystemProgram.programId,
+        sysProg: anchor.web3.SystemProgram.programId,
       } as any)
       .rpc();
   }
@@ -258,20 +181,22 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
         DEFAULT_PLATFORM_FEE_BPS,
       )
       .accounts({
-        payer: provider.publicKey,
         storeState: storeStatePda,
-        systemProgram: SystemProgram.programId,
+        sysProg: anchor.web3.SystemProgram.programId,
       } as any)
       .rpc();
   }
 
-  if (!(await accountExists(provider.connection, factoryStatePda))) {
-    await factoryProgram.methods
-      .initialize(governance.publicKey, registryStatePda, storeStatePda)
+  if (!(await accountExists(provider.connection, pgcGlobalStatePda))) {
+    await pgc1Program.methods
+      .initializeProgram(
+        governance.publicKey,
+        registryProgram.programId,
+        storeProgram.programId,
+      )
       .accounts({
-        payer: provider.publicKey,
-        factoryState: factoryStatePda,
-        systemProgram: SystemProgram.programId,
+        globalState: pgcGlobalStatePda,
+        sysProg: anchor.web3.SystemProgram.programId,
       } as any)
       .rpc();
   }
@@ -286,16 +211,12 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
     publisher,
     gamer,
     paymentMint,
-    publisherPaymentTokenAccount,
-    gamerPaymentTokenAccount,
-    treasuryPaymentTokenAccount,
     registryStatePda,
     storeStatePda,
-    factoryStatePda,
+    pgcGlobalStatePda,
     registryProgram,
     storeProgram,
-    factoryProgram,
-    pgcProgram,
+    pgc1Program,
   };
 }
 
@@ -307,104 +228,86 @@ export async function setupPeridotFixture(): Promise<BaseFixture> {
 }
 
 export function deriveGameFixture(base: BaseFixture, gameId = TEST_GAME_ID): GameFixture {
-  const mintPda = derivePda(
-    [FACTORY_MINT_SEED, sha256Seed(gameId)],
-    base.factoryProgram.programId,
-  );
   const gameStatePda = derivePda(
     [GAME_STATE_SEED, Buffer.from(gameId)],
-    base.pgcProgram.programId,
+    base.pgc1Program.programId,
   );
   const gameAuthorityPda = derivePda(
     [GAME_AUTHORITY_SEED, gameStatePda.toBuffer()],
-    base.pgcProgram.programId,
+    base.pgc1Program.programId,
   );
   const publisherMinterAuthPda = derivePda(
     [MINTER_AUTH_SEED, gameStatePda.toBuffer(), base.publisher.publicKey.toBuffer()],
-    base.pgcProgram.programId,
+    base.pgc1Program.programId,
   );
-  const storeMinterAuthPda = derivePda(
-    [MINTER_AUTH_SEED, gameStatePda.toBuffer(), base.storeStatePda.toBuffer()],
-    base.pgcProgram.programId,
+  const gameRegistrationPda = derivePda(
+    [GAME_SEED, Buffer.from(gameId)],
+    base.registryProgram.programId,
+  );
+  const pricePda = derivePda(
+    [PRICE_SEED, gameStatePda.toBuffer()],
+    base.storeProgram.programId,
   );
 
   return {
     gameId,
     metadataUri: TEST_METADATA_URI,
-    mintPda,
     gameStatePda,
     gameAuthorityPda,
     publisherMinterAuthPda,
-    storeMinterAuthPda,
-    gameRegistrationPda: derivePda(
-      [GAME_REGISTRATION_SEED, Buffer.from(gameId)],
-      base.registryProgram.programId,
-    ),
+    gameRegistrationPda,
+    pricePda,
   };
 }
 
-export async function ensureGameCreated(base: BaseFixture): Promise<GameFixture> {
-  const game = deriveGameFixture(base);
+export async function ensureGameCreated(base: BaseFixture, gameId = TEST_GAME_ID): Promise<GameFixture> {
+  const game = deriveGameFixture(base, gameId);
+  const mintKp = Keypair.generate();
 
-  if (!(await accountExists(base.provider.connection, game.gameStatePda))) {
-    await base.factoryProgram.methods
-      .createGame(
-        game.gameId,
-        game.metadataUri,
-        new anchor.BN(DEFAULT_GAME_PRICE),
-        base.paymentMint,
-        base.paymentMint,
-      )
-      .accounts({
-        publisher: base.publisher.publicKey,
-        factoryState: base.factoryStatePda,
-        mint: game.mintPda,
-        pgcProgram: base.pgcProgram.programId,
-        pgcGameState: game.gameStatePda,
-        pgcGameAuthority: game.gameAuthorityPda,
-        publisherMinterAuth: game.publisherMinterAuthPda,
-        gameStoreMinterAuth: game.storeMinterAuthPda,
-        registryProgram: base.registryProgram.programId,
-        registryState: base.registryStatePda,
-        gameStoreProgram: base.storeProgram.programId,
-        treasury: base.treasury.publicKey,
-        gameStore: base.storeStatePda,
-        gameRegistration: game.gameRegistrationPda,
-        publisherFeeTokenAccount: base.publisherPaymentTokenAccount,
-        treasuryFeeTokenAccount: base.treasuryPaymentTokenAccount,
-        feePaymentMint: base.paymentMint,
-        paymentTokenProgram: TOKEN_PROGRAM_ID,
-        priceCurrencyMint: base.paymentMint,
-        licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      } as any)
-      .signers([base.publisher])
-      .rpc();
-  }
+    if (!(await accountExists(base.provider.connection, game.gameStatePda))) {
+      await base.pgc1Program.methods
+        .createGame(
+          game.gameId,
+          base.publisher.publicKey,
+          game.metadataUri,
+          new anchor.BN(DEFAULT_GAME_PRICE),
+          SystemProgram.programId,
+        )
+        .accounts({
+          payer: base.publisher.publicKey,
+          mint: mintKp.publicKey,
+          gameState: game.gameStatePda,
+          gameAuthority: game.gameAuthorityPda,
+          publisherAccount: base.publisher.publicKey,
+          publisherMinterAuth: game.publisherMinterAuthPda,
+          globalState: base.pgcGlobalStatePda,
+          registryProgram: base.registryProgram.programId,
+          registryState: base.registryStatePda,
+          gameRegistration: game.gameRegistrationPda,
+          gameStoreProgram: base.storeProgram.programId,
+          storeState: base.storeStatePda,
+          priceAccount: game.pricePda,
+          tokenProgram: TOKEN_2022_PROGRAM_ID,
+          sysProg: anchor.web3.SystemProgram.programId,
+        } as any)
+        .signers([base.publisher, mintKp])
+        .rpc();
+    }
 
   return game;
 }
 
 export async function approveGame(base: BaseFixture, gameId = TEST_GAME_ID): Promise<void> {
-  const gameRegistrationPda = derivePda(
-    [GAME_REGISTRATION_SEED, Buffer.from(gameId)],
-    base.registryProgram.programId,
-  );
-  
-  if (!(await accountExists(base.provider.connection, gameRegistrationPda))) {
-    return;
-  }
-  const reg = await base.registryProgram.account.gameRegistration.fetch(gameRegistrationPda);
-  if (reg.status === STATUS_APPROVED) {
-    return;
-  }
+  const game = deriveGameFixture(base, gameId);
+  const reg = await base.registryProgram.account.gameRegistration.fetch(game.gameRegistrationPda);
+  if (reg.status === STATUS_APPROVED) return;
 
   await base.registryProgram.methods
     .setStatus(gameId, STATUS_APPROVED)
     .accounts({
       admin: base.governance.publicKey,
       registryState: base.registryStatePda,
-      gameRegistration: gameRegistrationPda,
+      gameRegistration: game.gameRegistrationPda,
     } as any)
     .signers([base.governance])
     .rpc();
@@ -413,202 +316,55 @@ export async function approveGame(base: BaseFixture, gameId = TEST_GAME_ID): Pro
 export async function ensurePriceConfigured(base: BaseFixture): Promise<void> {
   const game = await ensureGameCreated(base);
   await approveGame(base, game.gameId);
-
-  const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
-  const existingPrice = storeState.prices.find((entry: any) => entry.gameId === game.gameId);
-
-  if (!existingPrice) {
-    await base.storeProgram.methods
-      .setPrice(
-        game.gameId,
-        new anchor.BN(DEFAULT_GAME_PRICE),
-        base.paymentMint,
-      )
-      .accounts({
-        publisher: base.publisher.publicKey,
-        storeState: base.storeStatePda,
-        registryState: base.registryStatePda,
-        pgcGameState: game.gameStatePda,
-        gameRegistration: game.gameRegistrationPda,
-        currencyMint: base.paymentMint,
-      } as any)
-      .signers([base.publisher])
-      .rpc();
-  }
-
-  const refreshedStoreState = (await base.storeProgram.account.storeState.fetch(
-    base.storeStatePda,
-  )) as any;
-  const currentPrice = refreshedStoreState.prices.find(
-    (entry: any) => entry.gameId === game.gameId,
-  );
-
-  if (!currentPrice || currentPrice.discountBps !== DEFAULT_GAME_DISCOUNT_BPS) {
-    await base.storeProgram.methods
-      .setDiscount(game.gameId, DEFAULT_GAME_DISCOUNT_BPS)
-      .accounts({
-        publisher: base.publisher.publicKey,
-        storeState: base.storeStatePda,
-        registryState: base.registryStatePda,
-        pgcGameState: game.gameStatePda,
-        gameRegistration: game.gameRegistrationPda,
-      } as any)
-      .signers([base.publisher])
-      .rpc();
-  }
 }
 
-export async function buyGameForGamer(base: BaseFixture): Promise<{
+export async function buyGameForGamer(base: BaseFixture, gameId = TEST_GAME_ID): Promise<{
   game: GameFixture;
   licensePda: PublicKey;
   userGameTokenAccount: PublicKey;
-  storeVaultTokenAccount: PublicKey;
 }> {
   await ensurePriceConfigured(base);
 
-  const game = deriveGameFixture(base);
+  const game = deriveGameFixture(base, gameId);
   const licensePda = derivePda(
     [LICENSE_SEED, game.gameStatePda.toBuffer(), base.gamer.publicKey.toBuffer()],
-    base.pgcProgram.programId,
+    base.pgc1Program.programId,
   );
+  
   const userGameTokenAccount = getAssociatedTokenAddressSync(
-    game.mintPda,
+    (await base.pgc1Program.account.gameState.fetch(game.gameStatePda)).mint,
     base.gamer.publicKey,
     false,
     TOKEN_2022_PROGRAM_ID,
   );
-  const storeVaultTokenAccount = getAssociatedTokenAddressSync(
-    base.paymentMint,
-    base.storeStatePda,
-    true,
-    TOKEN_PROGRAM_ID,
+
+  const priceAccount = await base.storeProgram.account.priceAccount.fetch(game.pricePda);
+  const balancePda = derivePda(
+    [BALANCE_SEED, base.publisher.publicKey.toBuffer(), priceAccount.currency.toBuffer()],
+    base.storeProgram.programId
   );
 
-  if (!(await accountExists(base.provider.connection, licensePda))) {
-    await base.storeProgram.methods
-      .buyGame(game.gameId)
-      .accounts({
-        buyer: base.gamer.publicKey,
-        storeState: base.storeStatePda,
-        registryState: base.registryStatePda,
-        pgcProgram: base.pgcProgram.programId,
-        pgcGameState: game.gameStatePda,
-        gameAuthority: game.gameAuthorityPda,
-        storeMinterAuth: game.storeMinterAuthPda,
-        licenseAccount: licensePda,
-        userGameTokenAccount,
-        gameMint: game.mintPda,
-        treasury: base.treasury.publicKey,
-        paymentMint: base.paymentMint,
-        buyerPaymentTokenAccount: base.gamerPaymentTokenAccount,
-        treasuryTokenAccount: base.treasuryPaymentTokenAccount,
-        storeVaultTokenAccount,
-        paymentTokenProgram: TOKEN_PROGRAM_ID,
-        licenseTokenProgram: TOKEN_2022_PROGRAM_ID,
-        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-        gameRegistration: game.gameRegistrationPda,
-      } as any)
-      .signers([base.gamer])
-      .rpc();
-  }
+    if (!(await accountExists(base.provider.connection, licensePda))) {
+      await base.storeProgram.methods
+        .buyGame()
+        .accounts({
+          buyer: base.gamer.publicKey,
+          storeState: base.storeStatePda,
+          treasury: base.treasury.publicKey,
+          pgcGameState: game.gameStatePda,
+          priceAccount: game.pricePda,
+          publisherBalanceAccount: balancePda,
+          sysProg: anchor.web3.SystemProgram.programId,
+        } as any)
+        .signers([base.gamer])
+        .rpc();
+    }
 
   return {
     game,
     licensePda,
     userGameTokenAccount,
-    storeVaultTokenAccount,
   };
-}
-
-export async function getCatalogWithPrices(base: BaseFixture): Promise<
-  Array<{
-    gameId: string;
-    contractAddress: PublicKey;
-    status: number;
-    price: number | null;
-    discountBps: number | null;
-    finalPrice: number | null;
-  }>
-> {
-  const registrations = await base.registryProgram.account.gameRegistration.all();
-  const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
-
-  return registrations.map((reg: any) => {
-    const game = reg.account;
-    const priceConfig = storeState.prices.find(
-      (entry: any) => entry.gameId === game.gameId,
-    );
-    const price = priceConfig ? Number(priceConfig.price.toString()) : null;
-    const discountBps = priceConfig ? priceConfig.discountBps : null;
-    const finalPrice =
-      priceConfig === undefined || price === null
-        ? null
-        : price - Math.floor((price * discountBps!) / 10_000);
-
-    return {
-      gameId: game.gameId,
-      contractAddress: game.contractAddress as PublicKey,
-      status: game.status,
-      price,
-      discountBps,
-      finalPrice,
-    };
-  });
-}
-
-export async function listOwnedGames(base: BaseFixture, owner: PublicKey): Promise<
-  Array<{
-    gameId: string;
-    contractAddress: PublicKey;
-    status: number;
-    finalPrice: number | null;
-    licenseAddress: PublicKey;
-  }>
-> {
-  const catalog = await getCatalogWithPrices(base);
-  const now = Math.floor(Date.now() / 1000);
-  const ownedGames: Array<{
-    gameId: string;
-    contractAddress: PublicKey;
-    status: number;
-    finalPrice: number | null;
-    licenseAddress: PublicKey;
-  }> = [];
-
-  for (const game of catalog) {
-    const licenseAddress = derivePda(
-      [LICENSE_SEED, game.contractAddress.toBuffer(), owner.toBuffer()],
-      base.pgcProgram.programId,
-    );
-    if (!(await accountExists(base.provider.connection, licenseAddress))) {
-      continue;
-    }
-
-    const license = (await base.pgcProgram.account.licenseAccount.fetch(
-      licenseAddress,
-    )) as any;
-    const expiresAt = Number(license.expiresAt.toString());
-    if (expiresAt === 0 || expiresAt > now) {
-      ownedGames.push({
-        gameId: game.gameId,
-        contractAddress: game.contractAddress,
-        status: game.status,
-        finalPrice: game.finalPrice,
-        licenseAddress,
-      });
-    }
-  }
-
-  return ownedGames;
-}
-
-export async function paymentTokenBalance(
-  base: BaseFixture,
-  address: PublicKey,
-): Promise<number> {
-  const account = await getAccount(base.provider.connection, address);
-  return Number(account.amount);
 }
 
 export async function licenseTokenBalance(
@@ -622,4 +378,30 @@ export async function licenseTokenBalance(
     TOKEN_2022_PROGRAM_ID,
   );
   return Number(account.amount);
+}
+
+export async function getCatalogWithPrices(base: BaseFixture): Promise<any[]> {
+  const registrations = await base.registryProgram.account.gameRegistration.all();
+  const results = [];
+  for (const reg of registrations) {
+    const game = reg.account;
+    const gameId = game.gameId;
+    const fixture = deriveGameFixture(base, gameId);
+    let price = null;
+    let discountBps = null;
+    try {
+      const priceAccount = await base.storeProgram.account.priceAccount.fetch(fixture.pricePda);
+      price = Number(priceAccount.price.toString());
+      discountBps = priceAccount.discountBps;
+    } catch (e) {}
+
+    results.push({
+      gameId,
+      status: game.status,
+      price,
+      discountBps,
+      finalPrice: price === null ? null : price - Math.floor((price * (discountBps ?? 0)) / 10000),
+    });
+  }
+  return results;
 }
