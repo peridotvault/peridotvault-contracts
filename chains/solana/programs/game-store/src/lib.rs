@@ -154,6 +154,9 @@ pub struct BuyGame<'info> {
     pub publisher_balance: Account<'info, state::PublisherBalanceAccount>,
 
     /// PGC1 CPI accounts
+    /// CHECK: PGC1 Minter Account for this Store
+    #[account(mut)]
+    pub pgc_minter_account: UncheckedAccount<'info>,
     /// CHECK: License PDA (will be created by PGC1)
     #[account(mut)]
     pub pgc_license_account: UncheckedAccount<'info>,

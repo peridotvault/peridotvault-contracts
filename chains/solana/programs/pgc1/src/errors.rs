@@ -14,4 +14,10 @@ pub enum PgcError {
     InvalidGameId,
     #[msg("Invalid metadata URI")]
     InvalidMetadataUri,
+    #[msg("Registry call failed")]
+    RegistryCallFailed,
+    #[msg("Store call failed")]
+    StoreCallFailed,
+    #[msg("Invalid minter account")]
+    InvalidMinter,
 }

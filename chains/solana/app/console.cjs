@@ -20,6 +20,7 @@ const storeIdl = require("../target/idl/game_store.json");
 const CONFIG_SEED = Buffer.from("config");
 const GAME_SEED = Buffer.from("game");
 const LICENSE_SEED = Buffer.from("license");
+const MINTER_SEED = Buffer.from("minter");
 const PRICE_SEED = Buffer.from("price");
 const BALANCE_SEED = Buffer.from("balance");
 
@@ -67,7 +68,9 @@ function deriveProgramAccounts(ctx, gameId) {
   // Store PDAs
   const storeConfigPda = derivePda([CONFIG_SEED], ctx.storeProgram.programId);
   const pricePda = derivePda([PRICE_SEED, pgcGamePda.toBuffer()], ctx.storeProgram.programId);
-  const publisherBalancePda = derivePda([BALANCE_SEED, ctx.user.publicKey.toBuffer(), SystemProgram.programId.toBuffer()], ctx.storeProgram.programId);
+
+  // PGC1 Minter PDA (authorizing the Store to mint for this game)
+  const pgcMinterAccount = derivePda([MINTER_SEED, pgcGamePda.toBuffer(), storeConfigPda.toBuffer()], ctx.pgc1Program.programId);
 
   return {
     pgcGamePda,
@@ -75,7 +78,7 @@ function deriveProgramAccounts(ctx, gameId) {
     registryConfigPda,
     storeConfigPda,
     pricePda,
-    publisherBalancePda
+    pgcMinterAccount,
   };
 }
 
@@ -112,38 +115,29 @@ async function createGameFlow(ctx, rl) {
 
   const accounts = deriveProgramAccounts(ctx, gameId);
   
-  console.log("1. Creating PGC Game...");
-  await ctx.pgc1Program.methods
-    .createGame(gameId, `https://meta.peridot/${gameId}`, null)
+  console.log(`Starting Atomic Setup for ${gameId} via PGC1...`);
+  const tx = await ctx.pgc1Program.methods
+    .createGame(
+      gameId, 
+      `https://meta.peridot/${gameId}`, 
+      accounts.storeConfigPda, // Authorize Store to mint licenses immediately
+      lamports, 
+      SystemProgram.programId
+    )
     .accounts({
       publisher: ctx.user.publicKey,
       gameAccount: accounts.pgcGamePda,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
-
-  console.log("2. Registering in Registry...");
-  await ctx.registryProgram.methods
-    .registerGame(gameId, ctx.pgc1Program.programId, accounts.pgcGamePda)
-    .accounts({
-      publisher: ctx.user.publicKey,
-      gameAccount: accounts.registryGamePda,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
-
-  console.log("3. Setting Store Price...");
-  await ctx.storeProgram.methods
-    .setPrice(lamports, SystemProgram.programId)
-    .accounts({
-      publisher: ctx.user.publicKey,
-      pgcGameState: accounts.pgcGamePda,
+      initialMinterAccount: accounts.pgcMinterAccount,
+      registryProgram: ctx.registryProgram.programId,
+      storeProgram: ctx.storeProgram.programId,
+      registryGame: accounts.registryGamePda,
       priceAccount: accounts.pricePda,
       systemProgram: SystemProgram.programId,
     })
     .rpc();
 
-  console.log(`Successfully created and registered ${gameId}!`);
+  console.log(`Successfully created, registered, and priced ${gameId}!`);
+  console.log(`Transaction Signature: ${tx}`);
 }
 
 async function buyGameFlow(ctx, rl) {
@@ -172,6 +166,7 @@ async function buyGameFlow(ctx, rl) {
       affiliateAccount: null,
       affiliate: null,
       publisherBalance: publisherBalancePda,
+      pgcMinterAccount: accounts.pgcMinterAccount,
       pgcLicenseAccount: licensePda,
       pgc1Program: ctx.pgc1Program.programId,
       systemProgram: SystemProgram.programId,
@@ -212,7 +207,7 @@ async function main() {
       console.log("\n--- PERIDOT CONSOLE ---");
       console.log("1. List Games");
       console.log("2. Buy Game");
-      console.log("3. Create Game");
+      console.log("3. Create Game (Unified)");
       console.log("0. Exit");
       const choice = (await rl.question("choose: ")).trim();
       if (choice === "0") break;

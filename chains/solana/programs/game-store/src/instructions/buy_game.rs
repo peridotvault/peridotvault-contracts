@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use crate::BuyGame;
-use pgc1::cpi::accounts::IssueLicense;
+use pgc1::cpi::accounts::MintLicense;
 
 pub fn handler(ctx: Context<BuyGame>) -> Result<()> {
     let price_account = &ctx.accounts.price_account;
@@ -57,18 +57,26 @@ pub fn handler(ctx: Context<BuyGame>) -> Result<()> {
 
     // CPI to PGC1
     let cpi_program = ctx.accounts.pgc1_program.to_account_info();
-    let cpi_accounts = IssueLicense {
-        payer: ctx.accounts.buyer.to_account_info(), // Buyer pays for the rent of license account
+    let cpi_accounts = MintLicense {
+        minter: ctx.accounts.store_config.to_account_info(),
+        minter_account: ctx.accounts.pgc_minter_account.to_account_info(),
         game: ctx.accounts.pgc_game_state.to_account_info(),
-        user: ctx.accounts.buyer.to_account_info(), // Buyer receives the license
+        user: ctx.accounts.buyer.to_account_info(),
         license_account: ctx.accounts.pgc_license_account.to_account_info(),
         system_program: ctx.accounts.system_program.to_account_info(),
     };
-    let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+
+    let seeds = &[
+        crate::constants::STORE_CONFIG_SEED,
+        &[ctx.accounts.store_config.bump],
+    ];
+    let signer = &[&seeds[..]];
+
+    let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, signer);
     
-    // We assume 1 year duration if not otherwise specified or duration from sub
+    // 1 year duration
     let expires_at = Clock::get()?.unix_timestamp + 365 * 24 * 60 * 60;
-    pgc1::cpi::issue_license(cpi_ctx, expires_at)?;
+    pgc1::cpi::mint_license(cpi_ctx, expires_at)?;
 
     Ok(())
 }

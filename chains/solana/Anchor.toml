@@ -5,15 +5,15 @@ package_manager = "pnpm"
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-pgc1 = "3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA"
-registry = "CrHcKzUfp9ykApDFt5tBzs1MK41QAjbrPVxdoYifzE2r"
-game_store = "7Z9MDRw8oALQyZQGF6LDh9G1t9mQvN3pFsuXzfb31MnS"
-
 [programs.devnet]
+game_store = "7Z9MDRw8oALQyZQGF6LDh9G1t9mQvN3pFsuXzfb31MnS"
 pgc1 = "3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA"
 registry = "CrHcKzUfp9ykApDFt5tBzs1MK41QAjbrPVxdoYifzE2r"
+
+[programs.localnet]
 game_store = "7Z9MDRw8oALQyZQGF6LDh9G1t9mQvN3pFsuXzfb31MnS"
+pgc1 = "3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA"
+registry = "CrHcKzUfp9ykApDFt5tBzs1MK41QAjbrPVxdoYifzE2r"
 
 [registry]
 url = "https://api.apr.dev"

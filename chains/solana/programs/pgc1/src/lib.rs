@@ -1,17 +1,15 @@
 use anchor_lang::prelude::*;
 
+pub mod state;
 pub mod constants;
 pub mod errors;
 pub mod events;
-pub mod state;
 pub mod instructions;
 pub mod utils;
 
-pub use constants::*;
+pub use state::*;
 pub use errors::*;
 pub use events::*;
-pub use state::*;
-pub use instructions::*;
 
 declare_id!("3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA");
 
@@ -19,89 +17,52 @@ declare_id!("3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA");
 pub mod pgc1 {
     use super::*;
 
+    /// Initializes a new PgcGameAccount and bootstraps Registry/Store via CPI.
+    /// Maps to original PGC-1 standard `initialize`.
     pub fn create_game(
-        ctx: Context<CreateGame>, 
-        game_id: String, 
-        metadata_uri: String, 
-        mint: Option<Pubkey>
+        ctx: Context<CreateGame>,
+        game_id: String,
+        metadata_uri: String,
+        initial_minter: Pubkey,
+        price: u64,
+        currency: Pubkey,
     ) -> Result<()> {
-        instructions::create_game_handler(ctx, game_id, metadata_uri, mint)
+        instructions::create_game::create_game_handler(ctx, game_id, metadata_uri, initial_minter, price, currency)
     }
 
-    pub fn issue_license(
-        ctx: Context<IssueLicense>, 
-        expires_at: i64
-    ) -> Result<()> {
-        instructions::issue_license_handler(ctx, expires_at)
+    /// Grants or upgrades a user license. Callable only by authorized minters.
+    /// Maps to original PGC-1 standard `mintLicense`.
+    pub fn mint_license(ctx: Context<MintLicense>, expires_at: i64) -> Result<()> {
+        instructions::mint_license::handler(ctx, expires_at)
     }
 
+    /// Authorizes or deauthorizes a minter for a specific game. Only publisher.
+    /// Maps to original PGC-1 standard `setMinter`.
+    pub fn set_minter(ctx: Context<SetMinter>, account: Pubkey, is_authorized: bool) -> Result<()> {
+        instructions::set_minter::handler(ctx, account, is_authorized)
+    }
+
+    /// Revokes a user license by setting expiry to now. Only authorized minters.
     pub fn revoke_license(ctx: Context<RevokeLicense>) -> Result<()> {
-        instructions::revoke_license_handler(ctx)
+        instructions::revoke_license::handler(ctx)
     }
 
-    pub fn assert_license(ctx: Context<AssertLicense>) -> Result<()> {
-        instructions::assert_license_handler(ctx)
+    /// Updates game metadata URI. Only publisher.
+    pub fn update_metadata_uri(ctx: Context<UpdateMetadataUri>, new_uri: String) -> Result<()> {
+        instructions::update_metadata_uri::handler(ctx, new_uri)
     }
-}
 
-#[derive(Accounts)]
-#[instruction(game_id: String)]
-pub struct CreateGame<'info> {
-    #[account(mut)]
-    pub publisher: Signer<'info>,
-    
-    #[account(
-        init,
-        payer = publisher,
-        space = PgcGameAccount::SPACE,
-        seeds = [SEED_GAME, game_id.as_bytes()],
-        bump
-    )]
-    pub game_account: Account<'info, PgcGameAccount>,
+    // --- View Semantics ---
 
-    pub system_program: Program<'info, System>,
-}
+    /// Returns whether user has a valid license.
+    /// Maps to original PGC-1 standard `hasLicense`.
+    pub fn has_license(ctx: Context<HasLicense>) -> Result<bool> {
+        instructions::has_license::handler(ctx)
+    }
 
-#[derive(Accounts)]
-pub struct IssueLicense<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    
-    pub game: Account<'info, PgcGameAccount>,
-    
-    /// CHECK: User to receive license
-    pub user: UncheckedAccount<'info>,
-
-    #[account(
-        init,
-        payer = payer,
-        space = LicenseAccount::SPACE,
-        seeds = [SEED_LICENSE, user.key().as_ref(), game.key().as_ref()],
-        bump
-    )]
-    pub license_account: Account<'info, LicenseAccount>,
-
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct RevokeLicense<'info> {
-    #[account(mut)]
-    pub publisher: Signer<'info>,
-    
-    #[account(has_one = publisher @ PgcError::Unauthorized)]
-    pub game: Account<'info, PgcGameAccount>,
-    
-    #[account(
-        mut,
-        close = publisher,
-        seeds = [SEED_LICENSE, license_account.owner.as_ref(), game.key().as_ref()],
-        bump = license_account.bump
-    )]
-    pub license_account: Account<'info, LicenseAccount>,
-}
-
-#[derive(Accounts)]
-pub struct AssertLicense<'info> {
-    pub license_account: Account<'info, LicenseAccount>,
+    /// Returns whether user can access the game (currrently mirrors has_license).
+    /// Maps to original PGC-1 standard `canAccessGame`.
+    pub fn can_access_game(ctx: Context<CanAccessGame>) -> Result<bool> {
+        instructions::can_access_game::handler(ctx)
+    }
 }

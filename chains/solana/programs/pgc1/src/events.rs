@@ -4,7 +4,6 @@ use anchor_lang::prelude::*;
 pub struct GameCreated {
     pub game_id: String,
     pub publisher: Pubkey,
-    pub metadata_uri: String,
 }
 
 #[event]
@@ -15,7 +14,20 @@ pub struct LicenseIssued {
 }
 
 #[event]
+pub struct MinterUpdated {
+    pub game: Pubkey,
+    pub minter: Pubkey,
+    pub is_authorized: bool,
+}
+
+#[event]
 pub struct LicenseRevoked {
     pub owner: Pubkey,
     pub game: Pubkey,
+}
+
+#[event]
+pub struct MetadataUpdated {
+    pub game: Pubkey,
+    pub new_uri: String,
 }

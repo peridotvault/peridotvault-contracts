@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
-use crate::events::LicenseRevoked;
-use crate::RevokeLicense;
+use crate::state::*;
 
 pub fn handler(ctx: Context<RevokeLicense>) -> Result<()> {
-    emit!(LicenseRevoked {
-        owner: ctx.accounts.license_account.owner,
-        game: ctx.accounts.game.key(),
-    });
+    // Basic revocation: set expiresAt to now.
+    let license = &mut ctx.accounts.license_account;
+    license.expires_at = Clock::get()?.unix_timestamp;
+    
     Ok(())
 }
+
