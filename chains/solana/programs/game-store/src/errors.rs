@@ -16,4 +16,8 @@ pub enum GameStoreError {
     InvalidGovernance,
     #[msg("Invalid treasury address")]
     InvalidTreasury,
+    #[msg("Invalid token program")]
+    InvalidTokenProgram,
+    #[msg("Invalid token mint")]
+    InvalidTokenMint,
 }

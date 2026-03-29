@@ -3,7 +3,7 @@
   "scripts": {
     "anchor:build": "anchor build",
     "anchor:localnet": "pnpm anchor:build && anchor localnet --skip-build",
-    "console": "pnpm anchor:build && node app/console.cjs",
+    "console": "pnpm anchor:build && node tests/console.cjs",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },

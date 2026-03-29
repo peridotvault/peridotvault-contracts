@@ -121,6 +121,18 @@ pub fn buy_game_handler(ctx: Context<BuyGame>) -> Result<()> {
         };
         let cpi_ctx_pub = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_pub);
         anchor_spl::token::transfer(cpi_ctx_pub, publisher_amount)?;
+
+        // Safety: Validate mints manually for 10/10 security
+        use anchor_lang::solana_program::program_pack::Pack;
+        use anchor_spl::token::spl_token::state::Account as SplTokenAccount;
+
+        let buyer_token = SplTokenAccount::unpack(&ctx.accounts.buyer_token_account.try_borrow_data()?)?;
+        let treasury_token = SplTokenAccount::unpack(&ctx.accounts.treasury_token_account.try_borrow_data()?)?;
+        let publisher_token = SplTokenAccount::unpack(&ctx.accounts.publisher_token_account.try_borrow_data()?)?;
+        
+        if buyer_token.mint != currency || treasury_token.mint != currency || publisher_token.mint != currency {
+            return err!(GameStoreError::InvalidTokenMint);
+        }
     }
 
     // 3. Update Publisher Balance
@@ -128,6 +140,7 @@ pub fn buy_game_handler(ctx: Context<BuyGame>) -> Result<()> {
     balance.publisher = ctx.accounts.publisher.key();
     balance.token = currency;
     balance.amount += publisher_amount;
+    balance.bump = ctx.bumps.publisher_balance;
 
     // 4. CPI to PGC-1 to mint license (Fixed Sighash for mint_license: 0x39cc5d54a0f1fe34)
     let pgc_program = ctx.accounts.pgc_program.key();
@@ -199,7 +212,7 @@ pub struct BuyGame<'info> {
         init_if_needed,
         payer = buyer,
         space = PublisherBalanceAccount::SPACE,
-        seeds = [b"balance", publisher.key().as_ref()],
+        seeds = [b"balance", publisher.key().as_ref(), price_account.currency.as_ref()],
         bump
     )]
     pub publisher_balance: Account<'info, PublisherBalanceAccount>,
@@ -213,6 +226,11 @@ pub struct BuyGame<'info> {
     pub license_pda: UncheckedAccount<'info>,
 
     /// CHECK: SPL Token Program (for SPL games)
+    #[account(
+        constraint = if price_account.currency != anchor_lang::solana_program::system_program::ID {
+            token_program.key() == anchor_spl::token::ID || token_program.key() == anchor_spl::token::spl_token::ID
+        } else { true } @ GameStoreError::InvalidTokenProgram
+    )]
     pub token_program: UncheckedAccount<'info>,
     /// CHECK: Buyer Token Account (for SPL games)
     #[account(mut)]
@@ -245,9 +263,21 @@ pub fn withdraw_handler(ctx: Context<Withdraw>) -> Result<()> {
         let seeds = &[
             b"balance",
             publisher_key.as_ref(),
+            ctx.accounts.balance_account.token.as_ref(),
             &[ctx.accounts.balance_account.bump],
         ];
         let signer = &[&seeds[..]];
+
+        // Safety: Validate mints manually
+        use anchor_lang::solana_program::program_pack::Pack;
+        use anchor_spl::token::spl_token::state::Account as SplTokenAccount;
+
+        let vault_token = SplTokenAccount::unpack(&ctx.accounts.vault_token_account.try_borrow_data()?)?;
+        let dest_token = SplTokenAccount::unpack(&ctx.accounts.publisher_token_account.try_borrow_data()?)?;
+        
+        if vault_token.mint != token || dest_token.mint != token {
+            return err!(GameStoreError::InvalidTokenMint);
+        }
 
         let cpi_accounts = anchor_spl::token::Transfer {
             from: ctx.accounts.vault_token_account.to_account_info(),
@@ -271,7 +301,7 @@ pub struct Withdraw<'info> {
     pub publisher: Signer<'info>,
     #[account(
         mut,
-        seeds = [b"balance", publisher.key().as_ref()],
+        seeds = [b"balance", publisher.key().as_ref(), balance_account.token.as_ref()],
         bump = balance_account.bump,
         has_one = publisher @ GameStoreError::Unauthorized
     )]

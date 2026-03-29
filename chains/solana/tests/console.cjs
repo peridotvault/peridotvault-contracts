@@ -68,12 +68,17 @@ async function getCatalog(ctx) {
         const accounts = deriveProgramAccounts(ctx, gameId);
         let price = null;
         let currency = SystemProgram.programId;
+        let metadata = "N/A";
         try { 
           const priceAcc = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
           price = priceAcc.price;
           currency = priceAcc.currency;
         } catch (e) {}
-        catalog.push({ gameId, publisher: game.publisher, price, currency });
+        try {
+          const pgcAcc = await ctx.pgc1Program.account.pgcGameAccount.fetch(accounts.pgcGamePda);
+          metadata = pgcAcc.metadataUri || pgcAcc.metadata_uri;
+        } catch (e) {}
+        catalog.push({ gameId, pda: accounts.pgcGamePda, publisher: game.publisher, price, currency, metadata });
       } catch (e) { console.error(`Decoding error for ${a.pubkey}: ${e.message}`); }
     }
     return catalog;
@@ -135,34 +140,52 @@ async function createGameFlow(ctx, rl) {
 }
 async function withdrawFlow(ctx, rl) {
   try {
-    // We need to fetch any balance account for the user
-    // Since balance account PDAs are per-publisher, we find it:
-    const balancePda = derivePda([BALANCE_SEED, ctx.user.publicKey.toBuffer()], ctx.storeProgram.programId);
-    const balanceAcc = await ctx.storeProgram.account.publisherBalanceAccount.fetch(balancePda);
-    
     console.log(`\n--- [ WITHDRAWAL ] ---`);
-    const symbol = balanceAcc.token.equals(SystemProgram.programId) ? "SOL" : shortAddress(balanceAcc.token);
-    console.log(`Balance: ${(balanceAcc.amount.toNumber() / 1e9).toFixed(4)} ${symbol}`);
+    const storeId = ctx.storeProgram.programId;
+    const discriminator = Buffer.from([139, 219, 100, 169, 137, 246, 115, 68]); // PublisherBalanceAccount
+    
+    // Find all balance accounts for this publisher
+    const accs = await ctx.provider.connection.getProgramAccounts(storeId, {
+      filters: [
+        { memcmp: { offset: 0, bytes: anchor.utils.bytes.bs58.encode(discriminator) } },
+        { memcmp: { offset: 9, bytes: ctx.user.publicKey.toBase58() } } // offset 9 because bump (1) + publisher (32)
+      ],
+      commitment: "confirmed"
+    });
 
-    if (balanceAcc.amount.toNumber() === 0) {
-      console.log("No balance to withdraw.");
+    if (accs.length === 0) {
+      console.log("No balances found.");
       return;
     }
 
-    const confirm = await rl.question(`Withdraw all ${symbol}? (y/n): `);
-    if (confirm.toLowerCase() !== 'y') return;
+    const balances = [];
+    for (const a of accs) {
+      const decoded = ctx.storeProgram.coder.accounts.decode("PublisherBalanceAccount", a.account.data);
+      balances.push({ pubkey: a.pubkey, ...decoded });
+    }
 
-    const isSol = balanceAcc.token.equals(SystemProgram.programId);
+    console.log("Available Balances:");
+    balances.forEach((b, i) => {
+      const symbol = b.token.equals(SystemProgram.programId) ? "SOL" : shortAddress(b.token);
+      console.log(`${i + 1}. ${symbol}: ${(b.amount.toNumber() / 1e9).toFixed(4)}`);
+    });
+
+    const choiceIdx = parseInt(await rl.question("Select balance to withdraw (or 0 to cancel): ")) - 1;
+    if (isNaN(choiceIdx) || choiceIdx < 0 || choiceIdx >= balances.length) return;
+    
+    const selected = balances[choiceIdx];
+    const isSol = selected.token.equals(SystemProgram.programId);
+    
     const extraAccounts = {
         tokenProgram: TOKEN_PROGRAM_ID,
-        vaultTokenAccount: balancePda,
+        vaultTokenAccount: selected.pubkey,
         publisherTokenAccount: ctx.user.publicKey,
     };
 
     if (!isSol) {
         extraAccounts.tokenProgram = TOKEN_PROGRAM_ID;
-        extraAccounts.vaultTokenAccount = getAssociatedTokenAddressSync(balanceAcc.token, balancePda, true);
-        extraAccounts.publisherTokenAccount = getAssociatedTokenAddressSync(balanceAcc.token, ctx.user.publicKey);
+        extraAccounts.vaultTokenAccount = getAssociatedTokenAddressSync(selected.token, selected.pubkey, true);
+        extraAccounts.publisherTokenAccount = getAssociatedTokenAddressSync(selected.token, ctx.user.publicKey);
     } else {
         extraAccounts.tokenProgram = SystemProgram.programId;
     }
@@ -170,15 +193,14 @@ async function withdrawFlow(ctx, rl) {
     const tx = await ctx.storeProgram.methods.withdraw().accounts({
       authority: ctx.user.publicKey,
       config: ctx.storeConfigPda,
-      publisherBalance: balancePda,
+      publisherBalance: selected.pubkey,
       ...extraAccounts,
       systemProgram: SystemProgram.programId,
     }).rpc();
 
     console.log(`✅ Withdrawal successful! TX: ${tx}`);
   } catch (e) {
-    if (e.message.includes("Account does not exist")) console.log("No balance account found (0 balance).");
-    else console.error("❌ Withdrawal failed:", e.message);
+    console.error("❌ Withdrawal failed:", e.message);
   }
 }
 
@@ -191,10 +213,9 @@ async function buyGameFlow(ctx, rl) {
     const regAccount = await ctx.registryProgram.account.registryGameAccount.fetch(accounts.registryGamePda);
     const storeConfig = await ctx.storeProgram.account.storeConfig.fetch(accounts.storeConfigPda);
     const licensePda = derivePda([LICENSE_SEED, ctx.user.publicKey.toBuffer(), accounts.pgcGamePda.toBuffer()], ctx.pgc1Program.programId);
-    const publisherBalancePda = derivePda([BALANCE_SEED, regAccount.publisher.toBuffer()], ctx.storeProgram.programId);
-
     const currency = priceAccount.currency;
     const isSol = currency.equals(SystemProgram.programId);
+    const publisherBalancePda = derivePda([BALANCE_SEED, regAccount.publisher.toBuffer(), currency.toBuffer()], ctx.storeProgram.programId);
 
     const extraAccounts = {
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -234,6 +255,31 @@ async function buyGameFlow(ctx, rl) {
   } catch (e) { console.error("❌ Purchase failed:", e.message); }
 }
 
+async function gameDetailFlow(ctx, rl) {
+  const gameId = (await rl.question("enter game id: ")).trim();
+  if (!gameId) return;
+  const accounts = deriveProgramAccounts(ctx, gameId);
+  try {
+    const regAcc = await ctx.registryProgram.account.registryGameAccount.fetch(accounts.registryGamePda);
+    const pgcAcc = await ctx.pgc1Program.account.pgcGameAccount.fetch(accounts.pgcGamePda);
+    const priceAcc = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
+    
+    console.log(`\n--- [ GAME DETAIL: ${gameId} ] ---`);
+    console.log(`Publisher:  ${regAcc.publisher.toBase58()}`);
+    console.log(`Status:     ${regAcc.active ? "ACTIVE" : "INACTIVE"}`);
+    console.log(`Metadata:   ${pgcAcc.metadataUri || pgcAcc.metadata_uri}`);
+    console.log(`Price:      ${(priceAcc.price.toNumber()/1e9).toFixed(4)}`);
+    console.log(`Currency:   ${priceAcc.currency.toBase58()}`);
+    console.log(`\n--- [ PDAs ] ---`);
+    console.log(`Registry Game: ${accounts.registryGamePda.toBase58()}`);
+    console.log(`PGC Game:      ${accounts.pgcGamePda.toBase58()}`);
+    console.log(`Store Price:   ${accounts.pricePda.toBase58()}`);
+    console.log(`Minter Auth:   ${accounts.pgcMinterAccount.toBase58()}`);
+  } catch (e) {
+    console.error("❌ Game not found or error:", e.message);
+  }
+}
+
 async function initializeSystem(ctx) {
   try {
     if (!(await ctx.provider.connection.getAccountInfo(ctx.registryConfigPda))) {
@@ -264,7 +310,7 @@ async function main() {
         const balance = await ctx.provider.connection.getBalance(ctx.user.publicKey);
         console.log(`\n--- [ DASHBOARD ] ---`);
         console.log(`Wallet: ${shortAddress(ctx.user.publicKey)} | Balance: ${(balance / 1e9).toFixed(4)} SOL`);
-        console.log("1. List All | 2. Buy | 3. Create | 4. My Published | 5. Withdraw | 10. My Licenses | 9. Init | 0. Exit");
+        console.log("1. List All | 2. Buy | 3. Create | 4. My Published | 5. Withdraw | 10. My Licenses | 11. Detail | 9. Init | 0. Exit");
         const answer = await rl.question("choose: ");
         if (answer === null || answer === undefined) break; // EOF
         const choice = answer.trim();
@@ -274,7 +320,11 @@ async function main() {
           if (list.length === 0) console.log("No games registered.");
           list.forEach(g => {
             const symbol = g.currency.equals(SystemProgram.programId) ? "SOL" : shortAddress(g.currency);
-            console.log(`- ${g.gameId}: ${g.price ? (g.price.toNumber()/1e9).toFixed(2) : "0.00"} ${symbol}`);
+            console.log(`\n- [ GAME: ${g.gameId} ]`);
+            console.log(`  PDA:      ${g.pda.toBase58()}`);
+            console.log(`  Metadata: ${g.metadata}`);
+            console.log(`  Price:    ${g.price ? (g.price.toNumber()/1e9).toFixed(2) : "0.00"} ${symbol}`);
+            console.log(`  Currency: ${g.currency.toBase58()}`);
           });
         } else if (choice === "2") await buyGameFlow(ctx, rl);
         else if (choice === "3") await createGameFlow(ctx, rl);
@@ -286,7 +336,8 @@ async function main() {
           console.log("Checking balances/licenses...");
           const cat = await getCatalog(ctx);
           cat.forEach(g => console.log(`Registered Game: ${g.gameId}`));
-        } else if (choice === "9") await initializeSystem(ctx);
+        } else if (choice === "11") await gameDetailFlow(ctx, rl);
+        else if (choice === "9") await initializeSystem(ctx);
       } catch (e) { if (e.message.includes("closed")) break; else console.error("Error:", e.message); }
     }
   } catch (e) { console.error("Fatal:", e.message); } finally { rl.close(); }
