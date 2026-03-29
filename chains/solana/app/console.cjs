@@ -1,11 +1,5 @@
 const anchor = require("@coral-xyz/anchor");
-const {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-} = require("@solana/spl-token");
 const { Keypair, PublicKey, SystemProgram } = require("@solana/web3.js");
-const { createHash } = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -16,16 +10,12 @@ const pgc1Idl = require("../target/idl/pgc1.json");
 const registryIdl = require("../target/idl/registry.json");
 const storeIdl = require("../target/idl/game_store.json");
 
-// Seeds from programs
 const CONFIG_SEED = Buffer.from("config");
 const GAME_SEED = Buffer.from("game");
 const LICENSE_SEED = Buffer.from("license");
 const MINTER_SEED = Buffer.from("minter");
 const PRICE_SEED = Buffer.from("price");
 const BALANCE_SEED = Buffer.from("balance");
-
-const STATUS_ACTIVE = true;
-const PAYMENT_DECIMALS = 9; // SOL
 
 function shortAddress(pubkey) {
   const value = pubkey.toBase58();
@@ -34,190 +24,271 @@ function shortAddress(pubkey) {
 
 function loadProvider() {
   const providerUrl = process.env.ANCHOR_PROVIDER_URL || "http://127.0.0.1:8899";
-  const walletPath =
-    process.env.ANCHOR_WALLET || path.join(os.homedir(), ".config/solana/id.json");
+  const walletPath = process.env.ANCHOR_WALLET || path.join(os.homedir(), ".config/solana/id.json");
   const secret = JSON.parse(fs.readFileSync(walletPath, "utf8"));
   const wallet = new anchor.Wallet(Keypair.fromSecretKey(Uint8Array.from(secret)));
   const connection = new anchor.web3.Connection(providerUrl, "confirmed");
-  return new anchor.AnchorProvider(connection, wallet, anchor.AnchorProvider.defaultOptions());
+  return new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" });
 }
 
-function derivePda(seeds, programId) {
-  return PublicKey.findProgramAddressSync(seeds, programId)[0];
-}
-
-async function accountExists(connection, address) {
-  return (await connection.getAccountInfo(address)) !== null;
-}
-
-function makePrograms(provider) {
-  const pgc1Program = new anchor.Program(pgc1Idl, provider);
-  const registryProgram = new anchor.Program(registryIdl, provider);
-  const storeProgram = new anchor.Program(storeIdl, provider);
-  return { pgc1Program, registryProgram, storeProgram };
-}
+function derivePda(seeds, programId) { return PublicKey.findProgramAddressSync(seeds, programId)[0]; }
 
 function deriveProgramAccounts(ctx, gameId) {
-  // PGC1 PDAs
   const pgcGamePda = derivePda([GAME_SEED, Buffer.from(gameId)], ctx.pgc1Program.programId);
-  
-  // Registry PDAs
   const registryGamePda = derivePda([GAME_SEED, Buffer.from(gameId)], ctx.registryProgram.programId);
   const registryConfigPda = derivePda([CONFIG_SEED], ctx.registryProgram.programId);
-
-  // Store PDAs
   const storeConfigPda = derivePda([CONFIG_SEED], ctx.storeProgram.programId);
   const pricePda = derivePda([PRICE_SEED, pgcGamePda.toBuffer()], ctx.storeProgram.programId);
-
-  // PGC1 Minter PDA (authorizing the Store to mint for this game)
   const pgcMinterAccount = derivePda([MINTER_SEED, pgcGamePda.toBuffer(), storeConfigPda.toBuffer()], ctx.pgc1Program.programId);
-
-  return {
-    pgcGamePda,
-    registryGamePda,
-    registryConfigPda,
-    storeConfigPda,
-    pricePda,
-    pgcMinterAccount,
-  };
+  return { pgcGamePda, registryGamePda, registryConfigPda, storeConfigPda, pricePda, pgcMinterAccount };
 }
 
 async function getCatalog(ctx) {
-  const registrations = await ctx.registryProgram.account.registryGameAccount.all();
-  const catalog = [];
-  for (const reg of registrations) {
-    const game = reg.account;
-    const accounts = deriveProgramAccounts(ctx, game.gameId);
-    let price = null;
-    let currency = null;
-    try {
-      const priceAccount = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
-      price = priceAccount.price;
-      currency = priceAccount.currency;
-    } catch (e) {}
+  try {
+    const registryId = ctx.registryProgram.programId;
+    const discriminator = Buffer.from([17, 140, 126, 39, 63, 84, 119, 73]); // RegistryGameAccount
     
-    catalog.push({
-      gameId: game.gameId,
-      publisher: game.publisher,
-      active: game.active,
-      price,
-      currency,
-    });
-  }
-  return catalog;
+    console.log(`[DEBUG] Fetching accounts for ${registryId.toBase58()}...`);
+    // Pass explicit commitment to overcome any RPC defaults
+    const accs = await ctx.provider.connection.getProgramAccounts(registryId, { commitment: "confirmed" });
+    console.log(`[DEBUG] Found ${accs.length} raw accounts.`);
+    
+    const catalog = [];
+    for (const a of accs) {
+      if (!a.account.data.slice(0, 8).equals(discriminator)) continue;
+
+      try {
+        let game = null;
+        for (const name of ["RegistryGameAccount", "registryGameAccount"]) {
+          try { game = ctx.registryProgram.coder.accounts.decode(name, a.account.data); if (game) break; } catch (e) {}
+        }
+        if (!game) continue;
+
+        const gameId = game.gameId || game.game_id;
+        const accounts = deriveProgramAccounts(ctx, gameId);
+        let price = null;
+        let currency = SystemProgram.programId;
+        try { 
+          const priceAcc = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
+          price = priceAcc.price;
+          currency = priceAcc.currency;
+        } catch (e) {}
+        catalog.push({ gameId, publisher: game.publisher, price, currency });
+      } catch (e) { console.error(`Decoding error for ${a.pubkey}: ${e.message}`); }
+    }
+    return catalog;
+  } catch (e) { console.error("[ERROR] getCatalog:", e.message); return []; }
 }
+
+async function getMyLicenses(ctx) {
+  try {
+    const pgcId = ctx.pgc1Program.programId;
+    const discriminator = Buffer.from([120, 20, 28, 217, 130, 168, 223, 118]); // LicenseAccount
+    console.log("[DEBUG] Checking Licenses...");
+    const accs = await ctx.provider.connection.getProgramAccounts(pgcId, {
+      filters: [
+        { memcmp: { offset: 0, bytes: anchor.utils.bytes.bs58.encode(discriminator) } },
+        { memcmp: { offset: 8, bytes: ctx.user.publicKey.toBase58() } }
+      ],
+      commitment: "confirmed"
+    });
+    
+    const licenses = [];
+    for (const a of accs) {
+      try {
+        let lic;
+        for (const n of ["LicenseAccount", "licenseAccount"]) {
+          try { lic = ctx.pgc1Program.coder.accounts.decode(n, a.account.data); if(lic) break; } catch(e){}
+        }
+        if (lic) licenses.push(lic);
+      } catch (e) {}
+    }
+    return licenses;
+  } catch (e) { return []; }
+}
+
+const { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } = require("@solana/spl-token");
 
 async function createGameFlow(ctx, rl) {
   const gameId = (await rl.question("enter game id: ")).trim();
-  if (!gameId) return console.log("game id is required");
-  const price = (await rl.question("enter price in SOL (default 0.1): ")).trim() || "0.1";
-  const lamports = new anchor.BN(parseFloat(price) * 1e9);
+  if (!gameId) return;
+  const priceInUnits = (await rl.question("enter price (default 0.1): ")).trim() || "0.1";
+  const units = new anchor.BN(parseFloat(priceInUnits) * 1e9); // Simplification: assumes 9 decimals
+  const currencyStr = (await rl.question("enter currency mint (default SOL): ")).trim();
+  const currency = currencyStr ? new PublicKey(currencyStr) : SystemProgram.programId;
 
   const accounts = deriveProgramAccounts(ctx, gameId);
-  
-  console.log(`Starting Atomic Setup for ${gameId} via PGC1...`);
-  const tx = await ctx.pgc1Program.methods
-    .createGame(
-      gameId, 
-      `https://meta.peridot/${gameId}`, 
-      accounts.storeConfigPda, // Authorize Store to mint licenses immediately
-      lamports, 
-      SystemProgram.programId
-    )
-    .accounts({
-      publisher: ctx.user.publicKey,
-      gameAccount: accounts.pgcGamePda,
-      initialMinterAccount: accounts.pgcMinterAccount,
-      registryProgram: ctx.registryProgram.programId,
-      storeProgram: ctx.storeProgram.programId,
-      registryGame: accounts.registryGamePda,
-      priceAccount: accounts.pricePda,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+  try {
+    const regConfig = await ctx.registryProgram.account.registryConfig.fetch(accounts.registryConfigPda);
+    const tx = await ctx.pgc1Program.methods.createGame(gameId, `https://meta.peridot/${gameId}`, accounts.storeConfigPda, units, currency)
+      .accounts({
+        publisher: ctx.user.publicKey, gameAccount: accounts.pgcGamePda, initialMinterAccount: accounts.pgcMinterAccount,
+        registryProgram: ctx.registryProgram.programId, storeProgram: ctx.storeProgram.programId,
+        registryConfig: accounts.registryConfigPda, registryTreasury: regConfig.treasury, registryGame: accounts.registryGamePda,
+        priceAccount: accounts.pricePda, systemProgram: SystemProgram.programId,
+      }).rpc();
+    console.log(`🚀 Game Created! TX: ${tx}`);
+  } catch (e) {
+    if (e.message.includes("AlreadyExists") || e.message.includes("0x0")) console.error(`❌ Error: "${gameId}" already exists.`);
+    else console.error("❌ Failed:", e.message);
+  }
+}
+async function withdrawFlow(ctx, rl) {
+  try {
+    // We need to fetch any balance account for the user
+    // Since balance account PDAs are per-publisher, we find it:
+    const balancePda = derivePda([BALANCE_SEED, ctx.user.publicKey.toBuffer()], ctx.storeProgram.programId);
+    const balanceAcc = await ctx.storeProgram.account.publisherBalanceAccount.fetch(balancePda);
+    
+    console.log(`\n--- [ WITHDRAWAL ] ---`);
+    const symbol = balanceAcc.token.equals(SystemProgram.programId) ? "SOL" : shortAddress(balanceAcc.token);
+    console.log(`Balance: ${(balanceAcc.amount.toNumber() / 1e9).toFixed(4)} ${symbol}`);
 
-  console.log(`Successfully created, registered, and priced ${gameId}!`);
-  console.log(`Transaction Signature: ${tx}`);
+    if (balanceAcc.amount.toNumber() === 0) {
+      console.log("No balance to withdraw.");
+      return;
+    }
+
+    const confirm = await rl.question(`Withdraw all ${symbol}? (y/n): `);
+    if (confirm.toLowerCase() !== 'y') return;
+
+    const isSol = balanceAcc.token.equals(SystemProgram.programId);
+    const extraAccounts = {
+        tokenProgram: TOKEN_PROGRAM_ID,
+        vaultTokenAccount: balancePda,
+        publisherTokenAccount: ctx.user.publicKey,
+    };
+
+    if (!isSol) {
+        extraAccounts.tokenProgram = TOKEN_PROGRAM_ID;
+        extraAccounts.vaultTokenAccount = getAssociatedTokenAddressSync(balanceAcc.token, balancePda, true);
+        extraAccounts.publisherTokenAccount = getAssociatedTokenAddressSync(balanceAcc.token, ctx.user.publicKey);
+    } else {
+        extraAccounts.tokenProgram = SystemProgram.programId;
+    }
+
+    const tx = await ctx.storeProgram.methods.withdraw().accounts({
+      authority: ctx.user.publicKey,
+      config: ctx.storeConfigPda,
+      publisherBalance: balancePda,
+      ...extraAccounts,
+      systemProgram: SystemProgram.programId,
+    }).rpc();
+
+    console.log(`✅ Withdrawal successful! TX: ${tx}`);
+  } catch (e) {
+    if (e.message.includes("Account does not exist")) console.log("No balance account found (0 balance).");
+    else console.error("❌ Withdrawal failed:", e.message);
+  }
 }
 
 async function buyGameFlow(ctx, rl) {
   const gameId = (await rl.question("enter game id to buy: ")).trim();
   if (!gameId) return;
-
   const accounts = deriveProgramAccounts(ctx, gameId);
-  const licensePda = derivePda([LICENSE_SEED, ctx.user.publicKey.toBuffer(), accounts.pgcGamePda.toBuffer()], ctx.pgc1Program.programId);
-  
-  const storeConfig = await ctx.storeProgram.account.storeConfig.fetch(accounts.storeConfigPda);
-  const priceAccount = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
-  const pgcGame = await ctx.pgc1Program.account.pgcGameAccount.fetch(accounts.pgcGamePda);
+  try {
+    const priceAccount = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
+    const regAccount = await ctx.registryProgram.account.registryGameAccount.fetch(accounts.registryGamePda);
+    const storeConfig = await ctx.storeProgram.account.storeConfig.fetch(accounts.storeConfigPda);
+    const licensePda = derivePda([LICENSE_SEED, ctx.user.publicKey.toBuffer(), accounts.pgcGamePda.toBuffer()], ctx.pgc1Program.programId);
+    const publisherBalancePda = derivePda([BALANCE_SEED, regAccount.publisher.toBuffer()], ctx.storeProgram.programId);
 
-  const publisherBalancePda = derivePda([BALANCE_SEED, pgcGame.publisher.toBuffer(), priceAccount.currency.toBuffer()], ctx.storeProgram.programId);
+    const currency = priceAccount.currency;
+    const isSol = currency.equals(SystemProgram.programId);
 
-  console.log(`Buying ${gameId} for ${priceAccount.price.toNumber() / 1e9} SOL...`);
-  
-  const tx = await ctx.storeProgram.methods
-    .buyGame()
-    .accounts({
-      buyer: ctx.user.publicKey,
-      storeConfig: accounts.storeConfigPda,
-      treasury: storeConfig.treasury,
-      pgcGameState: accounts.pgcGamePda,
-      priceAccount: accounts.pricePda,
-      affiliateAccount: null,
-      affiliate: null,
-      publisherBalance: publisherBalancePda,
-      pgcMinterAccount: accounts.pgcMinterAccount,
-      pgcLicenseAccount: licensePda,
-      pgc1Program: ctx.pgc1Program.programId,
+    const extraAccounts = {
+        tokenProgram: TOKEN_PROGRAM_ID,
+        buyerTokenAccount: ctx.user.publicKey,
+        treasuryTokenAccount: storeConfig.treasury,
+        publisherTokenAccount: publisherBalancePda,
+    };
+
+    if (!isSol) {
+        extraAccounts.tokenProgram = TOKEN_PROGRAM_ID;
+        extraAccounts.buyerTokenAccount = getAssociatedTokenAddressSync(currency, ctx.user.publicKey);
+        extraAccounts.treasuryTokenAccount = getAssociatedTokenAddressSync(currency, storeConfig.treasury);
+        extraAccounts.publisherTokenAccount = getAssociatedTokenAddressSync(currency, publisherBalancePda, true);
+    } else {
+        extraAccounts.tokenProgram = SystemProgram.programId;
+        extraAccounts.buyerTokenAccount = publisherBalancePda; 
+        extraAccounts.treasuryTokenAccount = publisherBalancePda;
+        extraAccounts.publisherTokenAccount = publisherBalancePda;
+    }
+
+    console.log(`[DEBUG] Buying Game: ${gameId}`);
+    console.log(`[DEBUG] Buyer: ${ctx.user.publicKey.toBase58()}`);
+    console.log(`[DEBUG] Currency: ${currency.toBase58()}`);
+    console.log(`[DEBUG] Buyer Token Acc: ${extraAccounts.buyerTokenAccount.toBase58()}`);
+    console.log(`[DEBUG] Treasury Token Acc: ${extraAccounts.treasuryTokenAccount.toBase58()}`);
+    console.log(`[DEBUG] Publisher Token Acc: ${extraAccounts.publisherTokenAccount.toBase58()}`);
+
+    const tx = await ctx.storeProgram.methods.buyGame().accounts({
+      buyer: ctx.user.publicKey, config: accounts.storeConfigPda, treasury: storeConfig.treasury,
+      game: accounts.pgcGamePda, priceAccount: accounts.pricePda, publisher: regAccount.publisher,
+      publisherBalance: publisherBalancePda, pgcProgram: ctx.pgc1Program.programId,
+      minterPda: accounts.pgcMinterAccount, licensePda: licensePda, 
+      ...extraAccounts,
       systemProgram: SystemProgram.programId,
-    })
-    .signers([ctx.user])
-    .rpc();
-
-  console.log(`Bought ${gameId}, tx: ${tx}`);
+    }).rpc();
+    console.log(`✅ Purchase successful! TX: ${tx}`);
+  } catch (e) { console.error("❌ Purchase failed:", e.message); }
 }
 
-async function bootstrap() {
-  const provider = loadProvider();
-  anchor.setProvider(provider);
-  const programs = makePrograms(provider);
-  const user = provider.wallet.payer;
-
-  const regConfigPda = derivePda([CONFIG_SEED], programs.registryProgram.programId);
-  const storeConfigPda = derivePda([CONFIG_SEED], programs.storeProgram.programId);
-
-  if (!(await accountExists(provider.connection, regConfigPda))) {
-    console.log("Initializing Registry...");
-    await programs.registryProgram.methods.initialize(user.publicKey).accounts({ payer: user.publicKey, registryConfig: regConfigPda, systemProgram: SystemProgram.programId }).rpc();
-  }
-  
-  if (!(await accountExists(provider.connection, storeConfigPda))) {
-    console.log("Initializing Game Store...");
-    await programs.storeProgram.methods.initialize(user.publicKey, user.publicKey, 100).accounts({ payer: user.publicKey, storeConfig: storeConfigPda, systemProgram: SystemProgram.programId }).rpc();
-  }
-
-  return { ...programs, provider, user, regConfigPda, storeConfigPda };
+async function initializeSystem(ctx) {
+  try {
+    if (!(await ctx.provider.connection.getAccountInfo(ctx.registryConfigPda))) {
+      await ctx.registryProgram.methods.initialize().accounts({ authority: ctx.user.publicKey, config: ctx.registryConfigPda, systemProgram: SystemProgram.programId }).rpc();
+      console.log("✅ Registry Initialized");
+    }
+    if (!(await ctx.provider.connection.getAccountInfo(ctx.storeConfigPda))) {
+      await ctx.storeProgram.methods.initialize(100, ctx.user.publicKey).accounts({ authority: ctx.user.publicKey, config: ctx.storeConfigPda, systemProgram: SystemProgram.programId }).rpc();
+      console.log("✅ Game Store Initialized");
+    }
+  } catch (e) { console.error("❌ Init failed:", e.message); }
 }
 
 async function main() {
   const rl = readline.createInterface({ input, output });
   try {
-    const ctx = await bootstrap();
+    const provider = loadProvider();
+    const ctx = {
+      pgc1Program: new anchor.Program(pgc1Idl, provider),
+      registryProgram: new anchor.Program(registryIdl, provider),
+      storeProgram: new anchor.Program(storeIdl, provider),
+      provider, user: provider.wallet,
+      get registryConfigPda() { return derivePda([CONFIG_SEED], this.registryProgram.programId); },
+      get storeConfigPda() { return derivePda([CONFIG_SEED], this.storeProgram.programId); }
+    };
     while (true) {
-      console.log("\n--- PERIDOT CONSOLE ---");
-      console.log("1. List Games");
-      console.log("2. Buy Game");
-      console.log("3. Create Game (Unified)");
-      console.log("0. Exit");
-      const choice = (await rl.question("choose: ")).trim();
-      if (choice === "0") break;
-      if (choice === "1") {
-        const catalog = await getCatalog(ctx);
-        catalog.forEach(g => console.log(`- ${g.gameId}: ${g.price ? (g.price.toNumber() / 1e9).toFixed(2) + " SOL" : "N/A"} [Publisher: ${shortAddress(g.publisher)}]`));
-      } else if (choice === "2") await buyGameFlow(ctx, rl);
-      else if (choice === "3") await createGameFlow(ctx, rl);
+      try {
+        const balance = await ctx.provider.connection.getBalance(ctx.user.publicKey);
+        console.log(`\n--- [ DASHBOARD ] ---`);
+        console.log(`Wallet: ${shortAddress(ctx.user.publicKey)} | Balance: ${(balance / 1e9).toFixed(4)} SOL`);
+        console.log("1. List All | 2. Buy | 3. Create | 4. My Published | 5. Withdraw | 10. My Licenses | 9. Init | 0. Exit");
+        const answer = await rl.question("choose: ");
+        if (answer === null || answer === undefined) break; // EOF
+        const choice = answer.trim();
+        if (choice === "0" || choice === "") break;
+        if (choice === "1") {
+          const list = await getCatalog(ctx);
+          if (list.length === 0) console.log("No games registered.");
+          list.forEach(g => {
+            const symbol = g.currency.equals(SystemProgram.programId) ? "SOL" : shortAddress(g.currency);
+            console.log(`- ${g.gameId}: ${g.price ? (g.price.toNumber()/1e9).toFixed(2) : "0.00"} ${symbol}`);
+          });
+        } else if (choice === "2") await buyGameFlow(ctx, rl);
+        else if (choice === "3") await createGameFlow(ctx, rl);
+        else if (choice === "4") {
+          const cat = await getCatalog(ctx);
+          cat.filter(g => g.publisher.equals(ctx.user.publicKey)).forEach(g => console.log(`- ${g.gameId}`));
+        } else if (choice === "5") await withdrawFlow(ctx, rl);
+        else if (choice === "10") {
+          console.log("Checking balances/licenses...");
+          const cat = await getCatalog(ctx);
+          cat.forEach(g => console.log(`Registered Game: ${g.gameId}`));
+        } else if (choice === "9") await initializeSystem(ctx);
+      } catch (e) { if (e.message.includes("closed")) break; else console.error("Error:", e.message); }
     }
-  } finally { rl.close(); }
+  } catch (e) { console.error("Fatal:", e.message); } finally { rl.close(); }
 }
-
-main().catch(console.error);
+main();

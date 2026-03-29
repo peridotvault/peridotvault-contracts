@@ -6,14 +6,14 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-game_store = "7Z9MDRw8oALQyZQGF6LDh9G1t9mQvN3pFsuXzfb31MnS"
-pgc1 = "3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA"
-registry = "CrHcKzUfp9ykApDFt5tBzs1MK41QAjbrPVxdoYifzE2r"
+game_store = "6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd"
+pgc1 = "DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor"
+registry = "DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL"
 
 [programs.localnet]
-game_store = "7Z9MDRw8oALQyZQGF6LDh9G1t9mQvN3pFsuXzfb31MnS"
-pgc1 = "3ZbX4ehgZYZ6TXARcF8tVsJmjxNoB5D67PkXiXqjk1JA"
-registry = "CrHcKzUfp9ykApDFt5tBzs1MK41QAjbrPVxdoYifzE2r"
+game_store = "6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd"
+pgc1 = "DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor"
+registry = "DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL"
 
 [registry]
 url = "https://api.apr.dev"

@@ -31,3 +31,9 @@ pub struct MetadataUpdated {
     pub game: Pubkey,
     pub new_uri: String,
 }
+#[event]
+pub struct PublisherUpdated {
+    pub game: Pubkey,
+    pub old_publisher: Pubkey,
+    pub new_publisher: Pubkey,
+}

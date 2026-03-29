@@ -19,6 +19,18 @@ pub struct PriceUpdated {
 }
 
 #[event]
+pub struct PlatformFeeUpdated {
+    pub old_bps: u16,
+    pub new_bps: u16,
+}
+
+#[event]
+pub struct TreasuryUpdated {
+    pub old_treasury: Pubkey,
+    pub new_treasury: Pubkey,
+}
+
+#[event]
 pub struct Withdrawal {
     pub publisher: Pubkey,
     pub token: Pubkey,

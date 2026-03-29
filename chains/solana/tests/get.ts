@@ -24,7 +24,7 @@ describe("PeridotVault - GET TEST (LOCALNET, READ ONLY)", () => {
     };
 
     const provider = new AnchorProvider(connection, dummyWallet as any, {});
-    anchor.setProvider(provider);
+    // Removed anchor.setProvider(provider) as it breaks other tests.
 
     // ==============================
     // PROGRAMS
@@ -82,7 +82,7 @@ describe("PeridotVault - GET TEST (LOCALNET, READ ONLY)", () => {
         // ==============================
 
         const registry = await safeFetch("REGISTRY", () =>
-            registryProgram.account.registryState.fetch(registryPda)
+            registryProgram.account.registryConfig.fetch(registryPda)
         );
 
         if (registry) {
@@ -91,7 +91,7 @@ describe("PeridotVault - GET TEST (LOCALNET, READ ONLY)", () => {
             console.log("Governance:", registry.governance.toBase58());
             console.log("Treasury:", registry.treasury.toBase58());
 
-            const registrations = await registryProgram.account.gameRegistration.all();
+            const registrations = await registryProgram.account.registryGameAccount.all();
             console.log("Total Games:", registrations.length);
         }
 
@@ -99,24 +99,14 @@ describe("PeridotVault - GET TEST (LOCALNET, READ ONLY)", () => {
         // PGC1
         // ==============================
 
-        const global = await safeFetch("PGC1 GLOBAL", () =>
-            pgcProgram.account.globalState.fetch(globalPda)
-        );
-
-        if (global) {
-            console.log("\n===== PGC1 GLOBAL =====");
-            console.log("PDA:", globalPda.toBase58());
-            console.log("Governance:", global.governance.toBase58());
-            console.log("Registry:", global.registry.toBase58());
-            console.log("Store:", global.gameStore.toBase58());
-        }
+        // PGC1 Global state check removed as it no longer exists.
 
         // ==============================
         // STORE
         // ==============================
 
         const store = await safeFetch("STORE", () =>
-            storeProgram.account.storeState.fetch(storePda)
+            storeProgram.account.storeConfig.fetch(storePda)
         );
 
         if (store) {
@@ -132,13 +122,9 @@ describe("PeridotVault - GET TEST (LOCALNET, READ ONLY)", () => {
         // CROSS VALIDATION
         // ==============================
 
-        if (registry && global && store) {
+        if (registry && store) {
             console.log("\n===== CONSISTENCY CHECK =====");
-
-            expect(global.registry.toBase58()).to.equal(registryProgram.programId.toBase58());
-            expect(global.gameStore.toBase58()).to.equal(storeProgram.programId.toBase58());
             expect(store.registry.toBase58()).to.equal(registryPda.toBase58());
-
             console.log("✅ All contracts are linked correctly");
         }
 
@@ -146,7 +132,7 @@ describe("PeridotVault - GET TEST (LOCALNET, READ ONLY)", () => {
         // GAMES
         // ==============================
 
-        const registrations = await registryProgram.account.gameRegistration.all();
+        const registrations = await registryProgram.account.registryGameAccount.all();
         console.log("\n===== GAMES =====");
 
         if (registrations.length === 0) {
@@ -157,8 +143,8 @@ describe("PeridotVault - GET TEST (LOCALNET, READ ONLY)", () => {
             const game = reg.account;
             console.log("----------------------");
             console.log("Game ID:", game.gameId);
-            console.log("Contract:", game.contractAddress.toBase58());
-            console.log("Status:", game.status);
+            console.log("Registry PDA:", reg.publicKey.toBase58());
+            console.log("Status:", game.active ? "ACTIVE" : "INACTIVE");
         }
 
         console.log("\n==============================");
