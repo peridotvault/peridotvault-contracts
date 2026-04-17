@@ -18,6 +18,10 @@ declare_id!("DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor");
 pub mod pgc1 {
     use super::*;
 
+    pub fn initialize(ctx: Context<Initialize>, authority: Pubkey, authorized_store: Pubkey) -> Result<()> {
+        initialize_handler(ctx, authority, authorized_store)
+    }
+
     pub fn create_game(
         ctx: Context<CreateGame>,
         game_id: String,

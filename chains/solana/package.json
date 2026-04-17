@@ -3,7 +3,8 @@
   "scripts": {
     "anchor:build": "anchor build",
     "anchor:localnet": "pnpm anchor:build && anchor localnet --skip-build",
-    "console": "pnpm anchor:build && node tests/console.cjs",
+    "console": "node tests/console.cjs",
+    "console:devnet": "ANCHOR_PROVIDER_URL=https://api.devnet.solana.com node tests/console.cjs",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },

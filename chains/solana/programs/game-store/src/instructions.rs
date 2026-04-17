@@ -157,7 +157,8 @@ pub fn buy_game_handler(ctx: Context<BuyGame>) -> Result<()> {
         program_id: pgc_program,
         accounts: vec![
             anchor_lang::solana_program::instruction::AccountMeta::new_readonly(ctx.accounts.config.key(), true), // minter (Signer, readonly)
-            anchor_lang::solana_program::instruction::AccountMeta::new_readonly(ctx.accounts.minter_pda.key(), false),
+            anchor_lang::solana_program::instruction::AccountMeta::new_readonly(ctx.accounts.config.key(), false), // minter_account (Dummy, since we are Global Minter)
+            anchor_lang::solana_program::instruction::AccountMeta::new_readonly(ctx.accounts.pgc_config.key(), false), // pgc_config
             anchor_lang::solana_program::instruction::AccountMeta::new_readonly(ctx.accounts.game.key(), false),
             anchor_lang::solana_program::instruction::AccountMeta::new(ctx.accounts.buyer.key(), true), // user (Signer, mut)
             anchor_lang::solana_program::instruction::AccountMeta::new(ctx.accounts.license_pda.key(), false),
@@ -170,7 +171,7 @@ pub fn buy_game_handler(ctx: Context<BuyGame>) -> Result<()> {
         &ix,
         &[
             ctx.accounts.config.to_account_info(),
-            ctx.accounts.minter_pda.to_account_info(),
+            ctx.accounts.pgc_config.to_account_info(),
             ctx.accounts.game.to_account_info(),
             ctx.accounts.buyer.to_account_info(),
             ctx.accounts.license_pda.to_account_info(),
@@ -219,8 +220,8 @@ pub struct BuyGame<'info> {
 
     /// CHECK: PGC-1 Program
     pub pgc_program: UncheckedAccount<'info>,
-    /// CHECK: PGC-1 Minter PDA
-    pub minter_pda: UncheckedAccount<'info>,
+    /// CHECK: PGC-1 Config PDA
+    pub pgc_config: UncheckedAccount<'info>,
     /// CHECK: PGC-1 License PDA
     #[account(mut)]
     pub license_pda: UncheckedAccount<'info>,

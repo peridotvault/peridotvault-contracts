@@ -22,13 +22,45 @@ function shortAddress(pubkey) {
   return `${value.slice(0, 6)}...${value.slice(-6)}`;
 }
 
-function loadProvider() {
-  const providerUrl = process.env.ANCHOR_PROVIDER_URL || "http://127.0.0.1:8899";
+async function loadProvider() {
+  const fallbacks = [
+    process.env.ANCHOR_PROVIDER_URL,
+    "https://api.devnet.solana.com",
+    "https://devnet.solana.com",
+    "https://solana-devnet.drpc.org",
+    "http://127.0.0.1:8899"
+  ].filter(Boolean);
+
+  let connection;
+  let wallet;
   const walletPath = process.env.ANCHOR_WALLET || path.join(os.homedir(), ".config/solana/id.json");
-  const secret = JSON.parse(fs.readFileSync(walletPath, "utf8"));
-  const wallet = new anchor.Wallet(Keypair.fromSecretKey(Uint8Array.from(secret)));
-  const connection = new anchor.web3.Connection(providerUrl, "confirmed");
-  return new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" });
+  
+  try {
+    const secret = JSON.parse(fs.readFileSync(walletPath, "utf8"));
+    wallet = new anchor.Wallet(Keypair.fromSecretKey(Uint8Array.from(secret)));
+  } catch (e) {
+    console.error(`[ERROR] Could not load wallet from ${walletPath}: ${e.message}`);
+    process.exit(1);
+  }
+
+  for (const url of fallbacks) {
+    console.log(`[INFO] Probing RPC: ${url}...`);
+    try {
+      connection = new anchor.web3.Connection(url, { commitment: "confirmed", confirmTransactionInitialTimeout: 3000 });
+      // Quick health check
+      await Promise.race([
+        connection.getSlot(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000))
+      ]);
+      console.log(`[INFO] Connected to: ${url}`);
+      return new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" });
+    } catch (e) {
+      console.warn(`[WARN] RPC ${url} failed: ${e.message}`);
+    }
+  }
+
+  console.error("[FATAL] No working RPC found. Check your Internet connection.");
+  process.exit(1);
 }
 
 function derivePda(seeds, programId) { return PublicKey.findProgramAddressSync(seeds, programId)[0]; }
@@ -247,7 +279,7 @@ async function buyGameFlow(ctx, rl) {
       buyer: ctx.user.publicKey, config: accounts.storeConfigPda, treasury: storeConfig.treasury,
       game: accounts.pgcGamePda, priceAccount: accounts.pricePda, publisher: regAccount.publisher,
       publisherBalance: publisherBalancePda, pgcProgram: ctx.pgc1Program.programId,
-      minterPda: accounts.pgcMinterAccount, licensePda: licensePda, 
+      pgcConfig: ctx.pgcConfigPda, licensePda: licensePda, 
       ...extraAccounts,
       systemProgram: SystemProgram.programId,
     }).rpc();
@@ -290,20 +322,26 @@ async function initializeSystem(ctx) {
       await ctx.storeProgram.methods.initialize(100, ctx.user.publicKey).accounts({ authority: ctx.user.publicKey, config: ctx.storeConfigPda, systemProgram: SystemProgram.programId }).rpc();
       console.log("✅ Game Store Initialized");
     }
+    if (!(await ctx.provider.connection.getAccountInfo(ctx.pgcConfigPda))) {
+      // Initialize PGC-1 with the Store Config as the globally authorized minter
+      await ctx.pgc1Program.methods.initialize(ctx.user.publicKey, ctx.storeConfigPda).accounts({ payer: ctx.user.publicKey, config: ctx.pgcConfigPda, systemProgram: SystemProgram.programId }).rpc();
+      console.log("✅ PGC-1 Initialized (Authorized Store)");
+    }
   } catch (e) { console.error("❌ Init failed:", e.message); }
 }
 
 async function main() {
   const rl = readline.createInterface({ input, output });
   try {
-    const provider = loadProvider();
+    const provider = await loadProvider();
     const ctx = {
       pgc1Program: new anchor.Program(pgc1Idl, provider),
       registryProgram: new anchor.Program(registryIdl, provider),
       storeProgram: new anchor.Program(storeIdl, provider),
       provider, user: provider.wallet,
       get registryConfigPda() { return derivePda([CONFIG_SEED], this.registryProgram.programId); },
-      get storeConfigPda() { return derivePda([CONFIG_SEED], this.storeProgram.programId); }
+      get storeConfigPda() { return derivePda([CONFIG_SEED], this.storeProgram.programId); },
+      get pgcConfigPda() { return derivePda([CONFIG_SEED], this.pgc1Program.programId); }
     };
     while (true) {
       try {

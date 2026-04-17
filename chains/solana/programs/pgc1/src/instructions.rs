@@ -3,8 +3,31 @@ use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 use anchor_lang::solana_program::program::invoke;
 use crate::state::*;
 use crate::errors::PgcError;
-use crate::utils::entitlement::check_entitlement;
 use crate::constants::*;
+
+// --- Initialize ---
+pub fn initialize_handler(ctx: Context<Initialize>, authority: Pubkey, authorized_store: Pubkey) -> Result<()> {
+    let config = &mut ctx.accounts.config;
+    config.authority = authority;
+    config.authorized_store = authorized_store;
+    config.bump = ctx.bumps.config;
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        init,
+        payer = payer,
+        space = PgcConfig::SPACE,
+        seeds = [SEED_CONFIG],
+        bump
+    )]
+    pub config: Account<'info, PgcConfig>,
+    pub system_program: Program<'info, System>,
+}
 
 // --- Create Game ---
 
@@ -144,8 +167,34 @@ pub struct CreateGame<'info> {
 // --- Mint License ---
 
 pub fn mint_license_handler(ctx: Context<MintLicense>, expires_at: i64) -> Result<()> {
+    // 1. Authorization Check:
+    // Either the signer is the Global Authorized Store, OR it's a specific MinterAccount.
+    if ctx.accounts.minter.key() != ctx.accounts.config.authorized_store {
+        // If not the global store, we MUST have a valid and authorized MinterAccount PDA.
+        if ctx.accounts.minter_account.data_is_empty() {
+            return err!(PgcError::Unauthorized);
+        }
+        
+        // Manual deserialization of UncheckedAccount data
+        let minter_data = ctx.accounts.minter_account.try_borrow_data()?;
+        let mut minter_ptr: &[u8] = *minter_data;
+        let minter_acc = MinterAccount::try_deserialize(&mut minter_ptr)?;
+        require!(minter_acc.is_authorized, PgcError::Unauthorized);
+        
+        // Safety: Verify seeds for UncheckedAccount (Fix temporary borrow issue)
+        let game_key = ctx.accounts.game.key();
+        let minter_key = ctx.accounts.minter.key();
+        let seeds = &[
+            SEED_MINTER,
+            game_key.as_ref(),
+            minter_key.as_ref(),
+        ];
+        let (pda, _bump) = Pubkey::find_program_address(seeds, ctx.program_id);
+        require_keys_eq!(pda, ctx.accounts.minter_account.key(), PgcError::Unauthorized);
+    }
+
+    // 2. Mint License logic
     let license = &mut ctx.accounts.license_account;
-    
     if license.owner == Pubkey::default() {
         license.owner = ctx.accounts.user.key();
         license.game = ctx.accounts.game.key();
@@ -153,7 +202,7 @@ pub fn mint_license_handler(ctx: Context<MintLicense>, expires_at: i64) -> Resul
         license.expires_at = expires_at;
         license.bump = ctx.bumps.license_account;
     } else {
-        license.expires_at = check_entitlement(license.expires_at, expires_at);
+        license.expires_at = crate::utils::entitlement::check_entitlement(license.expires_at, expires_at);
         license.issued_at = Clock::get()?.unix_timestamp;
     }
 
@@ -170,12 +219,14 @@ pub fn mint_license_handler(ctx: Context<MintLicense>, expires_at: i64) -> Resul
 pub struct MintLicense<'info> {
     pub minter: Signer<'info>,
 
+    /// CHECK: Validated manually in handler (Allow either Global Store or specific PDA)
+    pub minter_account: UncheckedAccount<'info>,
+
     #[account(
-        seeds = [SEED_MINTER, game.key().as_ref(), minter.key().as_ref()],
-        bump,
-        constraint = minter_account.is_authorized @ PgcError::Unauthorized
+        seeds = [SEED_CONFIG],
+        bump = config.bump
     )]
-    pub minter_account: Account<'info, MinterAccount>,
+    pub config: Account<'info, PgcConfig>,
 
     pub game: Account<'info, PgcGameAccount>,
 
