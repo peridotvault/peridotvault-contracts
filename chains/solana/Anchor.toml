@@ -7,12 +7,12 @@ skip-lint = false
 
 [programs.devnet]
 game_store = "6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd"
-pgc1 = "DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor"
+pgl1 = "DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor"
 registry = "DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL"
 
 [programs.localnet]
 game_store = "6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd"
-pgc1 = "DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor"
+pgl1 = "DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor"
 registry = "DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL"
 
 [registry]

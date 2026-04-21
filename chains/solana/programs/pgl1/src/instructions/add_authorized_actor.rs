@@ -1,0 +1,49 @@
+use anchor_lang::prelude::*;
+
+use crate::{
+    errors::PglError,
+    events::AuthorizedActorAdded,
+    state::{AuthorizedActor, PglConfig, AUTHORIZED_ACTOR_SEED, PGL_CONFIG_SEED},
+};
+
+pub fn handler(ctx: Context<AddAuthorizedActor>) -> Result<()> {
+    let config = &ctx.accounts.pgl_config;
+    require_keys_eq!(config.authority, ctx.accounts.authority.key(), PglError::Unauthorized);
+
+    let actor = &mut ctx.accounts.authorized_actor;
+    actor.actor = ctx.accounts.actor.key();
+    actor.active = true;
+    actor.bump = ctx.bumps.authorized_actor;
+
+    emit!(AuthorizedActorAdded {
+        actor: actor.actor,
+    });
+
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct AddAuthorizedActor<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// CHECK: this is the actor being authorized and is only used as a seed value / stored pubkey.
+    pub actor: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [PGL_CONFIG_SEED],
+        bump = pgl_config.bump,
+    )]
+    pub pgl_config: Account<'info, PglConfig>,
+
+    #[account(
+        init_if_needed,
+        payer = authority,
+        space = AuthorizedActor::SPACE,
+        seeds = [AUTHORIZED_ACTOR_SEED, actor.key().as_ref()],
+        bump,
+    )]
+    pub authorized_actor: Account<'info, AuthorizedActor>,
+
+    pub system_program: Program<'info, System>,
+}

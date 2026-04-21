@@ -1,0 +1,131 @@
+Registry (PeridotVault Registry v1)
+
+Program Identity
+- Program ID: DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL
+- Anchor module: registry
+- Crate/lib: my-program / my_program
+
+Overview
+- Registry adalah onboarding dan governance layer untuk game di ekosistem.
+- Tanggung jawab utama:
+  - menyimpan konfigurasi registry (authority, treasury)
+  - mengelola token fee onboarding + nominal fee
+  - mengelola publish grant (bebas fee)
+  - membuat game di PGL-1 via CPI dan langsung register game tersebut
+  - mengelola status game (Active/Suspended/Banned)
+
+State Accounts
+1. RegistryConfig
+- authority: Pubkey
+- treasury: Pubkey
+- bump: u8
+
+2. AcceptedPaymentToken
+- mint: Pubkey
+- active: bool
+- fee_amount: u64
+- bump: u8
+
+3. RegistryGame
+- game: Pubkey
+- game_id: String (max 64)
+- registered_at: i64
+- status: GameStatus
+- bump: u8
+
+4. PublishGrant
+- publisher: Pubkey
+- expired_at: Option<i64>
+- bump: u8
+- None berarti grant tetap aktif.
+
+Enum
+- GameStatus::Active (0)
+- GameStatus::Suspended (1)
+- GameStatus::Banned (2)
+
+PDA Seeds
+- registry_config: ["registry_config"]
+- accepted_payment_token: ["accepted_payment_token", mint_pubkey]
+- registry_game: ["registry_game", game_pubkey]
+- publish_grant: ["publish_grant", publisher_pubkey]
+
+Instructions
+1. initialize_registry(treasury)
+- Signer: authority
+- Membuat RegistryConfig.
+- treasury wajib bukan default Pubkey.
+
+2. set_treasury(treasury)
+- Signer: authority
+- has_one authority pada RegistryConfig.
+- treasury wajib bukan default Pubkey.
+
+3. add_payment_token(fee_amount)
+- Signer: authority
+- Menambahkan mint ke allowlist fee registry.
+- active di-set true.
+- fee_amount wajib > 0.
+
+4. update_payment_token(active, fee_amount)
+- Signer: authority
+- Mengubah status active dan fee_amount.
+- fee_amount wajib > 0.
+
+5. remove_payment_token()
+- Signer: authority
+- Menutup account accepted_payment_token.
+
+6. set_publish_grant(expired_at)
+- Signer: authority
+- init_if_needed PublishGrant untuk publisher target.
+- Jika expired_at=Some(ts), ts harus > 0.
+
+7. create_game_and_register(game_id, metadata_uri)
+- Signer: publisher
+- Validasi game_id non-empty, max 64.
+- Validasi metadata_uri non-empty.
+- Jika publisher tidak punya publish grant aktif:
+  - accepted_payment_token harus active
+  - fee_amount harus > 0
+  - transfer_checked token dari publisher_payment_account ke treasury_payment_account
+- Selalu melakukan CPI ke PGL-1 create_game.
+- Membuat RegistryGame dengan status awal Active.
+
+8. update_game_status(status_u8)
+- Signer: authority
+- Status transition yang diizinkan:
+  - Active <-> Suspended
+  - Active -> Banned
+  - Suspended -> Banned
+- Banned tidak bisa kembali ke status lain.
+
+Events
+- RegistryInitialized
+- TreasuryUpdated
+- PaymentTokenAdded
+- PaymentTokenUpdated
+- PaymentTokenRemoved
+- PublishGrantSet
+- GameRegistered
+- GameStatusUpdated
+
+Errors
+- Unauthorized
+- PaymentTokenNotAllowed
+- PaymentTokenDisabled
+- InvalidFeeAmount
+- RegistrationFeeNotSatisfied
+- GameAlreadyRegistered
+- InvalidGameId
+- GameNotFound
+- InvalidStatusTransition
+- InvalidExpiry
+- InvalidMetadataUri
+- InvalidPublishGrantAccount
+- InvalidTreasury
+
+Integration Notes
+- create_game_and_register memerlukan account payment token di accounts list, walaupun fee bisa di-skip saat grant aktif.
+- CPI ke PGL-1 disusun manual via instruction discriminator hash("global:create_game").
+- Program tidak menyimpan metadata game detail selain game_id dan pointer game Pubkey.

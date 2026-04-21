@@ -1,0 +1,135 @@
+PGL-1 (Peridot Game License v1)
+
+Program Identity
+- Program ID: DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor
+- Anchor module: pgl1
+- Crate: pgl1
+
+Overview
+- PGL-1 adalah canonical layer untuk game metadata inti dan lisensi.
+- Program ini mengelola:
+  - konfigurasi global (authority, treasury, create fee)
+  - daftar actor yang boleh menerbitkan/perpanjang lisensi
+  - game records canonical
+  - license records canonical
+
+State Accounts
+1. PglConfig
+- authority: Pubkey
+- treasury: Pubkey
+- create_game_fee_lamports: u64
+- bump: u8
+
+2. AuthorizedActor
+- actor: Pubkey
+- active: bool
+- bump: u8
+
+3. CreatorState
+- creator: Pubkey
+- next_nonce: u64
+- bump: u8
+
+4. Game
+- creator: Pubkey
+- nonce: u64
+- publisher: Pubkey
+- game_id: String (max 64)
+- metadata_uri: String (max 256)
+- created_at: i64
+- bump: u8
+
+5. License
+- holder: Pubkey
+- game: Pubkey
+- issued_at: i64
+- expires_at: Option<i64>
+- bump: u8
+
+PDA Seeds
+- pgl_config: ["pgl_config"]
+- authorized_actor: ["authorized_actor", actor_pubkey]
+- creator_state: ["creator_state", creator_pubkey]
+- game: ["game", creator_pubkey, creator_nonce_le_bytes]
+- license: ["license", holder_pubkey, game_pubkey]
+
+Instructions
+1. initialize_pgl(treasury, create_game_fee_lamports)
+- Signer: authority
+- Creates PglConfig.
+- treasury wajib bukan default Pubkey.
+
+2. set_create_game_fee(create_game_fee_lamports)
+- Signer: authority
+- Authority harus sama dengan pgl_config.authority.
+
+3. set_treasury(treasury)
+- Signer: authority
+- Authority harus sama dengan pgl_config.authority.
+- treasury wajib bukan default Pubkey.
+
+4. add_authorized_actor()
+- Signer: authority
+- Menulis/menimpa AuthorizedActor untuk actor target dan set active=true.
+
+5. deactivate_authorized_actor()
+- Signer: authority
+- Set active=false untuk actor target.
+
+6. create_game(game_id, metadata_uri)
+- Signer: creator
+- Validasi game_id non-empty, trimmed, max 64.
+- Validasi metadata_uri non-empty, trimmed, max 256.
+- Jika create_game_fee_lamports > 0, transfer SOL dari creator ke treasury.
+- init_if_needed CreatorState lalu pakai next_nonce untuk PDA game.
+- Menetapkan publisher awal = creator.
+- Increment creator_state.next_nonce.
+
+7. set_publisher(new_publisher)
+- Signer: publisher saat ini
+- Hanya publisher saat ini yang boleh mengganti publisher.
+- new_publisher wajib bukan default Pubkey.
+
+8. set_metadata_uri(metadata_uri)
+- Signer: publisher saat ini
+- metadata_uri wajib non-empty dan max 256.
+
+9. mint_license(expires_at)
+- Signer: actor
+- Actor harus ada di AuthorizedActor dan active=true.
+- expires_at (jika Some) harus > waktu saat ini.
+- Menginisialisasi License baru (holder + game).
+
+10. renew_license(expires_at)
+- Signer: actor
+- Actor harus authorized dan active=true.
+- expires_at harus > waktu saat ini.
+- Jika license sudah punya expires_at, nilai baru harus lebih besar.
+
+Events
+- PglInitialized
+- CreateGameFeeUpdated
+- TreasuryUpdated
+- AuthorizedActorAdded
+- AuthorizedActorDeactivated
+- GameCreated
+- PublisherUpdated
+- MetadataUriUpdated
+- LicenseMinted
+- LicenseRenewed
+
+Errors
+- Unauthorized
+- AuthorizedActorInactive
+- InsufficientCreateGameFee
+- InvalidGameId
+- InvalidMetadataUri
+- GameAlreadyExists
+- LicenseAlreadyExists
+- LicenseNotFound
+- InvalidExpiry
+
+Integration Notes
+- Tidak ada global uniqueness untuk game_id; identitas game ditentukan oleh PDA (creator + nonce).
+- Program ini tidak punya revoke license instruction.
+- create_game memakai system transfer (SOL), bukan SPL token fee.

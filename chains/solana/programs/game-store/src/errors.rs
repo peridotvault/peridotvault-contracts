@@ -1,23 +1,53 @@
 use anchor_lang::prelude::*;
 
 #[error_code]
-pub enum GameStoreError {
+pub enum StoreError {
     #[msg("Unauthorized")]
     Unauthorized,
-    #[msg("Invalid currency")]
-    InvalidCurrency,
-    #[msg("Invalid discount BPS")]
-    InvalidDiscountBps,
-    #[msg("Invalid platform fee BPS")]
+    #[msg("Invalid platform fee bps")]
     InvalidPlatformFeeBps,
-    #[msg("Empty publisher balance")]
-    EmptyPublisherBalance,
-    #[msg("Invalid governance address")]
-    InvalidGovernance,
-    #[msg("Invalid treasury address")]
-    InvalidTreasury,
-    #[msg("Invalid token program")]
-    InvalidTokenProgram,
-    #[msg("Invalid token mint")]
-    InvalidTokenMint,
+    #[msg("Invalid default referral bps")]
+    InvalidDefaultReferralBps,
+    #[msg("Invalid max referral bps")]
+    InvalidMaxReferralBps,
+    #[msg("Referral above max")]
+    ReferralAboveMax,
+    #[msg("Source program not authorized")]
+    SourceProgramNotAuthorized,
+    #[msg("Registry program not authorized")]
+    RegistryProgramNotAuthorized,
+    #[msg("Payment token not allowed")]
+    PaymentTokenNotAllowed,
+    #[msg("Payment token disabled")]
+    PaymentTokenDisabled,
+    #[msg("Invalid price")]
+    InvalidPrice,
+    #[msg("Price not found")]
+    PriceNotFound,
+    #[msg("Game not active in store")]
+    StoreGameInactive,
+    #[msg("Game not active in registry")]
+    GameNotActive,
+    #[msg("Game not registered")]
+    GameNotRegistered,
+    #[msg("Already owned")]
+    AlreadyOwned,
+    #[msg("Invalid discount bps")]
+    InvalidDiscountBps,
+    #[msg("Invalid discount window")]
+    InvalidDiscountWindow,
+    #[msg("Invalid referral bps")]
+    InvalidReferralBps,
+    #[msg("Math overflow")]
+    MathOverflow,
+    #[msg("Invalid payment amount")]
+    InvalidPaymentAmount,
+    #[msg("Unsupported source game owner")]
+    UnsupportedSourceGameOwner,
+    #[msg("Registry game mismatch")]
+    RegistryGameMismatch,
+    #[msg("Payment failed")]
+    PaymentFailed,
+    #[msg("License mint failed")]
+    LicenseMintFailed,
 }

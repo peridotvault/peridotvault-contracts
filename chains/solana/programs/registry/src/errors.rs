@@ -4,8 +4,40 @@ use anchor_lang::prelude::*;
 pub enum RegistryError {
     #[msg("Unauthorized")]
     Unauthorized,
-    #[msg("Invalid status")]
-    InvalidStatus,
-    #[msg("Invalid authority")]
-    InvalidAuthority,
+
+    #[msg("Payment token not allowed")]
+    PaymentTokenNotAllowed,
+
+    #[msg("Payment token disabled")]
+    PaymentTokenDisabled,
+
+    #[msg("Invalid fee amount")]
+    InvalidFeeAmount,
+
+    #[msg("Registration fee not satisfied")]
+    RegistrationFeeNotSatisfied,
+
+    #[msg("Game already registered")]
+    GameAlreadyRegistered,
+
+    #[msg("Invalid game id")]
+    InvalidGameId,
+
+    #[msg("Game not found")]
+    GameNotFound,
+
+    #[msg("Invalid status transition")]
+    InvalidStatusTransition,
+
+    #[msg("Invalid expiry")]
+    InvalidExpiry,
+
+    #[msg("Invalid metadata URI")]
+    InvalidMetadataUri,
+
+    #[msg("Invalid publish grant account")]
+    InvalidPublishGrantAccount,
+
+    #[msg("Invalid treasury")]
+    InvalidTreasury,
 }
