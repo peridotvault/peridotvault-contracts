@@ -25,7 +25,7 @@ pub struct AddPaymentToken<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<AddPaymentToken>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<AddPaymentToken>) -> Result<()> {
     let token = &mut ctx.accounts.accepted_payment_token;
     token.mint = ctx.accounts.mint.key();
     token.active = true;

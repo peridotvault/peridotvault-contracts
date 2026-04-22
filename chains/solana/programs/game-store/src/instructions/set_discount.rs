@@ -41,7 +41,7 @@ pub struct SetDiscount<'info> {
     pub game_store_config: Account<'info, GameStoreConfig>,
 }
 
-pub fn handler(
+pub(crate) fn handler(
     ctx: Context<SetDiscount>,
     discount_bps: Option<u16>,
     discount_starts_at: Option<i64>,

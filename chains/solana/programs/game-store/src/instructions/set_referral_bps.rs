@@ -33,7 +33,7 @@ pub struct SetReferralBps<'info> {
     pub game_store_config: Account<'info, GameStoreConfig>,
 }
 
-pub fn handler(ctx: Context<SetReferralBps>, referral_bps: Option<u16>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetReferralBps>, referral_bps: Option<u16>) -> Result<()> {
     require_keys_eq!(ctx.accounts.game.publisher, ctx.accounts.publisher.key(), StoreError::Unauthorized);
 
     let normalized = match referral_bps {

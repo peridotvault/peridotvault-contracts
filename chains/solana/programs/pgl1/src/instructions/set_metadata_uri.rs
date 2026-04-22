@@ -6,7 +6,7 @@ use crate::{
     state::{Game, MAX_METADATA_URI_LEN, GAME_SEED},
 };
 
-pub fn handler(ctx: Context<SetMetadataUri>, metadata_uri: String) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetMetadataUri>, metadata_uri: String) -> Result<()> {
     require!(
         !metadata_uri.trim().is_empty() && metadata_uri.len() <= MAX_METADATA_URI_LEN,
         PglError::InvalidMetadataUri

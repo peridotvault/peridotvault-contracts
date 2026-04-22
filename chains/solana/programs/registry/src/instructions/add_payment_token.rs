@@ -33,7 +33,7 @@ pub struct AddPaymentToken<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<AddPaymentToken>, fee_amount: u64) -> Result<()> {
+pub(crate) fn handler(ctx: Context<AddPaymentToken>, fee_amount: u64) -> Result<()> {
     require!(fee_amount > 0, RegistryError::InvalidFeeAmount);
 
     let token = &mut ctx.accounts.accepted_payment_token;

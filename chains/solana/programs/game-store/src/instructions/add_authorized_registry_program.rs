@@ -25,7 +25,7 @@ pub struct AddAuthorizedRegistryProgram<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<AddAuthorizedRegistryProgram>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<AddAuthorizedRegistryProgram>) -> Result<()> {
     let account = &mut ctx.accounts.authorized_registry_program;
     account.program_id = ctx.accounts.program_id.key();
     account.active = true;

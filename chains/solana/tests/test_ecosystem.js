@@ -1,138 +1,143 @@
 const anchor = require("@coral-xyz/anchor");
-const { PublicKey, SystemProgram, Keypair } = require("@solana/web3.js");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+const { Keypair, PublicKey, SystemProgram, Transaction } = require("@solana/web3.js");
+const { createMint, getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } = require("@solana/spl-token");
 
-const pgc1Idl = require("../target/idl/pgc1.json");
+const pglIdl = require("../target/idl/pgl1.json");
 const registryIdl = require("../target/idl/registry.json");
-const storeIdl = require("../target/idl/game_store.json");
 
-async function runTest() {
-  console.log("🚀 Starting PGC1 Ecosystem E2E Test...");
-
-  const providerUrl = "http://127.0.0.1:8899";
-  const walletPath = path.join(os.homedir(), ".config/solana/id.json");
-  const secret = JSON.parse(fs.readFileSync(walletPath, "utf8"));
-  const wallet = new anchor.Wallet(Keypair.fromSecretKey(Uint8Array.from(secret)));
-  const connection = new anchor.web3.Connection(providerUrl, "confirmed");
-  const provider = new anchor.AnchorProvider(connection, wallet, {});
-  anchor.setProvider(provider);
-
-  const pgc1Prog = new anchor.Program(pgc1Idl, provider);
-  const regProg = new anchor.Program(registryIdl, provider);
-  const storeProg = new anchor.Program(storeIdl, provider);
-
-  const testGameId = `test-${Date.now()}`;
-  console.log(`Using Game ID: ${testGameId}`);
-
-  // 1. Initialize
-  console.log("1. Bootstrapping System...");
-  const regConfigPda = PublicKey.findProgramAddressSync([Buffer.from("config")], regProg.programId)[0];
-  const storeConfigPda = PublicKey.findProgramAddressSync([Buffer.from("config")], storeProg.programId)[0];
-
-  try {
-    await regProg.methods.initialize().accounts({
-      authority: wallet.publicKey,
-      config: regConfigPda,
-      systemProgram: SystemProgram.programId
-    }).rpc();
-    console.log("✅ Registry Init");
-  } catch (e) {
-    console.log("ℹ️ Registry skipping (already init)");
-  }
-
-  try {
-    await storeProg.methods.initialize(100, wallet.publicKey).accounts({
-      authority: wallet.publicKey,
-      config: storeConfigPda,
-      systemProgram: SystemProgram.programId
-    }).rpc();
-    console.log("✅ Store Init");
-  } catch (e) {
-    console.log("ℹ️ Store skipping (already init)");
-  }
-
-  // 2. Create Game
-  console.log("2. Creating Game via PGC1...");
-  const pgcGamePda = PublicKey.findProgramAddressSync([Buffer.from("game"), Buffer.from(testGameId)], pgc1Prog.programId)[0];
-  const regGamePda = PublicKey.findProgramAddressSync([Buffer.from("game"), Buffer.from(testGameId)], regProg.programId)[0];
-  const pricePda = PublicKey.findProgramAddressSync([Buffer.from("price"), pgcGamePda.toBuffer()], storeProg.programId)[0];
-  const minterPda = PublicKey.findProgramAddressSync([Buffer.from("minter"), pgcGamePda.toBuffer(), storeConfigPda.toBuffer()], pgc1Prog.programId)[0];
-  
-  const regConfig = await regProg.account.registryConfig.fetch(regConfigPda);
-
-  await pgc1Prog.methods.createGame(
-    testGameId,
-    "http://test.meta",
-    storeConfigPda,
-    new anchor.BN(0.1 * 1e9),
-    SystemProgram.programId
-  ).accounts({
-    publisher: wallet.publicKey,
-    gameAccount: pgcGamePda,
-    initialMinterAccount: minterPda,
-    registryProgram: regProg.programId,
-    storeProgram: storeProg.programId,
-    registryConfig: regConfigPda,
-    registryTreasury: regConfig.treasury,
-    registryGame: regGamePda,
-    priceAccount: pricePda,
-    systemProgram: SystemProgram.programId
-  }).rpc();
-  console.log("✅ Game Created");
-
-  // 3. Buy Game
-  console.log("3. Buying Game...");
-  const licensePda = PublicKey.findProgramAddressSync([Buffer.from("license"), wallet.publicKey.toBuffer(), pgcGamePda.toBuffer()], pgc1Prog.programId)[0];
-  const storeConfig = await storeProg.account.storeConfig.fetch(storeConfigPda);
-  const publisherBalancePda = PublicKey.findProgramAddressSync([Buffer.from("balance"), wallet.publicKey.toBuffer()], storeProg.programId)[0];
-
-  await storeProg.methods.buyGame().accounts({
-    buyer: wallet.publicKey,
-    config: storeConfigPda,
-    treasury: storeConfig.treasury,
-    game: pgcGamePda,
-    priceAccount: pricePda,
-    publisher: wallet.publicKey,
-    publisherBalance: publisherBalancePda,
-    pgcProgram: pgc1Prog.programId,
-    minterPda: minterPda,
-    licensePda: licensePda,
-    systemProgram: SystemProgram.programId
-  }).rpc();
-  console.log("✅ Purchase Successful");
-
-  // 4. Verify License
-  console.log("4. Verifying License...");
-  const license = await pgc1Prog.account.licenseAccount.fetch(licensePda);
-  if (license.owner.equals(wallet.publicKey)) {
-    console.log("✅ License confirmed for owner");
-  } else {
-    throw new Error("❌ License owner mismatch");
-  }
-
-  // 5. Check List
-  console.log("5. Testing List Decoder...");
-  const discriminator = Buffer.from([17, 140, 126, 39, 63, 84, 119, 73]); // RegistryGameAccount
-  const accs = await connection.getProgramAccounts(regProg.programId, {
-    filters: [{ memcmp: { offset: 0, bytes: anchor.utils.bytes.bs58.encode(discriminator) } }]
-  });
-  
-  let found = false;
-  for (const a of accs) {
-    const game = regProg.coder.accounts.decode("registryGameAccount", a.account.data);
-    if ((game.gameId || game.game_id) === testGameId) {
-      found = true;
-      console.log(`✅ Game ${testGameId} found in Registry Catalog`);
-    }
-  }
-  if (!found) throw new Error("❌ Game not found in catalog");
-
-  console.log("\n🎉 ALL TESTS PASSED! PGC1 Ecosystem is 100% Production Ready.");
+function derivePda(seeds, programId) {
+  return PublicKey.findProgramAddressSync(seeds, programId)[0];
 }
 
-runTest().catch(e => {
-  console.error("\n❌ TEST FAILED:", e);
+function u64LeBuffer(value) {
+  const b = Buffer.alloc(8);
+  b.writeBigUInt64LE(BigInt(value));
+  return b;
+}
+
+async function main() {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+
+  const wallet = provider.wallet.payer;
+  const pglProgram = new anchor.Program(pglIdl, provider);
+  const registryProgram = new anchor.Program(registryIdl, provider);
+
+  const pglConfigPda = derivePda([Buffer.from("pgl_config")], pglProgram.programId);
+  const registryConfigPda = derivePda([Buffer.from("registry_config")], registryProgram.programId);
+
+  if (!(await provider.connection.getAccountInfo(pglConfigPda))) {
+    await pglProgram.methods
+      .initializePgl(wallet.publicKey, new anchor.BN(0))
+      .accounts({ authority: wallet.publicKey, pglConfig: pglConfigPda, systemProgram: SystemProgram.programId })
+      .rpc();
+  }
+
+  if (!(await provider.connection.getAccountInfo(registryConfigPda))) {
+    await registryProgram.methods
+      .initializeRegistry(wallet.publicKey)
+      .accounts({ authority: wallet.publicKey, config: registryConfigPda, systemProgram: SystemProgram.programId })
+      .rpc();
+  }
+
+  const mint = await createMint(provider.connection, wallet, wallet.publicKey, null, 6);
+  const acceptedTokenPda = derivePda([Buffer.from("accepted_payment_token"), mint.toBuffer()], registryProgram.programId);
+  if (!(await provider.connection.getAccountInfo(acceptedTokenPda))) {
+    await registryProgram.methods
+      .addPaymentToken(new anchor.BN(1000))
+      .accounts({
+        authority: wallet.publicKey,
+        config: registryConfigPda,
+        mint,
+        acceptedPaymentToken: acceptedTokenPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  const publisher = Keypair.generate();
+  await provider.sendAndConfirm(
+    new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: provider.publicKey,
+        toPubkey: publisher.publicKey,
+        lamports: 2 * anchor.web3.LAMPORTS_PER_SOL,
+      }),
+    ),
+  );
+
+  const publisherPayment = await getOrCreateAssociatedTokenAccount(
+    provider.connection,
+    wallet,
+    mint,
+    publisher.publicKey,
+  );
+  const treasuryPayment = await getOrCreateAssociatedTokenAccount(
+    provider.connection,
+    wallet,
+    mint,
+    wallet.publicKey,
+  );
+
+  const publishGrantPda = derivePda(
+    [Buffer.from("publish_grant"), publisher.publicKey.toBuffer()],
+    registryProgram.programId,
+  );
+  await registryProgram.methods
+    .setPublishGrant(null)
+    .accounts({
+      authority: wallet.publicKey,
+      config: registryConfigPda,
+      publisher: publisher.publicKey,
+      publishGrant: publishGrantPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  const creatorStatePda = derivePda([Buffer.from("creator_state"), publisher.publicKey.toBuffer()], pglProgram.programId);
+  let nextNonce = 0;
+  if (await provider.connection.getAccountInfo(creatorStatePda)) {
+    const creatorState = await pglProgram.account.creatorState.fetch(creatorStatePda);
+    nextNonce = Number(creatorState.nextNonce.toString());
+  }
+
+  const gamePda = derivePda(
+    [Buffer.from("game"), publisher.publicKey.toBuffer(), u64LeBuffer(nextNonce)],
+    pglProgram.programId,
+  );
+  const registryGamePda = derivePda([Buffer.from("registry_game"), gamePda.toBuffer()], registryProgram.programId);
+
+  await registryProgram.methods
+    .createGameAndRegister(`smoke-${Date.now()}`, "https://meta.peridot/smoke.json")
+    .accounts({
+      publisher: publisher.publicKey,
+      config: registryConfigPda,
+      paymentMint: mint,
+      acceptedPaymentToken: acceptedTokenPda,
+      publisherPaymentAccount: publisherPayment.address,
+      treasuryPaymentAccount: treasuryPayment.address,
+      registryGame: registryGamePda,
+      game: gamePda,
+      pglCreatorState: creatorStatePda,
+      pglConfig: pglConfigPda,
+      pglTreasury: wallet.publicKey,
+      pgl1Program: pglProgram.programId,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .remainingAccounts([{ pubkey: publishGrantPda, isSigner: false, isWritable: false }])
+    .signers([publisher])
+    .rpc();
+
+  const registryGame = await registryProgram.account.registryGame.fetch(registryGamePda);
+  console.log("Ecosystem smoke success:", {
+    game: gamePda.toBase58(),
+    registryGame: registryGamePda.toBase58(),
+    status: registryGame.status,
+  });
+}
+
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });

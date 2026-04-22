@@ -19,7 +19,7 @@ pub struct UpdatePaymentToken<'info> {
     pub accepted_payment_token: Account<'info, AcceptedPaymentToken>,
 }
 
-pub fn handler(ctx: Context<UpdatePaymentToken>, active: bool) -> Result<()> {
+pub(crate) fn handler(ctx: Context<UpdatePaymentToken>, active: bool) -> Result<()> {
     let token = &mut ctx.accounts.accepted_payment_token;
     token.active = active;
     emit!(PaymentTokenUpdated { mint: token.mint, active });

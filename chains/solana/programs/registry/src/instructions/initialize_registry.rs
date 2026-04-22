@@ -23,7 +23,7 @@ pub struct InitializeRegistry<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<InitializeRegistry>, treasury: Pubkey) -> Result<()> {
+pub(crate) fn handler(ctx: Context<InitializeRegistry>, treasury: Pubkey) -> Result<()> {
     require!(treasury != Pubkey::default(), RegistryError::InvalidTreasury);
 
     let config = &mut ctx.accounts.config;

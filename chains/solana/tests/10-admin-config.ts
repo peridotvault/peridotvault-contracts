@@ -1,118 +1,111 @@
 import { expect } from "chai";
+import { Keypair } from "@solana/web3.js";
+import * as anchor from "@coral-xyz/anchor";
 import {
+  DEFAULT_MAX_REFERRAL_BPS,
+  DEFAULT_REFERRAL_BPS,
   DEFAULT_PLATFORM_FEE_BPS,
-  UPDATED_PLATFORM_FEE_BPS,
   setupPeridotFixture,
 } from "./helpers/peridot";
 
 describe("admin config", () => {
-  it("updates governance, treasury, and platform fee across programs", async () => {
+  it("updates core admin configs across pgl1, registry, and store", async () => {
     const base = await setupPeridotFixture();
 
-    // 1. Update Governance to nextGovernance
+    const newTreasury = Keypair.generate().publicKey;
+    const newCreateFee = new anchor.BN(12345);
+    const newPlatformFee = 900;
+    const newDefaultReferral = 300;
+    const newMaxReferral = 4000;
+
+    const pglBefore = (await base.pglProgram.account.pglConfig.fetch(base.pglConfigPda)) as any;
+    const registryBefore = (await base.registryProgram.account.registryConfig.fetch(
+      base.registryConfigPda,
+    )) as any;
+    const storeBefore = (await base.storeProgram.account.storeConfig.fetch(base.storeConfigPda)) as any;
+
+    await base.pglProgram.methods
+      .setCreateGameFee(newCreateFee)
+      .accounts({ authority: base.authority.publicKey, pglConfig: base.pglConfigPda })
+      .rpc();
+
+    await base.pglProgram.methods
+      .setTreasury(newTreasury)
+      .accounts({ authority: base.authority.publicKey, pglConfig: base.pglConfigPda })
+      .rpc();
+
     await base.registryProgram.methods
-      .setGovernance(base.nextGovernance.publicKey)
-      .accounts({
-        governance: base.governance.publicKey,
-        registryState: base.registryStatePda,
-      } as any)
-      .signers([base.governance])
+      .setTreasury(newTreasury)
+      .accounts({ authority: base.authority.publicKey, config: base.registryConfigPda })
       .rpc();
 
     await base.storeProgram.methods
-      .setGovernance(base.nextGovernance.publicKey)
-      .accounts({
-        governance: base.governance.publicKey,
-        storeState: base.storeStatePda,
-      } as any)
-      .signers([base.governance])
+      .setPlatformFee(newPlatformFee)
+      .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
       .rpc();
 
-    await base.pgc1Program.methods
-      .setGovernance(base.nextGovernance.publicKey)
-      .accounts({
-        governance: base.governance.publicKey,
-        globalState: base.pgcGlobalStatePda,
-      } as any)
-      .signers([base.governance])
+    await base.storeProgram.methods
+      .setMaxReferral(newMaxReferral)
+      .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
       .rpc();
 
-    // 2. Update Treasury using nextGovernance as signer
+    await base.storeProgram.methods
+      .setDefaultReferral(newDefaultReferral)
+      .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
+      .rpc();
+
+    await base.storeProgram.methods
+      .setTreasury(newTreasury)
+      .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
+      .rpc();
+
+    const pglAfter = (await base.pglProgram.account.pglConfig.fetch(base.pglConfigPda)) as any;
+    const registryAfter = (await base.registryProgram.account.registryConfig.fetch(
+      base.registryConfigPda,
+    )) as any;
+    const storeAfter = (await base.storeProgram.account.storeConfig.fetch(base.storeConfigPda)) as any;
+
+    expect(pglAfter.treasury.toBase58()).to.eq(newTreasury.toBase58());
+    expect(pglAfter.createGameFeeLamports.toString()).to.eq(newCreateFee.toString());
+    expect(registryAfter.treasury.toBase58()).to.eq(newTreasury.toBase58());
+    expect(storeAfter.treasury.toBase58()).to.eq(newTreasury.toBase58());
+    expect(storeAfter.platformFeeBps).to.eq(newPlatformFee);
+    expect(storeAfter.defaultReferralBps).to.eq(newDefaultReferral);
+    expect(storeAfter.maxReferralBps).to.eq(newMaxReferral);
+
+    await base.pglProgram.methods
+      .setCreateGameFee(pglBefore.createGameFeeLamports)
+      .accounts({ authority: base.authority.publicKey, pglConfig: base.pglConfigPda })
+      .rpc();
+
+    await base.pglProgram.methods
+      .setTreasury(pglBefore.treasury)
+      .accounts({ authority: base.authority.publicKey, pglConfig: base.pglConfigPda })
+      .rpc();
+
     await base.registryProgram.methods
-      .setTreasury(base.nextTreasury.publicKey)
-      .accounts({
-        governance: base.nextGovernance.publicKey,
-        registryState: base.registryStatePda,
-      } as any)
-      .signers([base.nextGovernance])
+      .setTreasury(registryBefore.treasury)
+      .accounts({ authority: base.authority.publicKey, config: base.registryConfigPda })
       .rpc();
 
-    await base.storeProgram.methods
-      .setTreasury(base.nextTreasury.publicKey)
-      .accounts({
-        governance: base.nextGovernance.publicKey,
-        storeState: base.storeStatePda,
-      } as any)
-      .signers([base.nextGovernance])
-      .rpc();
-
-    await base.storeProgram.methods
-      .setPlatformFee(UPDATED_PLATFORM_FEE_BPS)
-      .accounts({
-        governance: base.nextGovernance.publicKey,
-        storeState: base.storeStatePda,
-      } as any)
-      .signers([base.nextGovernance])
-      .rpc();
-
-    // 3. Verify changes
-    const registryState = (await base.registryProgram.account.registryState.fetch(base.registryStatePda)) as any;
-    const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
-    const pgcGlobalState = (await base.pgc1Program.account.globalState.fetch(base.pgcGlobalStatePda)) as any;
-
-    expect(registryState.governance.toBase58()).to.equal(base.nextGovernance.publicKey.toBase58());
-    expect(storeState.governance.toBase58()).to.equal(base.nextGovernance.publicKey.toBase58());
-    expect(pgcGlobalState.governance.toBase58()).to.equal(base.nextGovernance.publicKey.toBase58());
-    expect(registryState.treasury.toBase58()).to.equal(base.nextTreasury.publicKey.toBase58());
-    expect(storeState.treasury.toBase58()).to.equal(base.nextTreasury.publicKey.toBase58());
-    expect(storeState.platformFeeBps).to.equal(UPDATED_PLATFORM_FEE_BPS);
-
-    // 4. Cleanup/Restore for other tests
-    await base.registryProgram.methods
-      .setGovernance(base.governance.publicKey)
-      .accounts({
-        governance: base.nextGovernance.publicKey,
-        registryState: base.registryStatePda,
-      } as any)
-      .signers([base.nextGovernance])
-      .rpc();
-
-    await base.storeProgram.methods
-      .setGovernance(base.governance.publicKey)
-      .accounts({
-        governance: base.nextGovernance.publicKey,
-        storeState: base.storeStatePda,
-      } as any)
-      .signers([base.nextGovernance])
-      .rpc();
-
-    await base.pgc1Program.methods
-      .setGovernance(base.governance.publicKey)
-      .accounts({
-        governance: base.nextGovernance.publicKey,
-        globalState: base.pgcGlobalStatePda,
-      } as any)
-      .signers([base.nextGovernance])
-      .rpc();
-
-    // Restore platform fee
     await base.storeProgram.methods
       .setPlatformFee(DEFAULT_PLATFORM_FEE_BPS)
-      .accounts({
-        governance: base.governance.publicKey,
-        storeState: base.storeStatePda,
-      } as any)
-      .signers([base.governance])
+      .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
+      .rpc();
+
+    await base.storeProgram.methods
+      .setMaxReferral(DEFAULT_MAX_REFERRAL_BPS)
+      .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
+      .rpc();
+
+    await base.storeProgram.methods
+      .setDefaultReferral(DEFAULT_REFERRAL_BPS)
+      .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
+      .rpc();
+
+    await base.storeProgram.methods
+      .setTreasury(storeBefore.treasury)
+      .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
       .rpc();
   });
 });

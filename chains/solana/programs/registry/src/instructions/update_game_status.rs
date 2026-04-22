@@ -26,7 +26,7 @@ pub struct UpdateGameStatus<'info> {
     pub registry_game: Account<'info, RegistryGame>,
 }
 
-pub fn handler(ctx: Context<UpdateGameStatus>, status: u8) -> Result<()> {
+pub(crate) fn handler(ctx: Context<UpdateGameStatus>, status: u8) -> Result<()> {
     let next_status = GameStatus::from_u8(status).ok_or(error!(RegistryError::InvalidStatusTransition))?;
     let current_status = ctx.accounts.registry_game.status;
 

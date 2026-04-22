@@ -6,7 +6,7 @@ use crate::{
     state::{Game, GAME_SEED},
 };
 
-pub fn handler(ctx: Context<SetPublisher>, new_publisher: Pubkey) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetPublisher>, new_publisher: Pubkey) -> Result<()> {
     require!(new_publisher != Pubkey::default(), PglError::Unauthorized);
 
     let game = &mut ctx.accounts.game;

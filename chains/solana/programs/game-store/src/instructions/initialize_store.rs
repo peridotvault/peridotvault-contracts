@@ -23,7 +23,7 @@ pub struct InitializeStore<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(
+pub(crate) fn handler(
     ctx: Context<InitializeStore>,
     treasury: Pubkey,
     platform_fee_bps: u16,

@@ -25,7 +25,7 @@ pub struct AddAuthorizedSourceProgram<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<AddAuthorizedSourceProgram>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<AddAuthorizedSourceProgram>) -> Result<()> {
     let account = &mut ctx.accounts.authorized_source_program;
     account.program_id = ctx.accounts.program_id.key();
     account.active = true;

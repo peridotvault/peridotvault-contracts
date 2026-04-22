@@ -1,7 +1,6 @@
 use anchor_lang::{
     prelude::*,
     solana_program::{
-        hash::hash,
         instruction::{AccountMeta, Instruction},
         program::invoke,
         system_program,
@@ -89,7 +88,9 @@ struct Pgl1CreateGameArgs {
     pub metadata_uri: String,
 }
 
-pub fn handler(
+const PGL1_CREATE_GAME_DISCRIMINATOR: [u8; 8] = [124, 69, 75, 66, 184, 220, 72, 206];
+
+pub(crate) fn handler(
     ctx: Context<CreateGameAndRegister>,
     game_id: String,
     metadata_uri: String,
@@ -209,8 +210,7 @@ fn cpi_create_game_in_pgl1<'info>(
     metadata_uri: String,
 ) -> Result<()> {
     let mut data = Vec::with_capacity(128);
-    let discriminator = &hash(b"global:create_game").to_bytes()[..8];
-    data.extend_from_slice(discriminator);
+    data.extend_from_slice(&PGL1_CREATE_GAME_DISCRIMINATOR);
 
     let args = Pgl1CreateGameArgs {
         game_id,
@@ -221,9 +221,9 @@ fn cpi_create_game_in_pgl1<'info>(
     let accounts = vec![
         AccountMeta::new(*creator.key, true),
         AccountMeta::new_readonly(*pgl_config.key, false),
+        AccountMeta::new(*treasury.key, false),
         AccountMeta::new(*creator_state.key, false),
         AccountMeta::new(*game.key, false),
-        AccountMeta::new(*treasury.key, false),
         AccountMeta::new_readonly(*system_program_ai.key, false),
     ];
 
@@ -238,9 +238,9 @@ fn cpi_create_game_in_pgl1<'info>(
         &[
             creator.clone(),
             pgl_config.clone(),
+            treasury.clone(),
             creator_state.clone(),
             game.clone(),
-            treasury.clone(),
             system_program_ai.clone(),
             pgl1_program.clone(),
         ],

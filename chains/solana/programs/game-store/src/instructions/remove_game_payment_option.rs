@@ -28,7 +28,7 @@ pub struct RemoveGamePaymentOption<'info> {
     pub game_payment_option: Account<'info, GamePaymentOption>,
 }
 
-pub fn handler(ctx: Context<RemoveGamePaymentOption>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<RemoveGamePaymentOption>) -> Result<()> {
     require_keys_eq!(ctx.accounts.game.publisher, ctx.accounts.publisher.key(), StoreError::Unauthorized);
     require_keys_eq!(ctx.accounts.game_payment_option.mint, ctx.accounts.mint.key(), StoreError::PaymentTokenNotAllowed);
     emit!(GamePaymentOptionRemoved {

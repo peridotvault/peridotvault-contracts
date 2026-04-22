@@ -14,7 +14,7 @@ pub struct SetTreasury<'info> {
     pub store_config: Account<'info, StoreConfig>,
 }
 
-pub fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
     ctx.accounts.store_config.treasury = treasury;
 
     emit!(TreasuryUpdated { treasury });

@@ -8,7 +8,7 @@ use crate::{
     },
 };
 
-pub fn handler(ctx: Context<MintLicense>, expires_at: Option<i64>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<MintLicense>, expires_at: Option<i64>) -> Result<()> {
     let authorized_actor = &ctx.accounts.authorized_actor;
     require!(authorized_actor.active, PglError::AuthorizedActorInactive);
 

@@ -6,7 +6,7 @@ use crate::{
     state::{PglConfig, PGL_CONFIG_SEED},
 };
 
-pub fn handler(
+pub(crate) fn handler(
     ctx: Context<InitializePgl>,
     treasury: Pubkey,
     create_game_fee_lamports: u64,

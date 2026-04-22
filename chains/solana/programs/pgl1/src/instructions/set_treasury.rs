@@ -6,7 +6,7 @@ use crate::{
     state::{PglConfig, PGL_CONFIG_SEED},
 };
 
-pub fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
     require!(treasury != Pubkey::default(), PglError::Unauthorized);
 
     let config = &mut ctx.accounts.pgl_config;

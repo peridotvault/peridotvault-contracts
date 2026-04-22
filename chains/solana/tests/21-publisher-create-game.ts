@@ -1,30 +1,27 @@
 import { expect } from "chai";
 import {
-  DEFAULT_GAME_PRICE,
-  STATUS_APPROVED,
-  TEST_GAME_ID,
-  TEST_METADATA_URI,
-  ensureGameCreated,
+  STATUS_ACTIVE,
+  createRegisteredGame,
   setupPeridotFixture,
-  deriveGameFixture,
 } from "./helpers/peridot";
 
-describe("publisher factory flow", () => {
-  it("creates a new game through pgc1 orchestration and registers it as approved", async () => {
+describe("publisher create game", () => {
+  it("creates game in pgl1 and registers it in registry", async () => {
     const base = await setupPeridotFixture();
-    const game = await ensureGameCreated(base);
-    const fixture = deriveGameFixture(base, TEST_GAME_ID);
+    const game = await createRegisteredGame(base);
 
-    const pgcGameState = (await base.pgcProgram.account.gameState.fetch(game.gameStatePda)) as any;
-    const registryGame = await base.registryProgram.account.gameRegistration.fetch(
-      game.gameRegistrationPda,
-    );
-    const priceAccount = await base.storeProgram.account.priceAccount.fetch(fixture.pricePda);
+    const pglGame = (await base.pglProgram.account.game.fetch(game.gamePda)) as any;
+    const registryGame = (await base.registryProgram.account.registryGame.fetch(
+      game.registryGamePda,
+    )) as any;
 
-    expect(pgcGameState.gameId).to.equal(TEST_GAME_ID);
-    expect(pgcGameState.publisher.toBase58()).to.equal(base.publisher.publicKey.toBase58());
-    expect(pgcGameState.metadataUri).to.equal(TEST_METADATA_URI);
-    expect(registryGame.status).to.equal(STATUS_APPROVED); // Auto-approved from PGC1
-    expect(Number(priceAccount.price.toString())).to.equal(DEFAULT_GAME_PRICE);
+    expect(pglGame.gameId).to.eq(game.gameId);
+    expect(pglGame.metadataUri).to.eq(game.metadataUri);
+    expect(pglGame.creator.toBase58()).to.eq(game.publisher.publicKey.toBase58());
+    expect(pglGame.publisher.toBase58()).to.eq(game.publisher.publicKey.toBase58());
+
+    expect(registryGame.game.toBase58()).to.eq(game.gamePda.toBase58());
+    expect(registryGame.gameId).to.eq(game.gameId);
+    expect((registryGame.status as any).active).to.not.eq(undefined);
   });
 });

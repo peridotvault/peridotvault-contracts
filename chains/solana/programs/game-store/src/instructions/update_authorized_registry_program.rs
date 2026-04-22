@@ -19,7 +19,7 @@ pub struct UpdateAuthorizedRegistryProgram<'info> {
     pub authorized_registry_program: Account<'info, AuthorizedRegistryProgram>,
 }
 
-pub fn handler(ctx: Context<UpdateAuthorizedRegistryProgram>, active: bool) -> Result<()> {
+pub(crate) fn handler(ctx: Context<UpdateAuthorizedRegistryProgram>, active: bool) -> Result<()> {
     let account = &mut ctx.accounts.authorized_registry_program;
     account.active = active;
 

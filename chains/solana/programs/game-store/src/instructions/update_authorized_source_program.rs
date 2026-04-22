@@ -19,7 +19,7 @@ pub struct UpdateAuthorizedSourceProgram<'info> {
     pub authorized_source_program: Account<'info, AuthorizedSourceProgram>,
 }
 
-pub fn handler(ctx: Context<UpdateAuthorizedSourceProgram>, active: bool) -> Result<()> {
+pub(crate) fn handler(ctx: Context<UpdateAuthorizedSourceProgram>, active: bool) -> Result<()> {
     let account = &mut ctx.accounts.authorized_source_program;
     account.active = active;
 

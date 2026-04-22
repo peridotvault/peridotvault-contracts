@@ -70,7 +70,7 @@ pub struct BuyGame<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<BuyGame>, paid_amount: u64, _referrer: Option<Pubkey>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<BuyGame>, paid_amount: u64, _referrer: Option<Pubkey>) -> Result<()> {
     require_keys_eq!(ctx.accounts.registry_game.game, ctx.accounts.game.key(), StoreError::RegistryGameMismatch);
     require!(matches!(ctx.accounts.registry_game.status, RegistryGameStatus::Active), StoreError::GameNotActive);
     require!(ctx.accounts.game_store_config.active, StoreError::StoreGameInactive);

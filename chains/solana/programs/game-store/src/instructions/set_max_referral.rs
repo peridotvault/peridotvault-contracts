@@ -14,7 +14,7 @@ pub struct SetMaxReferral<'info> {
     pub store_config: Account<'info, StoreConfig>,
 }
 
-pub fn handler(ctx: Context<SetMaxReferral>, max_referral_bps: u16) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetMaxReferral>, max_referral_bps: u16) -> Result<()> {
     let config = &mut ctx.accounts.store_config;
     require!(max_referral_bps <= MAX_REFERRAL_BPS_HARD_CAP, StoreError::InvalidMaxReferralBps);
     require!(config.default_referral_bps <= max_referral_bps, StoreError::InvalidMaxReferralBps);

@@ -6,7 +6,7 @@ use crate::{
     state::{PglConfig, PGL_CONFIG_SEED},
 };
 
-pub fn handler(ctx: Context<SetCreateGameFee>, create_game_fee_lamports: u64) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetCreateGameFee>, create_game_fee_lamports: u64) -> Result<()> {
     let config = &mut ctx.accounts.pgl_config;
     require_keys_eq!(config.authority, ctx.accounts.authority.key(), PglError::Unauthorized);
 

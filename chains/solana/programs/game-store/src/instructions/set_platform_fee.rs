@@ -14,7 +14,7 @@ pub struct SetPlatformFee<'info> {
     pub store_config: Account<'info, StoreConfig>,
 }
 
-pub fn handler(ctx: Context<SetPlatformFee>, platform_fee_bps: u16) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetPlatformFee>, platform_fee_bps: u16) -> Result<()> {
     require!(platform_fee_bps <= PLATFORM_FEE_BPS_MAX, StoreError::InvalidPlatformFeeBps);
     require!((platform_fee_bps as u32 + ctx.accounts.store_config.max_referral_bps as u32) <= PLATFORM_FEE_BPS_MAX as u32, StoreError::InvalidPlatformFeeBps);
 

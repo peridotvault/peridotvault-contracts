@@ -1,20 +1,28 @@
 import { expect } from "chai";
-import { DEFAULT_PLATFORM_FEE_BPS, setupPeridotFixture } from "./helpers/peridot";
+import { setupPeridotFixture } from "./helpers/peridot";
 
 describe("publisher deploy flow", () => {
-  it("deploys and initializes registry, game-store, and pgc1 state", async () => {
+  it("has initialized configs and core allowlists", async () => {
     const base = await setupPeridotFixture();
 
-    const registryState = (await base.registryProgram.account.registryState.fetch(
-      base.registryStatePda,
+    const pglConfig = (await base.pglProgram.account.pglConfig.fetch(base.pglConfigPda)) as any;
+    const registryConfig = (await base.registryProgram.account.registryConfig.fetch(
+      base.registryConfigPda,
     )) as any;
-    const storeState = (await base.storeProgram.account.storeState.fetch(base.storeStatePda)) as any;
-    const pgcGlobal = (await base.pgcProgram.account.globalState.fetch(base.pgcGlobalStatePda)) as any;
+    const storeConfig = (await base.storeProgram.account.storeConfig.fetch(base.storeConfigPda)) as any;
 
-    expect(registryState.governance.toBase58()).to.equal(base.governance.publicKey.toBase58());
-    expect(storeState.registry.toBase58()).to.equal(base.registryStatePda.toBase58());
-    expect(storeState.platformFeeBps).to.equal(DEFAULT_PLATFORM_FEE_BPS);
-    expect(pgcGlobal.registry.toBase58()).to.equal(base.registryProgram.programId.toBase58());
-    expect(pgcGlobal.gameStore.toBase58()).to.equal(base.storeProgram.programId.toBase58());
+    expect(pglConfig.authority.toBase58()).to.eq(base.authority.publicKey.toBase58());
+    expect(registryConfig.authority.toBase58()).to.eq(base.authority.publicKey.toBase58());
+    expect(storeConfig.authority.toBase58()).to.eq(base.authority.publicKey.toBase58());
+
+    const registryToken = (await base.registryProgram.account.acceptedPaymentToken.fetch(
+      base.registryAcceptedPaymentTokenPda,
+    )) as any;
+    const storeToken = (await base.storeProgram.account.acceptedPaymentToken.fetch(
+      base.storeAcceptedPaymentTokenPda,
+    )) as any;
+
+    expect(registryToken.active).to.eq(true);
+    expect(storeToken.active).to.eq(true);
   });
 });

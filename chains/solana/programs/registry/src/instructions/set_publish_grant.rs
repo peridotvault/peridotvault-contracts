@@ -33,7 +33,7 @@ pub struct SetPublishGrant<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<SetPublishGrant>, expired_at: Option<i64>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetPublishGrant>, expired_at: Option<i64>) -> Result<()> {
     if let Some(ts) = expired_at {
         require!(ts > 0, RegistryError::InvalidExpiry);
     }

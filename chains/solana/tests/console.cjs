@@ -1,383 +1,1173 @@
 const anchor = require("@coral-xyz/anchor");
-const { Keypair, PublicKey, SystemProgram } = require("@solana/web3.js");
+const { Program } = require("@coral-xyz/anchor");
+const { Keypair, PublicKey, SystemProgram, Transaction } = require("@solana/web3.js");
+const {
+  createMint,
+  getOrCreateAssociatedTokenAccount,
+  TOKEN_PROGRAM_ID,
+} = require("@solana/spl-token");
+const readline = require("readline/promises");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const readline = require("readline/promises");
-const { stdin: input, stdout: output } = require("process");
 
-const pgc1Idl = require("../target/idl/pgc1.json");
+const pglIdl = require("../target/idl/pgl1.json");
 const registryIdl = require("../target/idl/registry.json");
-const storeIdl = require("../target/idl/game_store.json");
+const storeIdl = require("../target/idl/peridotvault_store.json");
 
-const CONFIG_SEED = Buffer.from("config");
-const GAME_SEED = Buffer.from("game");
-const LICENSE_SEED = Buffer.from("license");
-const MINTER_SEED = Buffer.from("minter");
-const PRICE_SEED = Buffer.from("price");
-const BALANCE_SEED = Buffer.from("balance");
+const CONSOLE_STATE_PATH = path.join(__dirname, "../.console-state.json");
+const INPUT_EOF = "__EOF__";
 
-function shortAddress(pubkey) {
-  const value = pubkey.toBase58();
-  return `${value.slice(0, 6)}...${value.slice(-6)}`;
+function derivePda(seeds, programId) {
+  return PublicKey.findProgramAddressSync(seeds, programId)[0];
 }
 
-async function loadProvider() {
-  const fallbacks = [
-    process.env.ANCHOR_PROVIDER_URL,
-    "https://api.devnet.solana.com",
-    "https://devnet.solana.com",
-    "https://solana-devnet.drpc.org",
-    "http://127.0.0.1:8899"
-  ].filter(Boolean);
+function u64LeBuffer(value) {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64LE(value);
+  return buffer;
+}
 
-  let connection;
-  let wallet;
-  const walletPath = process.env.ANCHOR_WALLET || path.join(os.homedir(), ".config/solana/id.json");
-  
-  try {
-    const secret = JSON.parse(fs.readFileSync(walletPath, "utf8"));
-    wallet = new anchor.Wallet(Keypair.fromSecretKey(Uint8Array.from(secret)));
-  } catch (e) {
-    console.error(`[ERROR] Could not load wallet from ${walletPath}: ${e.message}`);
-    process.exit(1);
+function pubkeyShort(key) {
+  const b58 = key.toBase58();
+  return `${b58.slice(0, 6)}...${b58.slice(-6)}`;
+}
+
+function lamportsToSol(lamports) {
+  return (lamports / anchor.web3.LAMPORTS_PER_SOL).toFixed(4);
+}
+
+function statusLabel(status) {
+  if (!status || typeof status !== "object") {
+    return "unknown";
+  }
+  return Object.keys(status)[0] || "unknown";
+}
+
+function readStateFile() {
+  if (!fs.existsSync(CONSOLE_STATE_PATH)) {
+    return { profiles: {} };
   }
 
-  for (const url of fallbacks) {
-    console.log(`[INFO] Probing RPC: ${url}...`);
+  try {
+    return JSON.parse(fs.readFileSync(CONSOLE_STATE_PATH, "utf-8"));
+  } catch {
+    return { profiles: {} };
+  }
+}
+
+function writeStateFile(data) {
+  fs.writeFileSync(CONSOLE_STATE_PATH, JSON.stringify(data, null, 2));
+}
+
+function keypairFromArray(secretArray) {
+  return Keypair.fromSecretKey(Uint8Array.from(secretArray));
+}
+
+function keypairToArray(keypair) {
+  return Array.from(keypair.secretKey);
+}
+
+function ensureProfile(state, name) {
+  if (!state.profiles[name]) {
+    const kp = Keypair.generate();
+    state.profiles[name] = {
+      publicKey: kp.publicKey.toBase58(),
+      secretKey: keypairToArray(kp),
+    };
+  }
+
+  const profile = state.profiles[name];
+  return {
+    name,
+    keypair: keypairFromArray(profile.secretKey),
+  };
+}
+
+function normalizeString(value) {
+  return String(value ?? "").trim();
+}
+
+async function accountExists(connection, address) {
+  return (await connection.getAccountInfo(address)) !== null;
+}
+
+async function fundIfNeeded(provider, recipient, minLamports = 1_000_000_000) {
+  const balance = await provider.connection.getBalance(recipient);
+  if (balance >= minLamports) {
+    return;
+  }
+
+  const tx = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: provider.publicKey,
+      toPubkey: recipient,
+      lamports: minLamports - balance,
+    }),
+  );
+  await provider.sendAndConfirm(tx);
+}
+
+function profileKeypairByPubkey(ctx, pubkey) {
+  const target = pubkey.toBase58();
+  for (const profile of Object.values(ctx.profiles)) {
+    if (profile.keypair.publicKey.toBase58() === target) {
+      return profile.keypair;
+    }
+  }
+  return null;
+}
+
+async function ask(rl, label, defaultValue = "") {
+  const suffix = defaultValue ? ` [default: ${defaultValue}]` : "";
+  let raw;
+  try {
+    raw = await rl.question(`${label}${suffix}: `);
+  } catch (error) {
+    const code = error && error.code ? String(error.code) : "";
+    if (code === "ERR_USE_AFTER_CLOSE") {
+      return INPUT_EOF;
+    }
+    throw error;
+  }
+
+  const value = normalizeString(raw);
+  if (!value) {
+    return defaultValue;
+  }
+  return value;
+}
+
+async function askNumber(rl, label, defaultValue) {
+  while (true) {
+    const value = await ask(rl, label, String(defaultValue));
+    if (value === INPUT_EOF) {
+      return null;
+    }
+
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+
+    console.log("Input angka tidak valid.");
+  }
+}
+
+async function askPublicKey(rl, label, defaultValue = "") {
+  while (true) {
+    const value = await ask(rl, label, defaultValue);
+    if (value === INPUT_EOF) {
+      return null;
+    }
+
     try {
-      connection = new anchor.web3.Connection(url, { commitment: "confirmed", confirmTransactionInitialTimeout: 3000 });
-      // Quick health check
-      await Promise.race([
-        connection.getSlot(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000))
-      ]);
-      console.log(`[INFO] Connected to: ${url}`);
-      return new anchor.AnchorProvider(connection, wallet, { commitment: "confirmed" });
-    } catch (e) {
-      console.warn(`[WARN] RPC ${url} failed: ${e.message}`);
+      return new PublicKey(value);
+    } catch {
+      console.log("Alamat pubkey tidak valid.");
     }
   }
-
-  console.error("[FATAL] No working RPC found. Check your Internet connection.");
-  process.exit(1);
 }
 
-function derivePda(seeds, programId) { return PublicKey.findProgramAddressSync(seeds, programId)[0]; }
+async function pickByNumber(rl, title, items, renderItem) {
+  if (items.length === 0) {
+    return null;
+  }
 
-function deriveProgramAccounts(ctx, gameId) {
-  const pgcGamePda = derivePda([GAME_SEED, Buffer.from(gameId)], ctx.pgc1Program.programId);
-  const registryGamePda = derivePda([GAME_SEED, Buffer.from(gameId)], ctx.registryProgram.programId);
-  const registryConfigPda = derivePda([CONFIG_SEED], ctx.registryProgram.programId);
-  const storeConfigPda = derivePda([CONFIG_SEED], ctx.storeProgram.programId);
-  const pricePda = derivePda([PRICE_SEED, pgcGamePda.toBuffer()], ctx.storeProgram.programId);
-  const pgcMinterAccount = derivePda([MINTER_SEED, pgcGamePda.toBuffer(), storeConfigPda.toBuffer()], ctx.pgc1Program.programId);
-  return { pgcGamePda, registryGamePda, registryConfigPda, storeConfigPda, pricePda, pgcMinterAccount };
-}
+  console.log(`\n${title}`);
+  items.forEach((item, idx) => {
+    console.log(`${idx + 1}. ${renderItem(item, idx)}`);
+  });
 
-async function getCatalog(ctx) {
-  try {
-    const registryId = ctx.registryProgram.programId;
-    const discriminator = Buffer.from([17, 140, 126, 39, 63, 84, 119, 73]); // RegistryGameAccount
-    
-    console.log(`[DEBUG] Fetching accounts for ${registryId.toBase58()}...`);
-    // Pass explicit commitment to overcome any RPC defaults
-    const accs = await ctx.provider.connection.getProgramAccounts(registryId, { commitment: "confirmed" });
-    console.log(`[DEBUG] Found ${accs.length} raw accounts.`);
-    
-    const catalog = [];
-    for (const a of accs) {
-      if (!a.account.data.slice(0, 8).equals(discriminator)) continue;
-
-      try {
-        let game = null;
-        for (const name of ["RegistryGameAccount", "registryGameAccount"]) {
-          try { game = ctx.registryProgram.coder.accounts.decode(name, a.account.data); if (game) break; } catch (e) {}
-        }
-        if (!game) continue;
-
-        const gameId = game.gameId || game.game_id;
-        const accounts = deriveProgramAccounts(ctx, gameId);
-        let price = null;
-        let currency = SystemProgram.programId;
-        let metadata = "N/A";
-        try { 
-          const priceAcc = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
-          price = priceAcc.price;
-          currency = priceAcc.currency;
-        } catch (e) {}
-        try {
-          const pgcAcc = await ctx.pgc1Program.account.pgcGameAccount.fetch(accounts.pgcGamePda);
-          metadata = pgcAcc.metadataUri || pgcAcc.metadata_uri;
-        } catch (e) {}
-        catalog.push({ gameId, pda: accounts.pgcGamePda, publisher: game.publisher, price, currency, metadata });
-      } catch (e) { console.error(`Decoding error for ${a.pubkey}: ${e.message}`); }
+  while (true) {
+    const answer = await ask(rl, "Pilih nomor", "1");
+    if (answer === INPUT_EOF) {
+      return null;
     }
-    return catalog;
-  } catch (e) { console.error("[ERROR] getCatalog:", e.message); return []; }
-}
 
-async function getMyLicenses(ctx) {
-  try {
-    const pgcId = ctx.pgc1Program.programId;
-    const discriminator = Buffer.from([120, 20, 28, 217, 130, 168, 223, 118]); // LicenseAccount
-    console.log("[DEBUG] Checking Licenses...");
-    const accs = await ctx.provider.connection.getProgramAccounts(pgcId, {
-      filters: [
-        { memcmp: { offset: 0, bytes: anchor.utils.bytes.bs58.encode(discriminator) } },
-        { memcmp: { offset: 8, bytes: ctx.user.publicKey.toBase58() } }
-      ],
-      commitment: "confirmed"
-    });
-    
-    const licenses = [];
-    for (const a of accs) {
-      try {
-        let lic;
-        for (const n of ["LicenseAccount", "licenseAccount"]) {
-          try { lic = ctx.pgc1Program.coder.accounts.decode(n, a.account.data); if(lic) break; } catch(e){}
-        }
-        if (lic) licenses.push(lic);
-      } catch (e) {}
+    const n = Number(answer);
+    if (Number.isInteger(n) && n >= 1 && n <= items.length) {
+      return items[n - 1];
     }
-    return licenses;
-  } catch (e) { return []; }
+    console.log("Nomor pilihan tidak valid.");
+  }
 }
 
-const { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } = require("@solana/spl-token");
+async function buildContext() {
+  process.env.ANCHOR_PROVIDER_URL ||= "http://127.0.0.1:8899";
+  process.env.ANCHOR_WALLET ||= path.join(os.homedir(), ".config/solana/id.json");
+
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+
+  const pglProgram = new Program(pglIdl, provider);
+  const registryProgram = new Program(registryIdl, provider);
+  const storeProgram = new Program(storeIdl, provider);
+
+  const pglConfigPda = derivePda([Buffer.from("pgl_config")], pglProgram.programId);
+  const registryConfigPda = derivePda([Buffer.from("registry_config")], registryProgram.programId);
+  const storeConfigPda = derivePda([Buffer.from("store_config")], storeProgram.programId);
+
+  const state = readStateFile();
+  const profiles = {
+    publisher: ensureProfile(state, "publisher"),
+    gamer: ensureProfile(state, "gamer"),
+  };
+  writeStateFile(state);
+
+  return {
+    provider,
+    pglProgram,
+    registryProgram,
+    storeProgram,
+    pglConfigPda,
+    registryConfigPda,
+    storeConfigPda,
+    profiles,
+  };
+}
+
+async function ensureRpcReady(ctx) {
+  try {
+    await ctx.provider.connection.getLatestBlockhash();
+  } catch (error) {
+    throw new Error(
+      `RPC tidak bisa diakses (${process.env.ANCHOR_PROVIDER_URL}). Jalankan 'pnpm anchor:localnet' di terminal lain.`,
+    );
+  }
+}
+
+async function showHeader(ctx) {
+  const [opBal, pubBal, gamerBal] = await Promise.all([
+    ctx.provider.connection.getBalance(ctx.provider.publicKey),
+    ctx.provider.connection.getBalance(ctx.profiles.publisher.keypair.publicKey),
+    ctx.provider.connection.getBalance(ctx.profiles.gamer.keypair.publicKey),
+  ]);
+
+  console.log("\nPeridotVault Console App");
+  console.log("- RPC URL:", process.env.ANCHOR_PROVIDER_URL);
+  console.log(
+    `- Operator: ${ctx.provider.publicKey.toBase58()} | SOL ${lamportsToSol(opBal)}`,
+  );
+  console.log(
+    `- Publisher Profile: ${ctx.profiles.publisher.keypair.publicKey.toBase58()} | SOL ${lamportsToSol(pubBal)}`,
+  );
+  console.log(
+    `- Gamer Profile: ${ctx.profiles.gamer.keypair.publicKey.toBase58()} | SOL ${lamportsToSol(gamerBal)}`,
+  );
+  console.log("- PGL1 Program:", ctx.pglProgram.programId.toBase58());
+  console.log("- Registry Program:", ctx.registryProgram.programId.toBase58());
+  console.log("- Store Program:", ctx.storeProgram.programId.toBase58());
+}
+
+async function dashboard(ctx) {
+  await showHeader(ctx);
+
+  const pglConfig = await ctx.provider.connection.getAccountInfo(ctx.pglConfigPda);
+  const registryConfig = await ctx.provider.connection.getAccountInfo(ctx.registryConfigPda);
+  const storeConfig = await ctx.provider.connection.getAccountInfo(ctx.storeConfigPda);
+
+  const games = registryConfig ? await ctx.registryProgram.account.registryGame.all() : [];
+  const receipts = await ctx.storeProgram.account.purchaseReceipt.all();
+  const licenses = await ctx.pglProgram.account.license.all();
+
+  console.log("\n== Dashboard ==");
+  console.log("pgl_config:", pglConfig ? "EXISTS" : "MISSING", ctx.pglConfigPda.toBase58());
+  console.log(
+    "registry_config:",
+    registryConfig ? "EXISTS" : "MISSING",
+    ctx.registryConfigPda.toBase58(),
+  );
+  console.log(
+    "store_config:",
+    storeConfig ? "EXISTS" : "MISSING",
+    ctx.storeConfigPda.toBase58(),
+  );
+  console.log("registry games:", games.length);
+  console.log("purchase receipts:", receipts.length);
+  console.log("licenses:", licenses.length);
+}
+
+async function getRegistryGameRows(ctx) {
+  const entries = await ctx.registryProgram.account.registryGame.all();
+
+  return Promise.all(
+    entries.map(async (entry) => {
+      let publisher = null;
+      try {
+        const sourceGame = await ctx.pglProgram.account.game.fetch(entry.account.game);
+        publisher = sourceGame.publisher;
+      } catch {
+        publisher = null;
+      }
+
+      return {
+        entry,
+        status: statusLabel(entry.account.status),
+        publisher,
+      };
+    }),
+  );
+}
+
+async function listRegistryGamesFlow(ctx) {
+  const rows = await getRegistryGameRows(ctx);
+  console.log("\n== Registry: All Games ==");
+
+  if (rows.length === 0) {
+    console.log("Belum ada game di registry.");
+    return;
+  }
+
+  rows.forEach((row, idx) => {
+    const publisherLabel = row.publisher ? row.publisher.toBase58() : "(unknown)";
+    console.log(
+      `${idx + 1}. game_id=${row.entry.account.gameId} | status=${row.status} | game=${row.entry.account.game.toBase58()} | publisher=${publisherLabel}`,
+    );
+  });
+}
+
+async function pickRegistryGame(ctx, rl) {
+  const rows = await getRegistryGameRows(ctx);
+  if (rows.length === 0) {
+    console.log("Belum ada game di registry.");
+    return null;
+  }
+
+  const selected = await pickByNumber(
+    rl,
+    "Pilih game di registry",
+    rows,
+    (row) => {
+      const publisher = row.publisher ? pubkeyShort(row.publisher) : "unknown";
+      return `${row.entry.account.gameId} | status=${row.status} | game=${pubkeyShort(row.entry.account.game)} | pub=${publisher}`;
+    },
+  );
+
+  return selected;
+}
+
+async function listRegistryPaymentTokensFlow(ctx) {
+  const tokens = await ctx.registryProgram.account.acceptedPaymentToken.all();
+  console.log("\n== Registry: Payment Tokens ==");
+
+  if (tokens.length === 0) {
+    console.log("Belum ada payment token di registry.");
+    return;
+  }
+
+  tokens.forEach((token, idx) => {
+    console.log(
+      `${idx + 1}. mint=${token.account.mint.toBase58()} | active=${token.account.active} | fee=${token.account.feeAmount.toString()}`,
+    );
+  });
+}
+
+async function listStorePaymentTokensFlow(ctx) {
+  const tokens = await ctx.storeProgram.account.acceptedPaymentToken.all();
+  console.log("\n== Store: Payment Tokens ==");
+
+  if (tokens.length === 0) {
+    console.log("Belum ada payment token di store.");
+    return;
+  }
+
+  tokens.forEach((token, idx) => {
+    console.log(
+      `${idx + 1}. mint=${token.account.mint.toBase58()} | active=${token.account.active}`,
+    );
+  });
+}
+
+async function chooseRegistryAcceptedMint(ctx, rl) {
+  const tokens = await ctx.registryProgram.account.acceptedPaymentToken.all();
+  const active = tokens.filter((t) => t.account.active);
+
+  if (active.length === 0) {
+    throw new Error("Tidak ada accepted payment token aktif di registry.");
+  }
+
+  const picked = await pickByNumber(
+    rl,
+    "Pilih payment mint (registry accepted token)",
+    active,
+    (item) => {
+      const fee = Number(item.account.feeAmount.toString());
+      return `${item.account.mint.toBase58()} (fee=${fee})`;
+    },
+  );
+
+  return picked ? picked.account.mint : null;
+}
+
+async function ensurePublishGrant(ctx, publisherPk) {
+  const publishGrantPda = derivePda(
+    [Buffer.from("publish_grant"), publisherPk.toBuffer()],
+    ctx.registryProgram.programId,
+  );
+
+  await ctx.registryProgram.methods
+    .setPublishGrant(null)
+    .accounts({
+      authority: ctx.provider.publicKey,
+      config: ctx.registryConfigPda,
+      publisher: publisherPk,
+      publishGrant: publishGrantPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  return publishGrantPda;
+}
 
 async function createGameFlow(ctx, rl) {
-  const gameId = (await rl.question("enter game id: ")).trim();
-  if (!gameId) return;
-  const priceInUnits = (await rl.question("enter price (default 0.1): ")).trim() || "0.1";
-  const units = new anchor.BN(parseFloat(priceInUnits) * 1e9); // Simplification: assumes 9 decimals
-  const currencyStr = (await rl.question("enter currency mint (default SOL): ")).trim();
-  const currency = currencyStr ? new PublicKey(currencyStr) : SystemProgram.programId;
+  console.log("\n== Registry: Create Game + Register ==");
 
-  const accounts = deriveProgramAccounts(ctx, gameId);
-  try {
-    const regConfig = await ctx.registryProgram.account.registryConfig.fetch(accounts.registryConfigPda);
-    const tx = await ctx.pgc1Program.methods.createGame(gameId, `https://meta.peridot/${gameId}`, accounts.storeConfigPda, units, currency)
-      .accounts({
-        publisher: ctx.user.publicKey, gameAccount: accounts.pgcGamePda, initialMinterAccount: accounts.pgcMinterAccount,
-        registryProgram: ctx.registryProgram.programId, storeProgram: ctx.storeProgram.programId,
-        registryConfig: accounts.registryConfigPda, registryTreasury: regConfig.treasury, registryGame: accounts.registryGamePda,
-        priceAccount: accounts.pricePda, systemProgram: SystemProgram.programId,
-      }).rpc();
-    console.log(`🚀 Game Created! TX: ${tx}`);
-  } catch (e) {
-    if (e.message.includes("AlreadyExists") || e.message.includes("0x0")) console.error(`❌ Error: "${gameId}" already exists.`);
-    else console.error("❌ Failed:", e.message);
+  const gameId = await ask(rl, "Game ID", `game-${Date.now()}`);
+  if (gameId === INPUT_EOF) {
+    return;
   }
-}
-async function withdrawFlow(ctx, rl) {
-  try {
-    console.log(`\n--- [ WITHDRAWAL ] ---`);
-    const storeId = ctx.storeProgram.programId;
-    const discriminator = Buffer.from([139, 219, 100, 169, 137, 246, 115, 68]); // PublisherBalanceAccount
-    
-    // Find all balance accounts for this publisher
-    const accs = await ctx.provider.connection.getProgramAccounts(storeId, {
-      filters: [
-        { memcmp: { offset: 0, bytes: anchor.utils.bytes.bs58.encode(discriminator) } },
-        { memcmp: { offset: 9, bytes: ctx.user.publicKey.toBase58() } } // offset 9 because bump (1) + publisher (32)
-      ],
-      commitment: "confirmed"
-    });
 
-    if (accs.length === 0) {
-      console.log("No balances found.");
-      return;
-    }
+  const metadataUri = await ask(rl, "Metadata URI", `https://meta.peridot/${gameId}.json`);
+  if (metadataUri === INPUT_EOF) {
+    return;
+  }
 
-    const balances = [];
-    for (const a of accs) {
-      const decoded = ctx.storeProgram.coder.accounts.decode("PublisherBalanceAccount", a.account.data);
-      balances.push({ pubkey: a.pubkey, ...decoded });
-    }
+  const publisher = ctx.profiles.publisher.keypair;
+  await fundIfNeeded(ctx.provider, publisher.publicKey);
 
-    console.log("Available Balances:");
-    balances.forEach((b, i) => {
-      const symbol = b.token.equals(SystemProgram.programId) ? "SOL" : shortAddress(b.token);
-      console.log(`${i + 1}. ${symbol}: ${(b.amount.toNumber() / 1e9).toFixed(4)}`);
-    });
+  const paymentMint = await chooseRegistryAcceptedMint(ctx, rl);
+  if (!paymentMint) {
+    return;
+  }
 
-    const choiceIdx = parseInt(await rl.question("Select balance to withdraw (or 0 to cancel): ")) - 1;
-    if (isNaN(choiceIdx) || choiceIdx < 0 || choiceIdx >= balances.length) return;
-    
-    const selected = balances[choiceIdx];
-    const isSol = selected.token.equals(SystemProgram.programId);
-    
-    const extraAccounts = {
-        tokenProgram: TOKEN_PROGRAM_ID,
-        vaultTokenAccount: selected.pubkey,
-        publisherTokenAccount: ctx.user.publicKey,
-    };
+  const creatorStatePda = derivePda(
+    [Buffer.from("creator_state"), publisher.publicKey.toBuffer()],
+    ctx.pglProgram.programId,
+  );
 
-    if (!isSol) {
-        extraAccounts.tokenProgram = TOKEN_PROGRAM_ID;
-        extraAccounts.vaultTokenAccount = getAssociatedTokenAddressSync(selected.token, selected.pubkey, true);
-        extraAccounts.publisherTokenAccount = getAssociatedTokenAddressSync(selected.token, ctx.user.publicKey);
-    } else {
-        extraAccounts.tokenProgram = SystemProgram.programId;
-    }
+  let nextNonce = 0n;
+  if (await accountExists(ctx.provider.connection, creatorStatePda)) {
+    const creatorState = await ctx.pglProgram.account.creatorState.fetch(creatorStatePda);
+    nextNonce = BigInt(creatorState.nextNonce.toString());
+  }
 
-    const tx = await ctx.storeProgram.methods.withdraw().accounts({
-      authority: ctx.user.publicKey,
-      config: ctx.storeConfigPda,
-      publisherBalance: selected.pubkey,
-      ...extraAccounts,
+  const gamePda = derivePda(
+    [Buffer.from("game"), publisher.publicKey.toBuffer(), u64LeBuffer(nextNonce)],
+    ctx.pglProgram.programId,
+  );
+
+  const registryGamePda = derivePda(
+    [Buffer.from("registry_game"), gamePda.toBuffer()],
+    ctx.registryProgram.programId,
+  );
+
+  const publishGrantPda = await ensurePublishGrant(ctx, publisher.publicKey);
+
+  const registryConfig = await ctx.registryProgram.account.registryConfig.fetch(
+    ctx.registryConfigPda,
+  );
+  const pglConfig = await ctx.pglProgram.account.pglConfig.fetch(ctx.pglConfigPda);
+
+  const publisherPaymentAta = await getOrCreateAssociatedTokenAccount(
+    ctx.provider.connection,
+    ctx.provider.wallet.payer,
+    paymentMint,
+    publisher.publicKey,
+  );
+
+  const treasuryPaymentAta = await getOrCreateAssociatedTokenAccount(
+    ctx.provider.connection,
+    ctx.provider.wallet.payer,
+    paymentMint,
+    registryConfig.treasury,
+  );
+
+  await ctx.registryProgram.methods
+    .createGameAndRegister(gameId, metadataUri)
+    .accounts({
+      publisher: publisher.publicKey,
+      config: ctx.registryConfigPda,
+      paymentMint,
+      acceptedPaymentToken: derivePda(
+        [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
+        ctx.registryProgram.programId,
+      ),
+      publisherPaymentAccount: publisherPaymentAta.address,
+      treasuryPaymentAccount: treasuryPaymentAta.address,
+      registryGame: registryGamePda,
+      game: gamePda,
+      pglCreatorState: creatorStatePda,
+      pglConfig: ctx.pglConfigPda,
+      pglTreasury: pglConfig.treasury,
+      pgl1Program: ctx.pglProgram.programId,
+      tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
-    }).rpc();
+    })
+    .remainingAccounts([
+      {
+        pubkey: publishGrantPda,
+        isWritable: false,
+        isSigner: false,
+      },
+    ])
+    .signers([publisher])
+    .rpc();
 
-    console.log(`✅ Withdrawal successful! TX: ${tx}`);
-  } catch (e) {
-    console.error("❌ Withdrawal failed:", e.message);
+  console.log("Game berhasil dibuat dan diregister.");
+  console.log("- game:", gamePda.toBase58());
+  console.log("- registry_game:", registryGamePda.toBase58());
+  console.log("- status registry default: active (otomatis saat create_game_and_register)");
+}
+
+async function promptMintAddressOrCreate(ctx, rl) {
+  const mode = await ask(
+    rl,
+    "Masukkan mint address (kosongkan untuk auto-create mint baru)",
+    "",
+  );
+
+  if (mode === INPUT_EOF) {
+    return null;
   }
+
+  if (mode) {
+    try {
+      const mint = new PublicKey(mode);
+      const info = await ctx.provider.connection.getAccountInfo(mint);
+      if (!info) {
+        console.log("Mint belum ada on-chain.");
+        return null;
+      }
+      return mint;
+    } catch {
+      console.log("Mint address tidak valid.");
+      return null;
+    }
+  }
+
+  const decimals = await askNumber(rl, "Decimals mint baru", 6);
+  if (decimals === null) {
+    return null;
+  }
+
+  const mint = await createMint(
+    ctx.provider.connection,
+    ctx.provider.wallet.payer,
+    ctx.provider.publicKey,
+    null,
+    decimals,
+  );
+
+  console.log("Mint baru berhasil dibuat:", mint.toBase58());
+  return mint;
+}
+
+async function addOrUpdateRegistryPaymentTokenFlow(ctx, rl) {
+  console.log("\n== Registry: Add / Update Payment Token ==");
+
+  const mint = await promptMintAddressOrCreate(ctx, rl);
+  if (!mint) {
+    return;
+  }
+
+  const feeAmount = await askNumber(rl, "Fee amount (u64)", 1_000);
+  if (feeAmount === null) {
+    return;
+  }
+
+  const acceptedPaymentToken = derivePda(
+    [Buffer.from("accepted_payment_token"), mint.toBuffer()],
+    ctx.registryProgram.programId,
+  );
+
+  if (await accountExists(ctx.provider.connection, acceptedPaymentToken)) {
+    await ctx.registryProgram.methods
+      .updatePaymentToken(true, new anchor.BN(feeAmount))
+      .accounts({
+        authority: ctx.provider.publicKey,
+        config: ctx.registryConfigPda,
+        mint,
+        acceptedPaymentToken,
+      })
+      .rpc();
+    console.log("Registry payment token berhasil di-update.");
+  } else {
+    await ctx.registryProgram.methods
+      .addPaymentToken(new anchor.BN(feeAmount))
+      .accounts({
+        authority: ctx.provider.publicKey,
+        config: ctx.registryConfigPda,
+        mint,
+        acceptedPaymentToken,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("Registry payment token berhasil ditambahkan.");
+  }
+
+  console.log("- mint:", mint.toBase58());
+  console.log("- accepted_payment_token:", acceptedPaymentToken.toBase58());
+}
+
+async function setRegistryGameStatusFlow(ctx, rl) {
+  console.log("\n== Registry: Set Game Status (Admin) ==");
+
+  const selected = await pickRegistryGame(ctx, rl);
+  if (!selected) {
+    return;
+  }
+
+  const statuses = [
+    { label: "Active", code: 0 },
+    { label: "Suspended", code: 1 },
+    { label: "Banned", code: 2 },
+  ];
+
+  const target = await pickByNumber(
+    rl,
+    `Pilih status target (current=${selected.status})`,
+    statuses,
+    (item) => `${item.label} (${item.code})`,
+  );
+
+  if (!target) {
+    return;
+  }
+
+  await ctx.registryProgram.methods
+    .updateGameStatus(target.code)
+    .accounts({
+      authority: ctx.provider.publicKey,
+      config: ctx.registryConfigPda,
+      registryGame: selected.entry.publicKey,
+    })
+    .rpc();
+
+  console.log("Status game registry berhasil di-update.");
+  console.log("- game_id:", selected.entry.account.gameId);
+  console.log("- status baru:", target.label.toLowerCase());
+}
+
+async function addOrUpdateStorePaymentTokenFlow(ctx, rl) {
+  console.log("\n== Store: Add / Update Payment Token ==");
+
+  const mint = await promptMintAddressOrCreate(ctx, rl);
+  if (!mint) {
+    return;
+  }
+
+  const acceptedPaymentToken = derivePda(
+    [Buffer.from("accepted_payment_token"), mint.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+
+  if (await accountExists(ctx.provider.connection, acceptedPaymentToken)) {
+    await ctx.storeProgram.methods
+      .updatePaymentToken(true)
+      .accounts({
+        authority: ctx.provider.publicKey,
+        storeConfig: ctx.storeConfigPda,
+        acceptedPaymentToken,
+      })
+      .rpc();
+    console.log("Store payment token berhasil diaktifkan/update.");
+  } else {
+    await ctx.storeProgram.methods
+      .addPaymentToken()
+      .accounts({
+        authority: ctx.provider.publicKey,
+        storeConfig: ctx.storeConfigPda,
+        mint,
+        acceptedPaymentToken,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("Store payment token berhasil ditambahkan.");
+  }
+
+  console.log("- mint:", mint.toBase58());
+  console.log("- accepted_payment_token:", acceptedPaymentToken.toBase58());
+}
+
+async function configureStoreFlow(ctx, rl) {
+  console.log("\n== Store: Configure Listing ==");
+
+  const selected = await pickRegistryGame(ctx, rl);
+  if (!selected) {
+    return;
+  }
+
+  const gamePk = selected.entry.account.game;
+  const game = await ctx.pglProgram.account.game.fetch(gamePk);
+
+  const publisherSigner = profileKeypairByPubkey(ctx, game.publisher);
+  if (!publisherSigner) {
+    console.log("Publisher game ini tidak ada di profile lokal console.");
+    console.log("Publisher on-chain:", game.publisher.toBase58());
+    return;
+  }
+
+  await fundIfNeeded(ctx.provider, publisherSigner.publicKey);
+
+  const storeTokens = await ctx.storeProgram.account.acceptedPaymentToken.all();
+  const activeStoreTokens = storeTokens.filter((t) => t.account.active);
+  if (activeStoreTokens.length === 0) {
+    console.log("Tidak ada accepted payment token aktif di store.");
+    return;
+  }
+
+  const token = await pickByNumber(
+    rl,
+    "Pilih payment mint (store accepted token)",
+    activeStoreTokens,
+    (item) => item.account.mint.toBase58(),
+  );
+  if (!token) {
+    return;
+  }
+
+  const basePrice = await askNumber(rl, "Base price", 20_000_000);
+  if (basePrice === null) {
+    return;
+  }
+
+  const authorizedSourceProgram = derivePda(
+    [Buffer.from("authorized_source_program"), ctx.pglProgram.programId.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+  const authorizedRegistryProgram = derivePda(
+    [Buffer.from("authorized_registry_program"), ctx.registryProgram.programId.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+  const gameStoreConfig = derivePda(
+    [Buffer.from("game_store_config"), gamePk.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+  const gamePaymentOption = derivePda(
+    [Buffer.from("game_payment_option"), gamePk.toBuffer(), token.account.mint.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+
+  if (!(await accountExists(ctx.provider.connection, gameStoreConfig))) {
+    await ctx.storeProgram.methods
+      .initGameStoreConfig(true)
+      .accounts({
+        publisher: publisherSigner.publicKey,
+        authorizedSourceProgram,
+        sourceProgram: ctx.pglProgram.programId,
+        authorizedRegistryProgram,
+        registryProgram: ctx.registryProgram.programId,
+        game: gamePk,
+        registryGame: selected.entry.publicKey,
+        gameStoreConfig,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([publisherSigner])
+      .rpc();
+  }
+
+  await ctx.storeProgram.methods
+    .setGamePaymentOption(new anchor.BN(basePrice), true)
+    .accounts({
+      publisher: publisherSigner.publicKey,
+      authorizedSourceProgram,
+      sourceProgram: ctx.pglProgram.programId,
+      authorizedRegistryProgram,
+      registryProgram: ctx.registryProgram.programId,
+      game: gamePk,
+      registryGame: selected.entry.publicKey,
+      gameStoreConfig,
+      mint: token.account.mint,
+      acceptedPaymentToken: token.publicKey,
+      gamePaymentOption,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([publisherSigner])
+    .rpc();
+
+  console.log("Listing store berhasil di-set.");
+  console.log("- game_store_config:", gameStoreConfig.toBase58());
+  console.log("- game_payment_option:", gamePaymentOption.toBase58());
+}
+
+async function getStoreGamePaymentOptions(ctx) {
+  return ctx.storeProgram.account.gamePaymentOption.all();
+}
+
+async function listStorePaymentOptionsFlow(ctx) {
+  const options = await getStoreGamePaymentOptions(ctx);
+  console.log("\n== Store: Game Payment Options ==");
+
+  if (options.length === 0) {
+    console.log("Belum ada game payment option.");
+    return;
+  }
+
+  options.forEach((item, idx) => {
+    console.log(
+      `${idx + 1}. game=${item.account.game.toBase58()} | mint=${item.account.mint.toBase58()} | price=${item.account.basePrice.toString()} | active=${item.account.active}`,
+    );
+  });
+}
+
+async function pickGamePaymentOption(ctx, rl) {
+  const options = await getStoreGamePaymentOptions(ctx);
+  if (options.length === 0) {
+    console.log("Belum ada game payment option di store.");
+    return null;
+  }
+
+  return pickByNumber(
+    rl,
+    "Pilih game payment option",
+    options,
+    (item) =>
+      `game=${pubkeyShort(item.account.game)} mint=${pubkeyShort(item.account.mint)} price=${item.account.basePrice.toString()} active=${item.account.active}`,
+  );
 }
 
 async function buyGameFlow(ctx, rl) {
-  const gameId = (await rl.question("enter game id to buy: ")).trim();
-  if (!gameId) return;
-  const accounts = deriveProgramAccounts(ctx, gameId);
-  try {
-    const priceAccount = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
-    const regAccount = await ctx.registryProgram.account.registryGameAccount.fetch(accounts.registryGamePda);
-    const storeConfig = await ctx.storeProgram.account.storeConfig.fetch(accounts.storeConfigPda);
-    const licensePda = derivePda([LICENSE_SEED, ctx.user.publicKey.toBuffer(), accounts.pgcGamePda.toBuffer()], ctx.pgc1Program.programId);
-    const currency = priceAccount.currency;
-    const isSol = currency.equals(SystemProgram.programId);
-    const publisherBalancePda = derivePda([BALANCE_SEED, regAccount.publisher.toBuffer(), currency.toBuffer()], ctx.storeProgram.programId);
+  console.log("\n== Store: Buy Game ==");
 
-    const extraAccounts = {
-        tokenProgram: TOKEN_PROGRAM_ID,
-        buyerTokenAccount: ctx.user.publicKey,
-        treasuryTokenAccount: storeConfig.treasury,
-        publisherTokenAccount: publisherBalancePda,
-    };
+  const option = await pickGamePaymentOption(ctx, rl);
+  if (!option) {
+    return;
+  }
 
-    if (!isSol) {
-        extraAccounts.tokenProgram = TOKEN_PROGRAM_ID;
-        extraAccounts.buyerTokenAccount = getAssociatedTokenAddressSync(currency, ctx.user.publicKey);
-        extraAccounts.treasuryTokenAccount = getAssociatedTokenAddressSync(currency, storeConfig.treasury);
-        extraAccounts.publisherTokenAccount = getAssociatedTokenAddressSync(currency, publisherBalancePda, true);
-    } else {
-        extraAccounts.tokenProgram = SystemProgram.programId;
-        extraAccounts.buyerTokenAccount = publisherBalancePda; 
-        extraAccounts.treasuryTokenAccount = publisherBalancePda;
-        extraAccounts.publisherTokenAccount = publisherBalancePda;
-    }
+  const buyer = ctx.profiles.gamer.keypair;
+  await fundIfNeeded(ctx.provider, buyer.publicKey);
 
-    console.log(`[DEBUG] Buying Game: ${gameId}`);
-    console.log(`[DEBUG] Buyer: ${ctx.user.publicKey.toBase58()}`);
-    console.log(`[DEBUG] Currency: ${currency.toBase58()}`);
-    console.log(`[DEBUG] Buyer Token Acc: ${extraAccounts.buyerTokenAccount.toBase58()}`);
-    console.log(`[DEBUG] Treasury Token Acc: ${extraAccounts.treasuryTokenAccount.toBase58()}`);
-    console.log(`[DEBUG] Publisher Token Acc: ${extraAccounts.publisherTokenAccount.toBase58()}`);
+  const authorizedSourceProgram = derivePda(
+    [Buffer.from("authorized_source_program"), ctx.pglProgram.programId.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+  const authorizedRegistryProgram = derivePda(
+    [Buffer.from("authorized_registry_program"), ctx.registryProgram.programId.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+  const gameStoreConfig = derivePda(
+    [Buffer.from("game_store_config"), option.account.game.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+  const registryGame = derivePda(
+    [Buffer.from("registry_game"), option.account.game.toBuffer()],
+    ctx.registryProgram.programId,
+  );
+  const acceptedPaymentToken = derivePda(
+    [Buffer.from("accepted_payment_token"), option.account.mint.toBuffer()],
+    ctx.storeProgram.programId,
+  );
+  const purchaseReceipt = derivePda(
+    [Buffer.from("purchase_receipt"), buyer.publicKey.toBuffer(), option.account.game.toBuffer()],
+    ctx.storeProgram.programId,
+  );
 
-    const tx = await ctx.storeProgram.methods.buyGame().accounts({
-      buyer: ctx.user.publicKey, config: accounts.storeConfigPda, treasury: storeConfig.treasury,
-      game: accounts.pgcGamePda, priceAccount: accounts.pricePda, publisher: regAccount.publisher,
-      publisherBalance: publisherBalancePda, pgcProgram: ctx.pgc1Program.programId,
-      pgcConfig: ctx.pgcConfigPda, licensePda: licensePda, 
-      ...extraAccounts,
+  const defaultPrice = Number(option.account.basePrice.toString());
+  const paidAmount = await askNumber(rl, "Paid amount", defaultPrice);
+  if (paidAmount === null) {
+    return;
+  }
+
+  await ctx.storeProgram.methods
+    .buyGame(new anchor.BN(paidAmount), null)
+    .accounts({
+      buyer: buyer.publicKey,
+      storeConfig: ctx.storeConfigPda,
+      authorizedSourceProgram,
+      sourceProgram: ctx.pglProgram.programId,
+      authorizedRegistryProgram,
+      registryProgram: ctx.registryProgram.programId,
+      game: option.account.game,
+      registryGame,
+      gameStoreConfig,
+      paymentMint: option.account.mint,
+      acceptedPaymentToken,
+      gamePaymentOption: option.publicKey,
+      purchaseReceipt,
       systemProgram: SystemProgram.programId,
-    }).rpc();
-    console.log(`✅ Purchase successful! TX: ${tx}`);
-  } catch (e) { console.error("❌ Purchase failed:", e.message); }
+    })
+    .signers([buyer])
+    .rpc();
+
+  console.log("Buy game berhasil.");
+  console.log("- purchase_receipt:", purchaseReceipt.toBase58());
 }
 
-async function gameDetailFlow(ctx, rl) {
-  const gameId = (await rl.question("enter game id: ")).trim();
-  if (!gameId) return;
-  const accounts = deriveProgramAccounts(ctx, gameId);
-  try {
-    const regAcc = await ctx.registryProgram.account.registryGameAccount.fetch(accounts.registryGamePda);
-    const pgcAcc = await ctx.pgc1Program.account.pgcGameAccount.fetch(accounts.pgcGamePda);
-    const priceAcc = await ctx.storeProgram.account.priceAccount.fetch(accounts.pricePda);
-    
-    console.log(`\n--- [ GAME DETAIL: ${gameId} ] ---`);
-    console.log(`Publisher:  ${regAcc.publisher.toBase58()}`);
-    console.log(`Status:     ${regAcc.active ? "ACTIVE" : "INACTIVE"}`);
-    console.log(`Metadata:   ${pgcAcc.metadataUri || pgcAcc.metadata_uri}`);
-    console.log(`Price:      ${(priceAcc.price.toNumber()/1e9).toFixed(4)}`);
-    console.log(`Currency:   ${priceAcc.currency.toBase58()}`);
-    console.log(`\n--- [ PDAs ] ---`);
-    console.log(`Registry Game: ${accounts.registryGamePda.toBase58()}`);
-    console.log(`PGC Game:      ${accounts.pgcGamePda.toBase58()}`);
-    console.log(`Store Price:   ${accounts.pricePda.toBase58()}`);
-    console.log(`Minter Auth:   ${accounts.pgcMinterAccount.toBase58()}`);
-  } catch (e) {
-    console.error("❌ Game not found or error:", e.message);
+async function listPurchaseReceiptsFlow(ctx) {
+  const receipts = await ctx.storeProgram.account.purchaseReceipt.all();
+  console.log("\n== Store: Purchase Receipts ==");
+
+  if (receipts.length === 0) {
+    console.log("Belum ada purchase receipt.");
+    return;
+  }
+
+  receipts.forEach((item, idx) => {
+    console.log(
+      `${idx + 1}. buyer=${item.account.buyer.toBase58()} | game=${item.account.game.toBase58()} | paid=${item.account.paidAmount.toString()} | final=${item.account.finalPrice.toString()} | mint=${item.account.paymentMint.toBase58()}`,
+    );
+  });
+}
+
+async function ensureAuthorizedActor(ctx, actor) {
+  const authorizedActor = derivePda(
+    [Buffer.from("authorized_actor"), actor.publicKey.toBuffer()],
+    ctx.pglProgram.programId,
+  );
+
+  if (!(await accountExists(ctx.provider.connection, authorizedActor))) {
+    await ctx.pglProgram.methods
+      .addAuthorizedActor()
+      .accounts({
+        authority: ctx.provider.publicKey,
+        actor: actor.publicKey,
+        pglConfig: ctx.pglConfigPda,
+        authorizedActor,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  return authorizedActor;
+}
+
+async function mintLicenseFlow(ctx, rl) {
+  console.log("\n== License: Mint ==");
+
+  const selected = await pickRegistryGame(ctx, rl);
+  if (!selected) {
+    return;
+  }
+
+  const gamePk = selected.entry.account.game;
+  const holder = ctx.profiles.gamer.keypair;
+  const actor = ctx.provider.wallet.payer;
+
+  const authorizedActor = await ensureAuthorizedActor(ctx, actor);
+
+  const license = derivePda(
+    [Buffer.from("license"), holder.publicKey.toBuffer(), gamePk.toBuffer()],
+    ctx.pglProgram.programId,
+  );
+
+  await ctx.pglProgram.methods
+    .mintLicense(null)
+    .accounts({
+      actor: actor.publicKey,
+      holder: holder.publicKey,
+      authorizedActor,
+      game: gamePk,
+      license,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  console.log("License berhasil di-mint.");
+  console.log("- holder:", holder.publicKey.toBase58());
+  console.log("- license:", license.toBase58());
+}
+
+async function myLibraryFlow(ctx) {
+  console.log("\n== License: My Library ==");
+
+  const holder = ctx.profiles.gamer.keypair.publicKey;
+  const licenses = await ctx.pglProgram.account.license.all([
+    {
+      memcmp: {
+        offset: 8,
+        bytes: holder.toBase58(),
+      },
+    },
+  ]);
+
+  if (licenses.length === 0) {
+    console.log("Belum ada license untuk gamer.");
+    return;
+  }
+
+  for (let i = 0; i < licenses.length; i += 1) {
+    const lic = licenses[i];
+    let gameId = "(unknown)";
+
+    try {
+      const game = await ctx.pglProgram.account.game.fetch(lic.account.game);
+      gameId = game.gameId;
+    } catch {
+      gameId = "(unknown)";
+    }
+
+    console.log(
+      `${i + 1}. gameId=${gameId} | game=${lic.account.game.toBase58()} | license=${lic.publicKey.toBase58()}`,
+    );
   }
 }
 
-async function initializeSystem(ctx) {
-  try {
-    if (!(await ctx.provider.connection.getAccountInfo(ctx.registryConfigPda))) {
-      await ctx.registryProgram.methods.initialize().accounts({ authority: ctx.user.publicKey, config: ctx.registryConfigPda, systemProgram: SystemProgram.programId }).rpc();
-      console.log("✅ Registry Initialized");
+async function showMainMenu() {
+  console.log("\n=== Main Menu ===");
+  console.log("1. Dashboard");
+  console.log("2. Registry Menu");
+  console.log("3. Store Menu");
+  console.log("4. License Menu");
+  console.log("0. Exit");
+}
+
+async function showRegistryMenu() {
+  console.log("\n=== Registry Menu ===");
+  console.log("1. Get All Games");
+  console.log("2. Create Game + Register");
+  console.log("3. Add / Update Payment Token");
+  console.log("4. Set Game Status (Admin)");
+  console.log("5. List Payment Tokens");
+  console.log("0. Back");
+}
+
+async function showStoreMenu() {
+  console.log("\n=== Store Menu ===");
+  console.log("1. Add / Update Payment Token");
+  console.log("2. Configure Game Listing");
+  console.log("3. List Game Payment Options");
+  console.log("4. Buy Game");
+  console.log("5. List Purchase Receipts");
+  console.log("6. List Payment Tokens");
+  console.log("0. Back");
+}
+
+async function showLicenseMenu() {
+  console.log("\n=== License Menu ===");
+  console.log("1. Mint License");
+  console.log("2. My Library");
+  console.log("0. Back");
+}
+
+async function registryMenu(ctx, rl) {
+  while (true) {
+    await showRegistryMenu();
+    const choice = await ask(rl, "Pilih registry menu", "1");
+
+    if (choice === INPUT_EOF || choice === "0") {
+      return;
     }
-    if (!(await ctx.provider.connection.getAccountInfo(ctx.storeConfigPda))) {
-      await ctx.storeProgram.methods.initialize(100, ctx.user.publicKey).accounts({ authority: ctx.user.publicKey, config: ctx.storeConfigPda, systemProgram: SystemProgram.programId }).rpc();
-      console.log("✅ Game Store Initialized");
+
+    try {
+      if (choice === "1") {
+        await listRegistryGamesFlow(ctx);
+      } else if (choice === "2") {
+        await createGameFlow(ctx, rl);
+      } else if (choice === "3") {
+        await addOrUpdateRegistryPaymentTokenFlow(ctx, rl);
+      } else if (choice === "4") {
+        await setRegistryGameStatusFlow(ctx, rl);
+      } else if (choice === "5") {
+        await listRegistryPaymentTokensFlow(ctx);
+      } else {
+        console.log("Pilihan menu tidak valid.");
+      }
+    } catch (error) {
+      console.log("Transaksi registry gagal:");
+      console.log(String(error));
     }
-    if (!(await ctx.provider.connection.getAccountInfo(ctx.pgcConfigPda))) {
-      // Initialize PGC-1 with the Store Config as the globally authorized minter
-      await ctx.pgc1Program.methods.initialize(ctx.user.publicKey, ctx.storeConfigPda).accounts({ payer: ctx.user.publicKey, config: ctx.pgcConfigPda, systemProgram: SystemProgram.programId }).rpc();
-      console.log("✅ PGC-1 Initialized (Authorized Store)");
+  }
+}
+
+async function storeMenu(ctx, rl) {
+  while (true) {
+    await showStoreMenu();
+    const choice = await ask(rl, "Pilih store menu", "1");
+
+    if (choice === INPUT_EOF || choice === "0") {
+      return;
     }
-  } catch (e) { console.error("❌ Init failed:", e.message); }
+
+    try {
+      if (choice === "1") {
+        await addOrUpdateStorePaymentTokenFlow(ctx, rl);
+      } else if (choice === "2") {
+        await configureStoreFlow(ctx, rl);
+      } else if (choice === "3") {
+        await listStorePaymentOptionsFlow(ctx);
+      } else if (choice === "4") {
+        await buyGameFlow(ctx, rl);
+      } else if (choice === "5") {
+        await listPurchaseReceiptsFlow(ctx);
+      } else if (choice === "6") {
+        await listStorePaymentTokensFlow(ctx);
+      } else {
+        console.log("Pilihan menu tidak valid.");
+      }
+    } catch (error) {
+      console.log("Transaksi store gagal:");
+      console.log(String(error));
+    }
+  }
+}
+
+async function licenseMenu(ctx, rl) {
+  while (true) {
+    await showLicenseMenu();
+    const choice = await ask(rl, "Pilih license menu", "1");
+
+    if (choice === INPUT_EOF || choice === "0") {
+      return;
+    }
+
+    try {
+      if (choice === "1") {
+        await mintLicenseFlow(ctx, rl);
+      } else if (choice === "2") {
+        await myLibraryFlow(ctx);
+      } else {
+        console.log("Pilihan menu tidak valid.");
+      }
+    } catch (error) {
+      console.log("Transaksi license gagal:");
+      console.log(String(error));
+    }
+  }
 }
 
 async function main() {
-  const rl = readline.createInterface({ input, output });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
   try {
-    const provider = await loadProvider();
-    const ctx = {
-      pgc1Program: new anchor.Program(pgc1Idl, provider),
-      registryProgram: new anchor.Program(registryIdl, provider),
-      storeProgram: new anchor.Program(storeIdl, provider),
-      provider, user: provider.wallet,
-      get registryConfigPda() { return derivePda([CONFIG_SEED], this.registryProgram.programId); },
-      get storeConfigPda() { return derivePda([CONFIG_SEED], this.storeProgram.programId); },
-      get pgcConfigPda() { return derivePda([CONFIG_SEED], this.pgc1Program.programId); }
-    };
+    const ctx = await buildContext();
+    await ensureRpcReady(ctx);
+    await dashboard(ctx);
+
     while (true) {
+      await showMainMenu();
+      const choice = await ask(rl, "Pilih main menu", "1");
+
+      if (choice === INPUT_EOF || choice === "0") {
+        break;
+      }
+
       try {
-        const balance = await ctx.provider.connection.getBalance(ctx.user.publicKey);
-        console.log(`\n--- [ DASHBOARD ] ---`);
-        console.log(`Wallet: ${shortAddress(ctx.user.publicKey)} | Balance: ${(balance / 1e9).toFixed(4)} SOL`);
-        console.log("1. List All | 2. Buy | 3. Create | 4. My Published | 5. Withdraw | 10. My Licenses | 11. Detail | 9. Init | 0. Exit");
-        const answer = await rl.question("choose: ");
-        if (answer === null || answer === undefined) break; // EOF
-        const choice = answer.trim();
-        if (choice === "0" || choice === "") break;
         if (choice === "1") {
-          const list = await getCatalog(ctx);
-          if (list.length === 0) console.log("No games registered.");
-          list.forEach(g => {
-            const symbol = g.currency.equals(SystemProgram.programId) ? "SOL" : shortAddress(g.currency);
-            console.log(`\n- [ GAME: ${g.gameId} ]`);
-            console.log(`  PDA:      ${g.pda.toBase58()}`);
-            console.log(`  Metadata: ${g.metadata}`);
-            console.log(`  Price:    ${g.price ? (g.price.toNumber()/1e9).toFixed(2) : "0.00"} ${symbol}`);
-            console.log(`  Currency: ${g.currency.toBase58()}`);
-          });
-        } else if (choice === "2") await buyGameFlow(ctx, rl);
-        else if (choice === "3") await createGameFlow(ctx, rl);
-        else if (choice === "4") {
-          const cat = await getCatalog(ctx);
-          cat.filter(g => g.publisher.equals(ctx.user.publicKey)).forEach(g => console.log(`- ${g.gameId}`));
-        } else if (choice === "5") await withdrawFlow(ctx, rl);
-        else if (choice === "10") {
-          console.log("Checking balances/licenses...");
-          const cat = await getCatalog(ctx);
-          cat.forEach(g => console.log(`Registered Game: ${g.gameId}`));
-        } else if (choice === "11") await gameDetailFlow(ctx, rl);
-        else if (choice === "9") await initializeSystem(ctx);
-      } catch (e) { if (e.message.includes("closed")) break; else console.error("Error:", e.message); }
+          await dashboard(ctx);
+        } else if (choice === "2") {
+          await registryMenu(ctx, rl);
+        } else if (choice === "3") {
+          await storeMenu(ctx, rl);
+        } else if (choice === "4") {
+          await licenseMenu(ctx, rl);
+        } else {
+          console.log("Pilihan menu tidak valid.");
+        }
+      } catch (error) {
+        console.log("Operasi gagal:");
+        console.log(String(error));
+      }
     }
-  } catch (e) { console.error("Fatal:", e.message); } finally { rl.close(); }
+  } finally {
+    rl.close();
+  }
 }
-main();
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

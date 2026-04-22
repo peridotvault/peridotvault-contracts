@@ -1,76 +1,67 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
   createMint,
-  getAccount,
-  getAssociatedTokenAddressSync,
   getOrCreateAssociatedTokenAccount,
   mintTo,
+  TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import * as os from "os";
+import * as path from "path";
 
-import { GameStore } from "../../target/types/game_store";
-import { Pgc1 } from "../../target/types/pgc1";
-import { Registry } from "../../target/types/registry";
+export const PGL1_PROGRAM_ID = new PublicKey("DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor");
+export const REGISTRY_PROGRAM_ID = new PublicKey("DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL");
+export const STORE_PROGRAM_ID = new PublicKey("6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd");
 
-export const GLOBAL_STATE_SEED = Buffer.from("global_program_state");
-export const REGISTRY_STATE_SEED = Buffer.from("config");
-export const STORE_STATE_SEED = Buffer.from("config");
-export const GAME_STATE_SEED = Buffer.from("game");
-export const GAME_AUTHORITY_SEED = Buffer.from("game_authority"); // Check if still used
-export const MINTER_AUTH_SEED = Buffer.from("minter");
-export const GAME_SEED = Buffer.from("game"); // Duplicate?
-export const LICENSE_SEED = Buffer.from("license");
-export const PRICE_SEED = Buffer.from("price");
-export const BALANCE_SEED = Buffer.from("balance");
-
-export const STATUS_PENDING = 0;
-export const STATUS_APPROVED = 1;
-
-export const DEFAULT_PLATFORM_FEE_BPS = 1000;
-export const UPDATED_PLATFORM_FEE_BPS = 750;
-export const DEFAULT_REGISTRATION_FEE = 5_000_000;
+export const DEFAULT_PLATFORM_FEE_BPS = 1_000;
+export const DEFAULT_REFERRAL_BPS = 200;
+export const DEFAULT_MAX_REFERRAL_BPS = 5_000;
+export const DEFAULT_REGISTRY_FEE = 1_000;
 export const DEFAULT_GAME_PRICE = 20_000_000;
-export const DEFAULT_GAME_DISCOUNT_BPS = 1500;
 export const PAYMENT_DECIMALS = 6;
+export const PUBLISHER_MINT_AMOUNT = 1_000_000_000;
 
-export const TEST_GAME_ID = "peridot-localnet-alpha";
-export const TEST_METADATA_URI = "https://peridot.local/metadata/peridot-localnet-alpha.json";
+export const STATUS_ACTIVE = 0;
+export const STATUS_SUSPENDED = 1;
+export const STATUS_BANNED = 2;
 
-type NodeWallet = anchor.Wallet & { payer: Keypair };
-
-export type WorkspacePrograms = {
-  pgc1Program: Program<Pgc1>;
-  registryProgram: Program<Registry>;
-  storeProgram: Program<GameStore>;
-};
-
-export type BaseFixture = WorkspacePrograms & {
-  provider: anchor.AnchorProvider;
-  payer: Keypair;
-  governance: Keypair;
-  nextGovernance: Keypair;
-  treasury: Keypair;
-  nextTreasury: Keypair;
-  publisher: Keypair;
-  gamer: Keypair;
-  paymentMint: PublicKey;
-  registryStatePda: PublicKey;
-  storeStatePda: PublicKey;
-  pgcGlobalStatePda: PublicKey;
-};
+declare const require: any;
 
 export type GameFixture = {
   gameId: string;
   metadataUri: string;
-  gameStatePda: PublicKey;
-  gameAuthorityPda: PublicKey;
-  publisherMinterAuthPda: PublicKey;
-  gameRegistrationPda: PublicKey;
-  pricePda: PublicKey;
+  gamePda: PublicKey;
+  creatorStatePda: PublicKey;
+  registryGamePda: PublicKey;
+  publisher: Keypair;
+};
+
+export type StoreGameFixture = {
+  gameStoreConfigPda: PublicKey;
+  gamePaymentOptionPda: PublicKey;
+  paymentMint: PublicKey;
+  basePrice: number;
+};
+
+type NodeWallet = anchor.Wallet & { payer: Keypair };
+
+export type BaseFixture = {
+  provider: anchor.AnchorProvider;
+  authority: Keypair;
+  publisher: Keypair;
+  gamer: Keypair;
+  pglProgram: any;
+  registryProgram: any;
+  storeProgram: any;
+  paymentMint: PublicKey;
+  pglConfigPda: PublicKey;
+  registryConfigPda: PublicKey;
+  storeConfigPda: PublicKey;
+  authorizedSourceProgramPda: PublicKey;
+  authorizedRegistryProgramPda: PublicKey;
+  registryAcceptedPaymentTokenPda: PublicKey;
+  storeAcceptedPaymentTokenPda: PublicKey;
 };
 
 let baseFixturePromise: Promise<BaseFixture> | null = null;
@@ -79,13 +70,14 @@ function providerWallet(provider: anchor.AnchorProvider): NodeWallet {
   return provider.wallet as NodeWallet;
 }
 
-function workspaceProgram<T extends anchor.Idl>(name: string): Program<T> {
-  const workspace = anchor.workspace as Record<string, Program<T>>;
-  return (workspace[name] ?? workspace[name.toLowerCase()]) as Program<T>;
+export function derivePda(seeds: Buffer[], programId: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(seeds, programId)[0];
 }
 
-function derivePda(seeds: Buffer[], programId: PublicKey): PublicKey {
-  return PublicKey.findProgramAddressSync(seeds, programId)[0];
+function u64LeBuffer(value: bigint): Buffer {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64LE(value);
+  return buffer;
 }
 
 async function accountExists(
@@ -111,102 +103,197 @@ async function fundSigner(
 }
 
 async function maybeFundSigner(
-    provider: anchor.AnchorProvider,
-    recipient: Keypair,
-): Promise<void> {
-    const balance = await provider.connection.getBalance(recipient.publicKey);
-    if (balance === 0) {
-        await fundSigner(provider, recipient.publicKey);
-    }
-}
-
-async function createPaymentMint(
   provider: anchor.AnchorProvider,
-): Promise<PublicKey> {
-  const payer = providerWallet(provider).payer;
-  return await createMint(
-    provider.connection,
-    payer,
-    provider.publicKey,
-    null,
-    PAYMENT_DECIMALS,
-  );
+  recipient: Keypair,
+): Promise<void> {
+  const balance = await provider.connection.getBalance(recipient.publicKey);
+  if (balance === 0) {
+    await fundSigner(provider, recipient.publicKey);
+  }
 }
 
 async function initializeBaseFixture(): Promise<BaseFixture> {
+  process.env.ANCHOR_PROVIDER_URL ||= "http://127.0.0.1:8899";
+  process.env.ANCHOR_WALLET ||= path.join(os.homedir(), ".config/solana/id.json");
+
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const registryProgram = workspaceProgram<Registry>("Registry");
-  const storeProgram = workspaceProgram<GameStore>("GameStore");
-  const pgc1Program = workspaceProgram<Pgc1>("Pgc1");
+  const pglIdl = require("../../target/idl/pgl1.json");
+  const registryIdl = require("../../target/idl/registry.json");
+  const storeIdl = require("../../target/idl/peridotvault_store.json");
 
-  const payer = providerWallet(provider).payer;
-  const governance = payer;
-  const nextGovernance = Keypair.generate();
-  let treasury = governance; // Use governance as treasury
-  const nextTreasury = Keypair.generate();
+  const pglProgram = new Program(pglIdl, provider);
+  const registryProgram = new Program(registryIdl, provider);
+  const storeProgram = new Program(storeIdl, provider);
+
+  const authority = providerWallet(provider).payer;
   const publisher = Keypair.generate();
   const gamer = Keypair.generate();
 
-  await maybeFundSigner(provider, nextGovernance);
-  await maybeFundSigner(provider, nextTreasury);
   await maybeFundSigner(provider, publisher);
   await maybeFundSigner(provider, gamer);
 
-  const registryStatePda = derivePda([REGISTRY_STATE_SEED], registryProgram.programId);
-  const storeStatePda = derivePda([STORE_STATE_SEED], storeProgram.programId);
-  const pgcGlobalStatePda = derivePda([GLOBAL_STATE_SEED], pgc1Program.programId);
+  const pglConfigPda = derivePda([Buffer.from("pgl_config")], pglProgram.programId);
+  const registryConfigPda = derivePda([Buffer.from("registry_config")], registryProgram.programId);
+  const storeConfigPda = derivePda([Buffer.from("store_config")], storeProgram.programId);
 
-  const paymentMint = await createPaymentMint(provider);
-
-  // Initialize programs if needed
-  if (!(await accountExists(provider.connection, registryStatePda))) {
-    await registryProgram.methods
-      .initialize()
+  if (!(await accountExists(provider.connection, pglConfigPda))) {
+    await pglProgram.methods
+      .initializePgl(authority.publicKey, new anchor.BN(0))
       .accounts({
-        authority: governance.publicKey,
-        config: registryStatePda,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      } as any)
+        authority: authority.publicKey,
+        pglConfig: pglConfigPda,
+        systemProgram: SystemProgram.programId,
+      })
       .rpc();
   }
 
-  if (!(await accountExists(provider.connection, storeStatePda))) {
+  if (!(await accountExists(provider.connection, registryConfigPda))) {
+    await registryProgram.methods
+      .initializeRegistry(authority.publicKey)
+      .accounts({
+        authority: authority.publicKey,
+        config: registryConfigPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  if (!(await accountExists(provider.connection, storeConfigPda))) {
     await storeProgram.methods
-      .initialize(
+      .initializeStore(
+        authority.publicKey,
         DEFAULT_PLATFORM_FEE_BPS,
-        treasury.publicKey,
+        DEFAULT_REFERRAL_BPS,
+        DEFAULT_MAX_REFERRAL_BPS,
+        authority.publicKey,
       )
       .accounts({
-        authority: governance.publicKey,
-        config: storeStatePda,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      } as any)
+        authority: authority.publicKey,
+        storeConfig: storeConfigPda,
+        systemProgram: SystemProgram.programId,
+      })
       .rpc();
-  } else {
-    const existingConfig = await storeProgram.account.storeConfig.fetch(storeStatePda);
-    treasury = { publicKey: existingConfig.treasury } as any;
   }
 
-  // PGC-1 does not need manual initialization based on current source code.
+  const paymentMint = await createMint(
+    provider.connection,
+    authority,
+    authority.publicKey,
+    null,
+    PAYMENT_DECIMALS,
+  );
+
+  const registryAcceptedPaymentTokenPda = derivePda(
+    [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
+    registryProgram.programId,
+  );
+  const storeAcceptedPaymentTokenPda = derivePda(
+    [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
+    storeProgram.programId,
+  );
+
+  if (!(await accountExists(provider.connection, registryAcceptedPaymentTokenPda))) {
+    await registryProgram.methods
+      .addPaymentToken(new anchor.BN(DEFAULT_REGISTRY_FEE))
+      .accounts({
+        authority: authority.publicKey,
+        config: registryConfigPda,
+        mint: paymentMint,
+        acceptedPaymentToken: registryAcceptedPaymentTokenPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  if (!(await accountExists(provider.connection, storeAcceptedPaymentTokenPda))) {
+    await storeProgram.methods
+      .addPaymentToken()
+      .accounts({
+        authority: authority.publicKey,
+        storeConfig: storeConfigPda,
+        mint: paymentMint,
+        acceptedPaymentToken: storeAcceptedPaymentTokenPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  const authorizedSourceProgramPda = derivePda(
+    [Buffer.from("authorized_source_program"), pglProgram.programId.toBuffer()],
+    storeProgram.programId,
+  );
+  const authorizedRegistryProgramPda = derivePda(
+    [Buffer.from("authorized_registry_program"), registryProgram.programId.toBuffer()],
+    storeProgram.programId,
+  );
+
+  if (!(await accountExists(provider.connection, authorizedSourceProgramPda))) {
+    await storeProgram.methods
+      .addAuthorizedSourceProgram()
+      .accounts({
+        authority: authority.publicKey,
+        storeConfig: storeConfigPda,
+        programId: pglProgram.programId,
+        authorizedSourceProgram: authorizedSourceProgramPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  if (!(await accountExists(provider.connection, authorizedRegistryProgramPda))) {
+    await storeProgram.methods
+      .addAuthorizedRegistryProgram()
+      .accounts({
+        authority: authority.publicKey,
+        storeConfig: storeConfigPda,
+        programId: registryProgram.programId,
+        authorizedRegistryProgram: authorizedRegistryProgramPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  await getOrCreateAssociatedTokenAccount(
+    provider.connection,
+    authority,
+    paymentMint,
+    authority.publicKey,
+  );
+
+  const publisherPaymentAta = await getOrCreateAssociatedTokenAccount(
+    provider.connection,
+    authority,
+    paymentMint,
+    publisher.publicKey,
+  );
+
+  await mintTo(
+    provider.connection,
+    authority,
+    paymentMint,
+    publisherPaymentAta.address,
+    authority,
+    PUBLISHER_MINT_AMOUNT,
+  );
 
   return {
     provider,
-    payer,
-    governance,
-    nextGovernance,
-    treasury,
-    nextTreasury,
+    authority,
     publisher,
     gamer,
-    paymentMint,
-    registryStatePda,
-    storeStatePda,
-    pgcGlobalStatePda,
+    pglProgram,
     registryProgram,
     storeProgram,
-    pgc1Program,
+    paymentMint,
+    pglConfigPda,
+    registryConfigPda,
+    storeConfigPda,
+    authorizedSourceProgramPda,
+    authorizedRegistryProgramPda,
+    registryAcceptedPaymentTokenPda,
+    storeAcceptedPaymentTokenPda,
   };
 }
 
@@ -217,175 +304,287 @@ export async function setupPeridotFixture(): Promise<BaseFixture> {
   return baseFixturePromise;
 }
 
-export function deriveGameFixture(base: BaseFixture, gameId = TEST_GAME_ID): GameFixture {
-  const gameStatePda = derivePda(
-    [GAME_STATE_SEED, Buffer.from(gameId)],
-    base.pgc1Program.programId,
+export async function createRegisteredGame(
+  base: BaseFixture,
+  opts?: {
+    gameId?: string;
+    metadataUri?: string;
+    publisher?: Keypair;
+    mintToAmount?: number;
+  },
+): Promise<GameFixture> {
+  const publisher = opts?.publisher ?? base.publisher;
+  const gameId =
+    opts?.gameId ??
+    `pv-game-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+  const metadataUri = opts?.metadataUri ?? `https://meta.peridot/${gameId}.json`;
+
+  await maybeFundSigner(base.provider, publisher);
+
+  const publisherPaymentAta = await getOrCreateAssociatedTokenAccount(
+    base.provider.connection,
+    base.authority,
+    base.paymentMint,
+    publisher.publicKey,
   );
-  const gameAuthorityPda = derivePda(
-    [GAME_AUTHORITY_SEED, gameStatePda.toBuffer()],
-    base.pgc1Program.programId,
+
+  if ((opts?.mintToAmount ?? 0) > 0) {
+    await mintTo(
+      base.provider.connection,
+      base.authority,
+      base.paymentMint,
+      publisherPaymentAta.address,
+      base.authority,
+      opts?.mintToAmount ?? 0,
+    );
+  }
+
+  const registryConfig = (await base.registryProgram.account.registryConfig.fetch(
+    base.registryConfigPda,
+  )) as any;
+
+  const treasuryPaymentAta = await getOrCreateAssociatedTokenAccount(
+    base.provider.connection,
+    base.authority,
+    base.paymentMint,
+    registryConfig.treasury,
   );
-  const publisherMinterAuthPda = derivePda(
-    [MINTER_AUTH_SEED, gameStatePda.toBuffer(), base.publisher.publicKey.toBuffer()],
-    base.pgc1Program.programId,
+
+  const creatorStatePda = derivePda(
+    [Buffer.from("creator_state"), publisher.publicKey.toBuffer()],
+    base.pglProgram.programId,
   );
-  const gameRegistrationPda = derivePda(
-    [GAME_SEED, Buffer.from(gameId)],
+
+  let nextNonce = BigInt(0);
+  if (await accountExists(base.provider.connection, creatorStatePda)) {
+    const creatorState = (await base.pglProgram.account.creatorState.fetch(
+      creatorStatePda,
+    )) as any;
+    nextNonce = BigInt(creatorState.nextNonce.toString());
+  }
+
+  const gamePda = derivePda(
+    [
+      Buffer.from("game"),
+      publisher.publicKey.toBuffer(),
+      u64LeBuffer(nextNonce),
+    ],
+    base.pglProgram.programId,
+  );
+
+  const registryGamePda = derivePda(
+    [Buffer.from("registry_game"), gamePda.toBuffer()],
     base.registryProgram.programId,
   );
-  const pricePda = derivePda(
-    [PRICE_SEED, gameStatePda.toBuffer()],
-    base.storeProgram.programId,
+
+  const publishGrantPda = derivePda(
+    [Buffer.from("publish_grant"), publisher.publicKey.toBuffer()],
+    base.registryProgram.programId,
   );
+
+  await base.registryProgram.methods
+    .setPublishGrant(null)
+    .accounts({
+      authority: base.authority.publicKey,
+      config: base.registryConfigPda,
+      publisher: publisher.publicKey,
+      publishGrant: publishGrantPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .rpc();
+
+  const pglConfig = (await base.pglProgram.account.pglConfig.fetch(
+    base.pglConfigPda,
+  )) as any;
+
+  await base.registryProgram.methods
+    .createGameAndRegister(gameId, metadataUri)
+    .accounts({
+      publisher: publisher.publicKey,
+      config: base.registryConfigPda,
+      paymentMint: base.paymentMint,
+      acceptedPaymentToken: base.registryAcceptedPaymentTokenPda,
+      publisherPaymentAccount: publisherPaymentAta.address,
+      treasuryPaymentAccount: treasuryPaymentAta.address,
+      registryGame: registryGamePda,
+      game: gamePda,
+      pglCreatorState: creatorStatePda,
+      pglConfig: base.pglConfigPda,
+      pglTreasury: pglConfig.treasury,
+      pgl1Program: base.pglProgram.programId,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .remainingAccounts([
+      {
+        pubkey: publishGrantPda,
+        isWritable: false,
+        isSigner: false,
+      },
+    ])
+    .signers([publisher])
+    .rpc();
 
   return {
     gameId,
-    metadataUri: TEST_METADATA_URI,
-    gameStatePda,
-    gameAuthorityPda,
-    publisherMinterAuthPda,
-    gameRegistrationPda,
-    pricePda,
+    metadataUri,
+    gamePda,
+    creatorStatePda,
+    registryGamePda,
+    publisher,
   };
 }
 
-export async function ensureGameCreated(base: BaseFixture, gameId = TEST_GAME_ID): Promise<GameFixture> {
-  const game = deriveGameFixture(base, gameId);
-  const mintKp = Keypair.generate();
+export async function configureStoreForGame(
+  base: BaseFixture,
+  game: GameFixture,
+  opts?: {
+    basePrice?: number;
+    paymentMint?: PublicKey;
+    active?: boolean;
+  },
+): Promise<StoreGameFixture> {
+  const paymentMint = opts?.paymentMint ?? base.paymentMint;
+  const basePrice = opts?.basePrice ?? DEFAULT_GAME_PRICE;
+  const active = opts?.active ?? true;
 
-    if (!(await accountExists(base.provider.connection, game.gameStatePda))) {
-      await base.pgc1Program.methods
-        .createGame(
-          game.gameId,
-          game.metadataUri,
-          base.publisher.publicKey,
-          new anchor.BN(DEFAULT_GAME_PRICE),
-          SystemProgram.programId,
-        )
-        .accounts({
-          publisher: base.publisher.publicKey,
-          gameAccount: game.gameStatePda,
-          initialMinterAccount: game.publisherMinterAuthPda,
-          registryProgram: base.registryProgram.programId,
-          storeProgram: base.storeProgram.programId,
-          registryConfig: base.registryStatePda,
-          registryTreasury: base.treasury.publicKey,
-          registryGame: game.gameRegistrationPda,
-          priceAccount: game.pricePda,
-          systemProgram: anchor.web3.SystemProgram.programId,
-        } as any)
-        .signers([base.publisher])
-        .rpc();
-    }
+  const storeAcceptedPaymentTokenPda = derivePda(
+    [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
+    base.storeProgram.programId,
+  );
 
-  return game;
-}
+  if (!(await accountExists(base.provider.connection, storeAcceptedPaymentTokenPda))) {
+    await base.storeProgram.methods
+      .addPaymentToken()
+      .accounts({
+        authority: base.authority.publicKey,
+        storeConfig: base.storeConfigPda,
+        mint: paymentMint,
+        acceptedPaymentToken: storeAcceptedPaymentTokenPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
 
-export async function approveGame(base: BaseFixture, gameId = TEST_GAME_ID): Promise<void> {
-  const game = deriveGameFixture(base, gameId);
-  const reg = await base.registryProgram.account.registryGameAccount.fetch(game.gameRegistrationPda);
-  if (reg.active) return;
+  const gameStoreConfigPda = derivePda(
+    [Buffer.from("game_store_config"), game.gamePda.toBuffer()],
+    base.storeProgram.programId,
+  );
 
-  await base.registryProgram.methods
-    .setStatus(gameId, true)
+  if (!(await accountExists(base.provider.connection, gameStoreConfigPda))) {
+    await base.storeProgram.methods
+      .initGameStoreConfig(active)
+      .accounts({
+        publisher: game.publisher.publicKey,
+        authorizedSourceProgram: base.authorizedSourceProgramPda,
+        sourceProgram: base.pglProgram.programId,
+        authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+        registryProgram: base.registryProgram.programId,
+        game: game.gamePda,
+        registryGame: game.registryGamePda,
+        gameStoreConfig: gameStoreConfigPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([game.publisher])
+      .rpc();
+  }
+
+  const gamePaymentOptionPda = derivePda(
+    [
+      Buffer.from("game_payment_option"),
+      game.gamePda.toBuffer(),
+      paymentMint.toBuffer(),
+    ],
+    base.storeProgram.programId,
+  );
+
+  await base.storeProgram.methods
+    .setGamePaymentOption(new anchor.BN(basePrice), active)
     .accounts({
-      authority: base.governance.publicKey,
-      config: base.registryStatePda,
-      game: game.gameRegistrationPda,
-    } as any)
-    .signers([base.governance])
+      publisher: game.publisher.publicKey,
+      authorizedSourceProgram: base.authorizedSourceProgramPda,
+      sourceProgram: base.pglProgram.programId,
+      authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+      registryProgram: base.registryProgram.programId,
+      game: game.gamePda,
+      registryGame: game.registryGamePda,
+      gameStoreConfig: gameStoreConfigPda,
+      mint: paymentMint,
+      acceptedPaymentToken: storeAcceptedPaymentTokenPda,
+      gamePaymentOption: gamePaymentOptionPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([game.publisher])
     .rpc();
-}
-
-export async function ensurePriceConfigured(base: BaseFixture): Promise<void> {
-  const game = await ensureGameCreated(base);
-  await approveGame(base, game.gameId);
-}
-
-export async function buyGameForGamer(base: BaseFixture, gameId = TEST_GAME_ID): Promise<{
-  game: GameFixture;
-  licensePda: PublicKey;
-  userGameTokenAccount: PublicKey;
-}> {
-  await ensurePriceConfigured(base);
-
-  const game = deriveGameFixture(base, gameId);
-  const licensePda = derivePda(
-    [LICENSE_SEED, game.gameStatePda.toBuffer(), base.gamer.publicKey.toBuffer()],
-    base.pgc1Program.programId,
-  );
-  
-  // Licenses are now Anchor accounts, not SPL tokens.
-  const userGameTokenAccount = PublicKey.default;
-
-  const priceAccount = await base.storeProgram.account.priceAccount.fetch(game.pricePda);
-  const balancePda = derivePda(
-    [BALANCE_SEED, base.publisher.publicKey.toBuffer(), priceAccount.currency.toBuffer()],
-    base.storeProgram.programId
-  );
-
-    if (!(await accountExists(base.provider.connection, licensePda))) {
-      await base.storeProgram.methods
-        .buyGame()
-        .accounts({
-          buyer: base.gamer.publicKey,
-          config: base.storeStatePda,
-          treasury: base.treasury.publicKey,
-          game: game.gameStatePda,
-          priceAccount: game.pricePda,
-          publisher: base.publisher.publicKey,
-          publisherBalance: balancePda,
-          pgcProgram: base.pgc1Program.programId,
-          minterPda: game.publisherMinterAuthPda,
-          licensePda: licensePda,
-          tokenProgram: anchor.web3.SystemProgram.programId,
-          buyerTokenAccount: anchor.web3.SystemProgram.programId,
-          treasuryTokenAccount: anchor.web3.SystemProgram.programId,
-          publisherTokenAccount: anchor.web3.SystemProgram.programId,
-          systemProgram: anchor.web3.SystemProgram.programId,
-        } as any)
-        .signers([base.gamer])
-        .rpc();
-    }
 
   return {
-    game,
-    licensePda,
-    userGameTokenAccount,
+    gameStoreConfigPda,
+    gamePaymentOptionPda,
+    paymentMint,
+    basePrice,
   };
 }
 
-export async function licenseTokenBalance(
+export async function buyGameForBuyer(
   base: BaseFixture,
-  address: PublicKey,
-): Promise<number> {
-  // Obsolete helper, return 1 if account exists as a proxy for 'balance'
-  return (await accountExists(base.provider.connection, address)) ? 1 : 0;
-}
+  game: GameFixture,
+  paidAmount: number,
+  opts?: {
+    buyer?: Keypair;
+    paymentMint?: PublicKey;
+    referrer?: PublicKey | null;
+  },
+): Promise<{ buyer: Keypair; purchaseReceiptPda: PublicKey }> {
+  const buyer = opts?.buyer ?? base.gamer;
+  const paymentMint = opts?.paymentMint ?? base.paymentMint;
 
-export async function getCatalogWithPrices(base: BaseFixture): Promise<any[]> {
-  const registrations = await base.registryProgram.account.registryGameAccount.all();
-  const results = [];
-  for (const reg of registrations) {
-    const game = reg.account;
-    const gameId = game.gameId;
-    const fixture = deriveGameFixture(base, gameId);
-    let price = null;
-    let discountBps = null;
-    try {
-      const priceAccount = await base.storeProgram.account.priceAccount.fetch(fixture.pricePda);
-      price = Number(priceAccount.price.toString());
-      discountBps = priceAccount.discountBps;
-    } catch (e) {}
+  await maybeFundSigner(base.provider, buyer);
 
-    results.push({
-      gameId,
-      status: game.active ? STATUS_APPROVED : STATUS_PENDING,
-      price,
-      discountBps,
-      finalPrice: price === null ? null : price - Math.floor((price * (discountBps ?? 0)) / 10000),
-    });
-  }
-  return results;
+  const gameStoreConfigPda = derivePda(
+    [Buffer.from("game_store_config"), game.gamePda.toBuffer()],
+    base.storeProgram.programId,
+  );
+  const storeAcceptedPaymentTokenPda = derivePda(
+    [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
+    base.storeProgram.programId,
+  );
+  const gamePaymentOptionPda = derivePda(
+    [
+      Buffer.from("game_payment_option"),
+      game.gamePda.toBuffer(),
+      paymentMint.toBuffer(),
+    ],
+    base.storeProgram.programId,
+  );
+  const purchaseReceiptPda = derivePda(
+    [
+      Buffer.from("purchase_receipt"),
+      buyer.publicKey.toBuffer(),
+      game.gamePda.toBuffer(),
+    ],
+    base.storeProgram.programId,
+  );
+
+  await base.storeProgram.methods
+    .buyGame(new anchor.BN(paidAmount), opts?.referrer ?? null)
+    .accounts({
+      buyer: buyer.publicKey,
+      storeConfig: base.storeConfigPda,
+      authorizedSourceProgram: base.authorizedSourceProgramPda,
+      sourceProgram: base.pglProgram.programId,
+      authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+      registryProgram: base.registryProgram.programId,
+      game: game.gamePda,
+      registryGame: game.registryGamePda,
+      gameStoreConfig: gameStoreConfigPda,
+      paymentMint,
+      acceptedPaymentToken: storeAcceptedPaymentTokenPda,
+      gamePaymentOption: gamePaymentOptionPda,
+      purchaseReceipt: purchaseReceiptPda,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([buyer])
+    .rpc();
+
+  return { buyer, purchaseReceiptPda };
 }

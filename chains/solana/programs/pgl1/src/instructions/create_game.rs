@@ -12,7 +12,7 @@ use crate::{
     },
 };
 
-pub fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: String) -> Result<()> {
+pub(crate) fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: String) -> Result<()> {
     require!(
         !game_id.trim().is_empty() && game_id.len() <= MAX_GAME_ID_LEN,
         PglError::InvalidGameId

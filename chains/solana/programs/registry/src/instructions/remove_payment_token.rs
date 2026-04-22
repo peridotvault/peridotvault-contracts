@@ -30,7 +30,7 @@ pub struct RemovePaymentToken<'info> {
     pub accepted_payment_token: Account<'info, AcceptedPaymentToken>,
 }
 
-pub fn handler(ctx: Context<RemovePaymentToken>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<RemovePaymentToken>) -> Result<()> {
     emit!(PaymentTokenRemoved {
         mint: ctx.accounts.mint.key(),
     });

@@ -6,7 +6,7 @@ use crate::{
     state::{AuthorizedActor, PglConfig, AUTHORIZED_ACTOR_SEED, PGL_CONFIG_SEED},
 };
 
-pub fn handler(ctx: Context<DeactivateAuthorizedActor>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<DeactivateAuthorizedActor>) -> Result<()> {
     let config = &ctx.accounts.pgl_config;
     require_keys_eq!(config.authority, ctx.accounts.authority.key(), PglError::Unauthorized);
 

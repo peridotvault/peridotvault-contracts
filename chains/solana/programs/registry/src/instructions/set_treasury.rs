@@ -20,7 +20,7 @@ pub struct SetTreasury<'info> {
     pub config: Account<'info, RegistryConfig>,
 }
 
-pub fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
+pub(crate) fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
     require!(treasury != Pubkey::default(), RegistryError::InvalidTreasury);
 
     ctx.accounts.config.treasury = treasury;

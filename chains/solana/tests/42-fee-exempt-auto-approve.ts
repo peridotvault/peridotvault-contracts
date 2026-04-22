@@ -1,70 +1,47 @@
 import { expect } from "chai";
-import * as anchor from "@coral-xyz/anchor";
-import { Keypair, SystemProgram } from "@solana/web3.js";
+import { Keypair, SystemProgram, Transaction } from "@solana/web3.js";
+import { getAccount, getOrCreateAssociatedTokenAccount } from "@solana/spl-token";
 import {
-  STATUS_APPROVED,
-  deriveGameFixture,
+  STATUS_ACTIVE,
+  createRegisteredGame,
   setupPeridotFixture,
 } from "./helpers/peridot";
 
-describe("fee exempt auto approval", () => {
-  it("registers fee-exempt publisher games as approved immediately", async () => {
+describe("fee-exempt publish grant", () => {
+  it("keeps publisher token balance unchanged when publish grant is active", async () => {
     const base = await setupPeridotFixture();
-    const gameId = "exempt-game-" + Math.floor(Math.random() * 1000000);
-    const game = deriveGameFixture(base, gameId);
-    
-    // Add publisher to exemption list
-    await base.registryProgram.methods
-      .setFeeExemption(base.publisher.publicKey, true)
-      .accounts({
-        admin: base.governance.publicKey,
-        registryState: base.registryStatePda,
-        account: base.publisher.publicKey,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      } as any)
-      .signers([base.governance])
-      .rpc();
+    const exemptPublisher = Keypair.generate();
 
-    const mintKp = Keypair.generate();
-    await base.pgcProgram.methods
-      .createGame(
-        gameId,
-        base.publisher.publicKey,
-        game.metadataUri,
-        new anchor.BN(0),
-        SystemProgram.programId,
-      )
-      .accounts({
-        payer: base.publisher.publicKey,
-        mint: mintKp.publicKey,
-        gameState: game.gameStatePda,
-        gameAuthority: game.gameAuthorityPda,
-        publisherAccount: base.publisher.publicKey,
-        publisherMinterAuth: game.publisherMinterAuthPda,
-        globalState: base.pgcGlobalStatePda,
-        registryProgram: base.registryProgram.programId,
-        registryState: base.registryStatePda,
-        gameRegistration: game.gameRegistrationPda,
-        gameStoreProgram: base.storeProgram.programId,
-        storeState: base.storeStatePda,
-        priceAccount: game.pricePda,
-        tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
-      } as any)
-      .signers([base.publisher, mintKp])
-      .rpc();
+    await base.provider.sendAndConfirm(
+      new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: base.provider.publicKey,
+          toPubkey: exemptPublisher.publicKey,
+          lamports: 2 * 1_000_000_000,
+        }),
+      ),
+    );
 
-    const reg = await base.registryProgram.account.gameRegistration.fetch(game.gameRegistrationPda);
-    expect(reg.status).to.equal(STATUS_APPROVED);
+    const ata = await getOrCreateAssociatedTokenAccount(
+      base.provider.connection,
+      base.authority,
+      base.paymentMint,
+      exemptPublisher.publicKey,
+    );
 
-    // Cleanup
-    await base.registryProgram.methods
-      .setFeeExemption(base.publisher.publicKey, false)
-      .accounts({
-        admin: base.governance.publicKey,
-        registryState: base.registryStatePda,
-      } as any)
-      .signers([base.governance])
-      .rpc();
+    const before = (await getAccount(base.provider.connection, ata.address)).amount;
+
+    const game = await createRegisteredGame(base, {
+      publisher: exemptPublisher,
+      gameId: `grant-game-${Date.now()}`,
+    });
+
+    const after = (await getAccount(base.provider.connection, ata.address)).amount;
+    const registryGame = (await base.registryProgram.account.registryGame.fetch(
+      game.registryGamePda,
+    )) as any;
+
+    expect(before.toString()).to.eq(after.toString());
+    expect((registryGame.status as any).active).to.not.eq(undefined);
   });
 });
