@@ -1,0 +1,342 @@
+Need-To-Update Audit (Solana Programs)
+Date: 2026-04-22
+Scope:
+- programs/pgl1
+- programs/registry
+- programs/game-store
+- docs/pgl1.txt
+- docs/registry.txt
+- docs/game-store.txt
+
+================================================================
+1) Executive Summary
+================================================================
+Status saat ini:
+- PGL1: core flow game + license sudah berjalan dan access control dasar cukup jelas.
+- Registry: onboarding + fee + grant + status management berjalan, tetapi ada trust boundary yang belum dikunci penuh pada CPI target.
+- Game Store: masih partial/integration-stage. Ada gap fungsional besar pada settlement + license mint, dan ada indikasi incompatibility pada pembacaan account mirror eksternal.
+
+Prioritas utama update:
+- [CRITICAL] Dokumentasi harus menyatakan bahwa game-store belum full production untuk commerce settlement.
+- [CRITICAL] Dokumentasi harus menyatakan buy_game saat ini hanya validasi + receipt (tanpa transfer SPL dan tanpa mint license).
+- [HIGH] Dokumentasi harus menambahkan access/security matrix per instruction.
+- [HIGH] Dokumentasi harus menambahkan trust assumptions dan limitasi CPI registry->pgl1.
+
+================================================================
+2) Critical Findings (Code + Doc Gaps)
+================================================================
+[CRITICAL-1] Game Store mirror model belum reliable untuk external program account.
+- Gejala: flow store config/listing pernah gagal dengan AccountOwnedByWrongProgram (terlihat juga di test "currently rejects external ...").
+- Dampak: listing/payment option untuk game registry canonical bisa gagal runtime.
+- Action code:
+  1. Ganti Account<SourceGameMirror>/Account<RegistryGameMirror> jadi model yang benar-benar kompatibel cross-program.
+  2. Opsi A: gunakan type account canonical dari dependency program (pgl1::state::Game, registry::state::RegistryGame) via CPI crate.
+  3. Opsi B: gunakan UncheckedAccount + manual deserialize yang explicit + owner checks + discriminator checks.
+- Action docs:
+  - Tambahkan warning besar bahwa mirror compatibility adalah known issue sampai patch final.
+
+[CRITICAL-2] buy_game belum lakukan token settlement + license mint.
+- Saat ini buy_game:
+  - validasi price/status/token
+  - hitung final_price/referral_bps
+  - simpan PurchaseReceipt
+- Tidak ada:
+  - transfer token buyer->treasury/publisher/referrer
+  - CPI mint license ke PGL1
+  - check already-owned license
+- Dampak: purchase belum merepresentasikan transaksi ekonomi final.
+- Action docs:
+  - Wajib tulis "buy_game = accounting receipt only (sementara)".
+  - Jelaskan bahwa PaymentFailed/LicenseMintFailed/AlreadyOwned belum fully used.
+
+[HIGH-1] Registry create_game_and_register: trust boundary CPI belum ketat.
+- pgl1_program adalah UncheckedAccount, tidak dipaksa ke allowlist/ID tertentu.
+- pgl_config/pgl_treasury/pgl_creator_state/game juga forwarded tanpa verifikasi ekstra yang ketat terhadap canonical PGL1 config.
+- Dampak: potensi misrouting CPI jika caller menyuplai account/target tidak sesuai asumsi integrasi.
+- Action code:
+  1. Tambah expected pgl1 program address pada RegistryConfig (atau allowlist PDA).
+  2. Validate pgl1_program key == expected.
+  3. Validate pgl_config PDA dan pgl_treasury terkait pgl_config.
+- Action docs:
+  - Tambah bagian "Current trust assumptions for CPI".
+
+[HIGH-2] Inisialisasi config sering jadi akar masalah operasional.
+- Jika pgl_config/registry_config/store_config belum ada, banyak menu/flow akan gagal.
+- Action docs:
+  - Wajib ada section "Bootstrap order" dan dependency graph sebelum operasi token/game.
+
+[MEDIUM-1] Validasi non-default pubkey tidak konsisten.
+- Store initialize_store/set_treasury tidak menolak treasury default.
+- Store initialize_store juga tidak menolak store_actor default.
+- PGL1/Registry sudah menolak treasury default.
+- Action code/docs:
+  - Samakan policy validasi agar konsisten lintas program.
+
+[MEDIUM-2] Error semantics beberapa tempat tidak presisi.
+- Contoh: overflow next_nonce di create_game map ke GameAlreadyExists.
+- Action docs:
+  - Tambah note bahwa beberapa error code belum granular.
+
+================================================================
+3) Access Control Matrix (Per Instruction)
+================================================================
+Legend:
+- Admin = config.authority program terkait
+- Publisher = game.publisher canonical di PGL1 Game account
+- Actor = authorized_actor aktif di PGL1
+
+-------------------------
+3A) PGL1
+-------------------------
+initialize_pgl
+- Caller: signer apa pun saat config belum ada
+- Guard: init PDA pgl_config (sekali)
+
+set_create_game_fee
+- Caller: Admin PGL1
+- Guard: pgl_config.authority == signer
+
+set_treasury
+- Caller: Admin PGL1
+- Guard: pgl_config.authority == signer
+
+add_authorized_actor
+- Caller: Admin PGL1
+- Guard: pgl_config.authority == signer
+
+deactivate_authorized_actor
+- Caller: Admin PGL1
+- Guard: pgl_config.authority == signer
+
+create_game
+- Caller: creator signer
+- Guard: fee transfer (jika >0), validasi game_id/metadata_uri
+
+set_publisher
+- Caller: Publisher saat ini
+- Guard: game.publisher == signer
+
+set_metadata_uri
+- Caller: Publisher saat ini
+- Guard: game.publisher == signer
+
+mint_license
+- Caller: Actor (authorized + active)
+- Guard: authorized_actor seeded by actor signer
+
+renew_license
+- Caller: Actor (authorized + active)
+- Guard: same as mint + expiry monotonic increase
+
+-------------------------
+3B) Registry
+-------------------------
+initialize_registry
+- Caller: signer apa pun saat config belum ada
+- Guard: init PDA registry_config (sekali)
+
+set_treasury
+- Caller: Admin Registry
+- Guard: has_one authority
+
+add_payment_token
+- Caller: Admin Registry
+- Guard: has_one authority, fee_amount > 0
+
+update_payment_token
+- Caller: Admin Registry
+- Guard: has_one authority, fee_amount > 0
+
+remove_payment_token
+- Caller: Admin Registry
+- Guard: has_one authority
+
+set_publish_grant
+- Caller: Admin Registry
+- Guard: has_one authority
+
+create_game_and_register
+- Caller: Publisher signer
+- Guard:
+  - game_id/metadata_uri valid
+  - token fee transfer kecuali grant aktif
+  - CPI ke create_game PGL1
+  - registry_game status default = Active
+
+update_game_status
+- Caller: Admin Registry
+- Guard: has_one authority + finite transition rules
+
+-------------------------
+3C) Game Store
+-------------------------
+initialize_store
+- Caller: signer apa pun saat config belum ada
+- Guard: init PDA store_config (sekali)
+
+set_treasury / set_platform_fee / set_default_referral / set_max_referral
+- Caller: Admin Store
+- Guard: has_one authority
+
+add/update authorized_source_program
+- Caller: Admin Store
+- Guard: has_one authority
+
+add/update authorized_registry_program
+- Caller: Admin Store
+- Guard: has_one authority
+
+add/update payment_token
+- Caller: Admin Store
+- Guard: has_one authority
+
+init_game_store_config
+- Caller: Publisher
+- Guard:
+  - source+registry program authorized active
+  - registry_game->game match
+  - registry status Active
+  - game.publisher == signer
+
+set_game_store_active
+- Caller: Publisher
+- Guard: sama seperti di atas
+
+set_game_payment_option
+- Caller: Publisher
+- Guard:
+  - game.publisher == signer
+  - registry status Active
+  - game_store_config.active == true
+  - accepted_payment_token.active == true
+
+remove_game_payment_option
+- Caller: Publisher
+- Guard: game.publisher == signer, mint match
+
+set_discount
+- Caller: Publisher
+- Guard: game.publisher == signer + registry status Active
+
+clear_discount
+- Caller: Publisher
+- Guard: game.publisher == signer
+
+set_referral_bps
+- Caller: Publisher
+- Guard: game.publisher == signer, max_referral boundary
+
+buy_game
+- Caller: Buyer
+- Guard:
+  - registry status Active
+  - game store active
+  - option active
+  - payment mint consistency
+  - paid_amount == final_price
+- Current output: PurchaseReceipt only
+
+================================================================
+4) Flow Per Instruction (What Docs Must Explain)
+================================================================
+Docs harus menambahkan "Flow" minimal seperti ini:
+
+PGL1.create_game
+1. validate input
+2. optional SOL fee transfer ke treasury
+3. init_if_needed creator_state
+4. derive game PDA by nonce
+5. write game + increment nonce
+
+Registry.create_game_and_register
+1. validate game_id + metadata_uri
+2. check publish grant opsional
+3. jika tidak grant aktif -> transfer_checked registry fee
+4. CPI call create_game di pgl1
+5. init registry_game status Active
+
+Store.init_game_store_config
+1. verify authorized source+registry program
+2. verify ownership and game linkage
+3. verify registry status Active
+4. write initial game store config
+
+Store.set_game_payment_option
+1. verify publisher ownership + registry active
+2. verify game_store_config active
+3. verify accepted payment token active
+4. write game payment option
+
+Store.buy_game (current)
+1. verify all status/token/price constraints
+2. compute discount + referral bps
+3. write purchase receipt
+4. emit purchase event
+5. STOP (no settlement/no license mint yet)
+
+================================================================
+5) Required Updates to Existing Docs Files
+================================================================
+5A) docs/pgl1.txt
+- Tambahkan section "Instruction Security Matrix".
+- Tambahkan section "State Transition Rules" untuk license renew.
+- Tambahkan section "Known Limitations":
+  - belum ada revoke/burn license
+  - game_id tidak global-unique (identity by PDA)
+
+5B) docs/registry.txt
+- Tambahkan section "Default Status": game baru langsung Active.
+- Tambahkan section "Grant Semantics": expired_at=None = indefinite grant.
+- Tambahkan section "CPI Trust Assumptions" (current limitations).
+- Tambahkan section "Required Accounts Even When Grant Active": payment accounts/mint tetap diminta di account list.
+
+5C) docs/game-store.txt
+- Tambahkan banner "Current Integration Status: Partial / Not Full Settlement".
+- Tambahkan section "Buy Flow (Current vs Target)".
+- Tambahkan section "Mirror Compatibility Risk".
+- Tambahkan section "Operational Prerequisites":
+  1. store_config initialized
+  2. source/registry program authorized
+  3. accepted payment tokens configured
+  4. registry game active
+
+================================================================
+6) Recommended Code Hardening (After Docs)
+================================================================
+[Priority-1]
+- Finalize store mirror account model for true cross-program compatibility.
+- Implement settlement token transfer + license mint in buy_game.
+
+[Priority-2]
+- Add explicit expected pgl1 program/config validation in registry.
+- Enforce non-default treasury/store_actor in store.
+
+[Priority-3]
+- Improve error granularity (overflow vs already exists, etc).
+- Add invariant tests for bootstrap + token onboarding order.
+
+================================================================
+7) Test Coverage Updates Needed
+================================================================
+Tambahkan/rapikan test berikut:
+- Positive path store listing via real canonical accounts (setelah mirror fix).
+- buy_game should fail if buyer already owns license (once implemented).
+- buy_game settlement split checks (treasury/publisher/referrer amounts).
+- registry create_game_and_register should reject wrong pgl1 program/config.
+- store initialize/set_treasury should reject default pubkey (after hardening).
+
+================================================================
+8) Bootstrap Order (must be documented explicitly)
+================================================================
+1. initialize_pgl
+2. initialize_registry
+3. initialize_store
+4. add registry payment token
+5. add store payment token
+6. set publish grant (optional fee exemption)
+7. create_game_and_register
+8. init_game_store_config
+9. set_game_payment_option
+10. buy_game (current receipt-only)
+11. mint_license / renew_license (actor flow)
+
