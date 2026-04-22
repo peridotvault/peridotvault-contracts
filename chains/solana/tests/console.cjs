@@ -17,6 +17,9 @@ const storeIdl = require("../target/idl/peridotvault_store.json");
 
 const CONSOLE_STATE_PATH = path.join(__dirname, "../.console-state.json");
 const INPUT_EOF = "__EOF__";
+const DEFAULT_PLATFORM_FEE_BPS = 1000;
+const DEFAULT_REFERRAL_BPS = 200;
+const DEFAULT_MAX_REFERRAL_BPS = 5000;
 
 function derivePda(seeds, programId) {
   return PublicKey.findProgramAddressSync(seeds, programId)[0];
@@ -288,6 +291,69 @@ async function dashboard(ctx) {
   console.log("licenses:", licenses.length);
 }
 
+async function getCoreConfigStatus(ctx) {
+  const [pgl, registry, store] = await Promise.all([
+    accountExists(ctx.provider.connection, ctx.pglConfigPda),
+    accountExists(ctx.provider.connection, ctx.registryConfigPda),
+    accountExists(ctx.provider.connection, ctx.storeConfigPda),
+  ]);
+
+  return { pgl, registry, store };
+}
+
+async function bootstrapCoreConfigsFlow(ctx) {
+  console.log("\n== Bootstrap: Core Configs ==");
+  const status = await getCoreConfigStatus(ctx);
+
+  if (!status.pgl) {
+    await ctx.pglProgram.methods
+      .initializePgl(ctx.provider.publicKey, new anchor.BN(0))
+      .accounts({
+        authority: ctx.provider.publicKey,
+        pglConfig: ctx.pglConfigPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("pgl_config created.");
+  } else {
+    console.log("pgl_config already exists.");
+  }
+
+  if (!status.registry) {
+    await ctx.registryProgram.methods
+      .initializeRegistry(ctx.provider.publicKey)
+      .accounts({
+        authority: ctx.provider.publicKey,
+        config: ctx.registryConfigPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("registry_config created.");
+  } else {
+    console.log("registry_config already exists.");
+  }
+
+  if (!status.store) {
+    await ctx.storeProgram.methods
+      .initializeStore(
+        ctx.provider.publicKey,
+        DEFAULT_PLATFORM_FEE_BPS,
+        DEFAULT_REFERRAL_BPS,
+        DEFAULT_MAX_REFERRAL_BPS,
+        ctx.provider.publicKey,
+      )
+      .accounts({
+        authority: ctx.provider.publicKey,
+        storeConfig: ctx.storeConfigPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("store_config created.");
+  } else {
+    console.log("store_config already exists.");
+  }
+}
+
 async function getRegistryGameRows(ctx) {
   const entries = await ctx.registryProgram.account.registryGame.all();
 
@@ -348,6 +414,11 @@ async function pickRegistryGame(ctx, rl) {
 }
 
 async function listRegistryPaymentTokensFlow(ctx) {
+  if (!(await accountExists(ctx.provider.connection, ctx.registryConfigPda))) {
+    console.log("\nRegistry config belum ada. Jalankan Main Menu -> Bootstrap Core Configs.");
+    return;
+  }
+
   const tokens = await ctx.registryProgram.account.acceptedPaymentToken.all();
   console.log("\n== Registry: Payment Tokens ==");
 
@@ -364,6 +435,11 @@ async function listRegistryPaymentTokensFlow(ctx) {
 }
 
 async function listStorePaymentTokensFlow(ctx) {
+  if (!(await accountExists(ctx.provider.connection, ctx.storeConfigPda))) {
+    console.log("\nStore config belum ada. Jalankan Main Menu -> Bootstrap Core Configs.");
+    return;
+  }
+
   const tokens = await ctx.storeProgram.account.acceptedPaymentToken.all();
   console.log("\n== Store: Payment Tokens ==");
 
@@ -380,6 +456,12 @@ async function listStorePaymentTokensFlow(ctx) {
 }
 
 async function chooseRegistryAcceptedMint(ctx, rl) {
+  if (!(await accountExists(ctx.provider.connection, ctx.registryConfigPda))) {
+    throw new Error(
+      "registry_config belum ada. Jalankan Main Menu -> Bootstrap Core Configs dulu.",
+    );
+  }
+
   const tokens = await ctx.registryProgram.account.acceptedPaymentToken.all();
   const active = tokens.filter((t) => t.account.active);
 
@@ -422,6 +504,13 @@ async function ensurePublishGrant(ctx, publisherPk) {
 
 async function createGameFlow(ctx, rl) {
   console.log("\n== Registry: Create Game + Register ==");
+
+  const status = await getCoreConfigStatus(ctx);
+  if (!status.pgl || !status.registry) {
+    console.log("pgl_config / registry_config belum siap.");
+    console.log("Jalankan Main Menu -> Bootstrap Core Configs dulu.");
+    return;
+  }
 
   const gameId = await ask(rl, "Game ID", `game-${Date.now()}`);
   if (gameId === INPUT_EOF) {
@@ -566,6 +655,12 @@ async function promptMintAddressOrCreate(ctx, rl) {
 async function addOrUpdateRegistryPaymentTokenFlow(ctx, rl) {
   console.log("\n== Registry: Add / Update Payment Token ==");
 
+  if (!(await accountExists(ctx.provider.connection, ctx.registryConfigPda))) {
+    console.log("registry_config belum ada.");
+    console.log("Jalankan Main Menu -> Bootstrap Core Configs dulu.");
+    return;
+  }
+
   const mint = await promptMintAddressOrCreate(ctx, rl);
   if (!mint) {
     return;
@@ -613,6 +708,12 @@ async function addOrUpdateRegistryPaymentTokenFlow(ctx, rl) {
 async function setRegistryGameStatusFlow(ctx, rl) {
   console.log("\n== Registry: Set Game Status (Admin) ==");
 
+  if (!(await accountExists(ctx.provider.connection, ctx.registryConfigPda))) {
+    console.log("registry_config belum ada.");
+    console.log("Jalankan Main Menu -> Bootstrap Core Configs dulu.");
+    return;
+  }
+
   const selected = await pickRegistryGame(ctx, rl);
   if (!selected) {
     return;
@@ -651,6 +752,12 @@ async function setRegistryGameStatusFlow(ctx, rl) {
 
 async function addOrUpdateStorePaymentTokenFlow(ctx, rl) {
   console.log("\n== Store: Add / Update Payment Token ==");
+
+  if (!(await accountExists(ctx.provider.connection, ctx.storeConfigPda))) {
+    console.log("store_config belum ada.");
+    console.log("Jalankan Main Menu -> Bootstrap Core Configs dulu.");
+    return;
+  }
 
   const mint = await promptMintAddressOrCreate(ctx, rl);
   if (!mint) {
@@ -692,6 +799,13 @@ async function addOrUpdateStorePaymentTokenFlow(ctx, rl) {
 
 async function configureStoreFlow(ctx, rl) {
   console.log("\n== Store: Configure Listing ==");
+
+  const status = await getCoreConfigStatus(ctx);
+  if (!status.pgl || !status.registry || !status.store) {
+    console.log("Core config belum lengkap.");
+    console.log("Jalankan Main Menu -> Bootstrap Core Configs dulu.");
+    return;
+  }
 
   const selected = await pickRegistryGame(ctx, rl);
   if (!selected) {
@@ -792,6 +906,9 @@ async function configureStoreFlow(ctx, rl) {
 }
 
 async function getStoreGamePaymentOptions(ctx) {
+  if (!(await accountExists(ctx.provider.connection, ctx.storeConfigPda))) {
+    return [];
+  }
   return ctx.storeProgram.account.gamePaymentOption.all();
 }
 
@@ -829,6 +946,12 @@ async function pickGamePaymentOption(ctx, rl) {
 
 async function buyGameFlow(ctx, rl) {
   console.log("\n== Store: Buy Game ==");
+
+  if (!(await accountExists(ctx.provider.connection, ctx.storeConfigPda))) {
+    console.log("store_config belum ada.");
+    console.log("Jalankan Main Menu -> Bootstrap Core Configs dulu.");
+    return;
+  }
 
   const option = await pickGamePaymentOption(ctx, rl);
   if (!option) {
@@ -895,6 +1018,11 @@ async function buyGameFlow(ctx, rl) {
 }
 
 async function listPurchaseReceiptsFlow(ctx) {
+  if (!(await accountExists(ctx.provider.connection, ctx.storeConfigPda))) {
+    console.log("\nStore config belum ada. Jalankan Main Menu -> Bootstrap Core Configs.");
+    return;
+  }
+
   const receipts = await ctx.storeProgram.account.purchaseReceipt.all();
   console.log("\n== Store: Purchase Receipts ==");
 
@@ -1009,6 +1137,7 @@ async function showMainMenu() {
   console.log("2. Registry Menu");
   console.log("3. Store Menu");
   console.log("4. License Menu");
+  console.log("5. Bootstrap Core Configs");
   console.log("0. Exit");
 }
 
@@ -1154,6 +1283,8 @@ async function main() {
           await storeMenu(ctx, rl);
         } else if (choice === "4") {
           await licenseMenu(ctx, rl);
+        } else if (choice === "5") {
+          await bootstrapCoreConfigsFlow(ctx);
         } else {
           console.log("Pilihan menu tidak valid.");
         }

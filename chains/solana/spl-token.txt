@@ -1,0 +1,129 @@
+solana config set --url http://127.0.0.1:8899
+solana airdrop 10
+
+# SPL Token CLI Step-by-Step (SYNC WITH ANCHOR LOCALNET + CONSOLE)
+#
+# Fokus:
+# - Pakai wallet utama kamu (tanpa bikin wallet baru)
+# - Jalan di localnet
+# - Sinkron dengan `pnpm anchor:localnet` dan `pnpm console`
+
+# ============================================================
+# A) FIX ERROR SPL-TOKEN (khusus error libssl.3.dylib)
+# ============================================================
+# Jika muncul error:
+#   Library not loaded: /opt/homebrew/opt/openssl@3/lib/libssl.3.dylib
+# Jalankan sekali:
+# /opt/homebrew/bin/brew install openssl@3
+#
+# Verifikasi:
+# spl-token --version
+
+# ============================================================
+# B) START LOCALNET YANG SAMA DENGAN CONSOLE
+# ============================================================
+# Terminal A (biarkan hidup):
+pnpm anchor:localnet
+
+# Terminal B:
+solana config set --url http://127.0.0.1:8899
+solana config set --keypair ~/.config/solana/id.json
+solana config get
+
+# Isi SOL wallet utama (kalau perlu)
+solana airdrop 10
+solana balance
+
+# Simpan wallet utama ke variable
+MY_WALLET=$(solana address)
+echo "MY_WALLET=$MY_WALLET"
+
+# ============================================================
+# C) CREATE TOKEN (langsung)
+# ============================================================
+# Decimals 6 (contoh USDC-like)
+TOKEN_MINT=$(spl-token create-token --decimals 6 --url http://127.0.0.1:8899 | awk '/Address:/{print $2}')
+echo "TOKEN_MINT=$TOKEN_MINT"
+
+# Cek mint
+spl-token display $TOKEN_MINT --url http://127.0.0.1:8899
+
+# ============================================================
+# D) CREATE TOKEN ACCOUNT UNTUK WALLET UTAMA
+# ============================================================
+spl-token create-account $TOKEN_MINT --url http://127.0.0.1:8899
+
+# ============================================================
+# E) MINT TOKEN KE WALLET UTAMA
+# ============================================================
+# Mint 10000 token
+spl-token mint $TOKEN_MINT 10000 --url http://127.0.0.1:8899
+
+# Cek balance wallet utama
+spl-token balance $TOKEN_MINT --url http://127.0.0.1:8899
+
+# ============================================================
+# F) TRANSFER TOKEN
+# ============================================================
+# Opsi 1 (tanpa wallet baru): transfer ke wallet utama sendiri
+# NOTE: ini valid, tapi saldo efektif tidak berpindah (hanya bayar fee tx)
+RECEIVER=$MY_WALLET
+spl-token transfer $TOKEN_MINT 250 $RECEIVER --fund-recipient --url http://127.0.0.1:8899
+
+# Cek balance lagi
+spl-token balance $TOKEN_MINT --url http://127.0.0.1:8899
+
+# Opsi 2 (disarankan untuk test perpindahan saldo):
+# pakai address lain yang SUDAH ADA (misalnya dari profile gamer di console)
+# RECEIVER=<PASTE_ADDRESS_TUJUAN>
+# spl-token transfer $TOKEN_MINT 250 $RECEIVER --fund-recipient --url http://127.0.0.1:8899
+# spl-token balance $TOKEN_MINT --owner $RECEIVER --url http://127.0.0.1:8899
+
+# ============================================================
+# G) VERIFIKASI DETAIL
+# ============================================================
+spl-token accounts --url http://127.0.0.1:8899
+spl-token supply $TOKEN_MINT --url http://127.0.0.1:8899
+
+# ============================================================
+# H) HUBUNGKAN KE CONSOLE APP
+# ============================================================
+# Setelah token dibuat, buka console:
+pnpm console
+#
+# Lalu menu:
+# - Registry Menu -> Add / Update Payment Token
+# - Store Menu -> Add / Update Payment Token
+# - lanjut Create Game / Buy Game flow
+
+# ============================================================
+# I) RESET LOCALNET (kalau mau ulang dari nol)
+# ============================================================
+# Stop Terminal A (Ctrl+C), lalu start lagi:
+# pnpm anchor:localnet
+#
+# Semua state localnet sebelumnya akan hilang.
+
+solana config set --url http://127.0.0.1:8899
+
+# ============================================================
+# COPY-PASTE CEPAT: USDT (LOCALNET)
+# ============================================================
+MY_WALLET=$(solana address)
+USDT_MINT=$(spl-token create-token --decimals 6 --url http://127.0.0.1:8899 | awk '/Address:/{print $2}')
+echo "USDT_MINT=$USDT_MINT"
+spl-token create-account $USDT_MINT --url http://127.0.0.1:8899
+spl-token mint $USDT_MINT 1000000 --url http://127.0.0.1:8899
+spl-token transfer $USDT_MINT 1000 $MY_WALLET --fund-recipient --url http://127.0.0.1:8899
+spl-token balance $USDT_MINT --url http://127.0.0.1:8899
+
+# ============================================================
+# COPY-PASTE CEPAT: IDRX (LOCALNET)
+# ============================================================
+MY_WALLET=$(solana address)
+IDRX_MINT=$(spl-token create-token --decimals 2 --url http://127.0.0.1:8899 | awk '/Address:/{print $2}')
+echo "IDRX_MINT=$IDRX_MINT"
+spl-token create-account $IDRX_MINT --url http://127.0.0.1:8899
+spl-token mint $IDRX_MINT 1000000 --url http://127.0.0.1:8899
+spl-token transfer $IDRX_MINT 1000 $MY_WALLET --fund-recipient --url http://127.0.0.1:8899
+spl-token balance $IDRX_MINT --url http://127.0.0.1:8899

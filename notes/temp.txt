@@ -1,0 +1,2 @@
+- mint: 9NudSBEBqw3B1ehFztAV6b7S6P6grLpD43myCjNzoXAK
+- accepted_payment_token: CxePBUejNdUXC56FFZ6a9f1CbdeCR1yGQJVDU1Nv5G3j
