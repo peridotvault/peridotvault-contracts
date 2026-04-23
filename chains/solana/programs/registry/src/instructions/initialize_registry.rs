@@ -29,11 +29,13 @@ pub(crate) fn handler(ctx: Context<InitializeRegistry>, treasury: Pubkey) -> Res
     let config = &mut ctx.accounts.config;
     config.authority = ctx.accounts.authority.key();
     config.treasury = treasury;
+    config.pgl1_program = pgl1::ID;
     config.bump = ctx.bumps.config;
 
     emit!(RegistryInitialized {
         authority: config.authority,
         treasury: config.treasury,
+        pgl1_program: config.pgl1_program,
     });
 
     Ok(())

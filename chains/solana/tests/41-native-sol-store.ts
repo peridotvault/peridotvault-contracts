@@ -7,22 +7,20 @@ import {
 } from "./helpers/peridot";
 
 describe("native SOL-style payment mint flow", () => {
-  it("currently fails for external mirrors (documenting existing behavior)", async () => {
+  it("allows listing with system program mint placeholder", async () => {
     const base = await setupPeridotFixture();
     const game = await createRegisteredGame(base);
 
-    let failed = false;
-    try {
-      await configureStoreForGame(base, game, {
-        basePrice: 50_000,
-        paymentMint: SystemProgram.programId,
-        active: true,
-      });
-    } catch (error: any) {
-      failed = true;
-      expect(String(error)).to.include("AccountOwnedByWrongProgram");
-    }
+    const listing = await configureStoreForGame(base, game, {
+      basePrice: 50_000,
+      paymentMint: SystemProgram.programId,
+      active: true,
+    });
 
-    expect(failed).to.eq(true);
+    const paymentOption = (await base.storeProgram.account.gamePaymentOption.fetch(
+      listing.gamePaymentOptionPda,
+    )) as any;
+    expect(paymentOption.mint.toBase58()).to.eq(SystemProgram.programId.toBase58());
+    expect(paymentOption.active).to.eq(true);
   });
 });

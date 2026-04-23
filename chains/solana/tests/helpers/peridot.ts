@@ -60,6 +60,7 @@ export type BaseFixture = {
   storeConfigPda: PublicKey;
   authorizedSourceProgramPda: PublicKey;
   authorizedRegistryProgramPda: PublicKey;
+  storeActorAuthorizedPda: PublicKey;
   registryAcceptedPaymentTokenPda: PublicKey;
   storeAcceptedPaymentTokenPda: PublicKey;
 };
@@ -255,6 +256,23 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
       .rpc();
   }
 
+  const storeActorAuthorizedPda = derivePda(
+    [Buffer.from("authorized_actor"), authority.publicKey.toBuffer()],
+    pglProgram.programId,
+  );
+  if (!(await accountExists(provider.connection, storeActorAuthorizedPda))) {
+    await pglProgram.methods
+      .addAuthorizedActor()
+      .accounts({
+        authority: authority.publicKey,
+        actor: authority.publicKey,
+        pglConfig: pglConfigPda,
+        authorizedActor: storeActorAuthorizedPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
   await getOrCreateAssociatedTokenAccount(
     provider.connection,
     authority,
@@ -292,6 +310,7 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
     storeConfigPda,
     authorizedSourceProgramPda,
     authorizedRegistryProgramPda,
+    storeActorAuthorizedPda,
     registryAcceptedPaymentTokenPda,
     storeAcceptedPaymentTokenPda,
   };
@@ -537,8 +556,51 @@ export async function buyGameForBuyer(
 ): Promise<{ buyer: Keypair; purchaseReceiptPda: PublicKey }> {
   const buyer = opts?.buyer ?? base.gamer;
   const paymentMint = opts?.paymentMint ?? base.paymentMint;
+  const referrer = opts?.referrer ?? null;
 
   await maybeFundSigner(base.provider, buyer);
+
+  const buyerPaymentAta = await getOrCreateAssociatedTokenAccount(
+    base.provider.connection,
+    base.authority,
+    paymentMint,
+    buyer.publicKey,
+  );
+  const publisherPaymentAta = await getOrCreateAssociatedTokenAccount(
+    base.provider.connection,
+    base.authority,
+    paymentMint,
+    game.publisher.publicKey,
+  );
+
+  const storeConfig = (await base.storeProgram.account.storeConfig.fetch(
+    base.storeConfigPda,
+  )) as any;
+  const treasuryPaymentAta = await getOrCreateAssociatedTokenAccount(
+    base.provider.connection,
+    base.authority,
+    paymentMint,
+    storeConfig.treasury,
+  );
+
+  const referrerPaymentAta =
+    referrer === null
+      ? null
+      : await getOrCreateAssociatedTokenAccount(
+          base.provider.connection,
+          base.authority,
+          paymentMint,
+          referrer,
+        );
+
+  await mintTo(
+    base.provider.connection,
+    base.authority,
+    paymentMint,
+    buyerPaymentAta.address,
+    base.authority,
+    paidAmount,
+  );
 
   const gameStoreConfigPda = derivePda(
     [Buffer.from("game_store_config"), game.gamePda.toBuffer()],
@@ -564,9 +626,13 @@ export async function buyGameForBuyer(
     ],
     base.storeProgram.programId,
   );
+  const licensePda = derivePda(
+    [Buffer.from("license"), buyer.publicKey.toBuffer(), game.gamePda.toBuffer()],
+    base.pglProgram.programId,
+  );
 
-  await base.storeProgram.methods
-    .buyGame(new anchor.BN(paidAmount), opts?.referrer ?? null)
+  let builder = base.storeProgram.methods
+    .buyGame(new anchor.BN(paidAmount), referrer)
     .accounts({
       buyer: buyer.publicKey,
       storeConfig: base.storeConfigPda,
@@ -580,11 +646,21 @@ export async function buyGameForBuyer(
       paymentMint,
       acceptedPaymentToken: storeAcceptedPaymentTokenPda,
       gamePaymentOption: gamePaymentOptionPda,
+      buyerPaymentAccount: buyerPaymentAta.address,
+      publisherPaymentAccount: publisherPaymentAta.address,
+      treasuryPaymentAccount: treasuryPaymentAta.address,
+      referrerPaymentAccount: referrerPaymentAta?.address ?? null,
+      storeActor: base.authority.publicKey,
+      authorizedActor: base.storeActorAuthorizedPda,
+      pgl1Program: base.pglProgram.programId,
+      license: licensePda,
       purchaseReceipt: purchaseReceiptPda,
+      tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
-    .signers([buyer])
-    .rpc();
+    .signers([buyer]);
+
+  await builder.rpc();
 
   return { buyer, purchaseReceiptPda };
 }

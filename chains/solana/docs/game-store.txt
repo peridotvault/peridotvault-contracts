@@ -5,15 +5,22 @@ Program Identity
 - Anchor module: peridotvault_store
 - Crate/lib: peridotvault-store / peridotvault_store
 
+Current Integration Status
+- Status: Active integration (settlement + license mint sudah hidup).
+- `buy_game` saat ini sudah menjalankan:
+  - validasi source/registry/token/listing
+  - SPL token settlement (treasury, publisher, optional referrer)
+  - CPI mint license ke PGL-1
+  - pembuatan purchase receipt + event
+
 Overview
-- Game Store adalah commerce layer untuk game yang sudah canonical di source program dan sudah terdaftar di registry.
+- Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 - Tanggung jawab utama:
-  - konfigurasi global fee/referral/treasury/store_actor
-  - allowlist source program dan registry program
-  - allowlist payment token global
-  - konfigurasi store per game (active, referral override, discount)
-  - payment option per game per token
-  - pencatatan purchase receipt
+  - config global store (treasury, fee, referral, store_actor)
+  - allowlist source program, registry program, payment token
+  - listing config per game + payment option
+  - discount/referral override per game
+  - buy flow settlement + license issue + receipt
 
 State Accounts
 1. StoreConfig
@@ -66,11 +73,6 @@ State Accounts
 - purchased_at: i64
 - bump: u8
 
-Mirror Types (dibaca dari external program owner)
-- SourceGameMirror: { publisher: Pubkey }
-- RegistryGameMirror: { game, game_id, registered_at, status, bump }
-- RegistryGameStatus: Active | Suspended | Banned
-
 Constants
 - BPS_DENOMINATOR = 10_000
 - PLATFORM_FEE_BPS_MAX = 10_000
@@ -85,118 +87,131 @@ PDA Seeds
 - game_payment_option: ["game_payment_option", game_pubkey, mint_pubkey]
 - purchase_receipt: ["purchase_receipt", buyer_pubkey, game_pubkey]
 
-Instructions
-1. initialize_store(treasury, platform_fee_bps, default_referral_bps, max_referral_bps, store_actor)
-- Signer: authority
-- Constraint:
-  - platform_fee_bps <= 10_000
-  - max_referral_bps <= 5_000
-  - default_referral_bps <= max_referral_bps
-  - platform_fee_bps + max_referral_bps <= 10_000
+Instruction Security Matrix
+- initialize_store
+  - Caller: signer pertama (authority awal)
+  - Guard: treasury != default, store_actor != default, BPS boundary valid
+- set_treasury / set_platform_fee / set_default_referral / set_max_referral
+  - Caller: Admin Store
+  - Guard: has_one authority + boundary checks
+- add/update authorized_source_program
+  - Caller: Admin Store
+  - Guard: has_one authority
+- add/update authorized_registry_program
+  - Caller: Admin Store
+  - Guard: has_one authority
+- add/update payment_token
+  - Caller: Admin Store
+  - Guard: has_one authority
+- init_game_store_config
+  - Caller: Publisher
+  - Guard: source+registry authorized active, registry_game<->game match, registry status Active, game.publisher == signer
+- set_game_store_active
+  - Caller: Publisher
+  - Guard: validasi sama seperti init_game_store_config
+- set_game_payment_option
+  - Caller: Publisher
+  - Guard: publisher owner, registry Active, store config active, accepted token active, base_price > 0
+- remove_game_payment_option
+  - Caller: Publisher
+  - Guard: publisher owner + mint match
+- set_discount / clear_discount
+  - Caller: Publisher
+  - Guard: publisher owner, registry Active (set_discount), window/bps valid
+- set_referral_bps
+  - Caller: Publisher
+  - Guard: publisher owner, value <= max_referral_bps
+- buy_game
+  - Caller: Buyer
+  - Guard:
+    - registry status Active
+    - listing aktif
+    - paid_amount == final_price
+    - payment mint & token accounts konsisten
+    - store_actor signer harus cocok config dan authorized di PGL-1
+    - mint license via CPI + receipt write
 
-2. set_treasury(treasury)
-- Signer: authority (has_one authority)
+Flow Per Instruction
+1. initialize_store(...)
+- Validasi treasury/store_actor non-default.
+- Validasi BPS invariants.
+- Init store_config.
 
-3. set_platform_fee(platform_fee_bps)
-- Signer: authority
-- Constraint: platform_fee_bps <= 10_000 dan platform_fee_bps + max_referral_bps <= 10_000
+2. set_treasury / set_platform_fee / set_default_referral / set_max_referral
+- Validasi admin.
+- Validasi boundary.
+- Update config.
 
-4. set_default_referral(default_referral_bps)
-- Signer: authority
-- Constraint: default_referral_bps <= max_referral_bps
+3. add/update authorized_source_program / authorized_registry_program
+- Validasi admin.
+- Init/update status active.
 
-5. set_max_referral(max_referral_bps)
-- Signer: authority
-- Constraint:
-  - max_referral_bps <= 5_000
-  - default_referral_bps <= max_referral_bps
-  - platform_fee_bps + max_referral_bps <= 10_000
+4. add/update payment_token
+- Validasi admin.
+- Init/update token status active.
 
-6. add_authorized_source_program()
-- Signer: authority
-- Menambahkan source program dan set active=true.
+5. init_game_store_config(active)
+- Validasi source+registry authorized.
+- Validasi publisher ownership + registry status Active.
+- Init game_store_config.
 
-7. update_authorized_source_program(active)
-- Signer: authority
-- Mengubah active flag source program.
+6. set_game_store_active(active)
+- Validasi publisher ownership + linkage game/registry.
+- Update active flag.
 
-8. add_authorized_registry_program()
-- Signer: authority
-- Menambahkan registry program dan set active=true.
+7. set_game_payment_option(base_price, active)
+- Validasi publisher ownership.
+- Validasi registry active + game_store_config active.
+- Validasi accepted payment token active.
+- init_if_needed dan update game_payment_option.
 
-9. update_authorized_registry_program(active)
-- Signer: authority
-- Mengubah active flag registry program.
+8. remove_game_payment_option()
+- Validasi publisher ownership + mint match.
+- Close game_payment_option.
 
-10. add_payment_token()
-- Signer: authority
-- Menambahkan payment mint dan set active=true.
+9. set_discount(discount_bps, starts_at, expires_at)
+- Validasi publisher ownership + registry active.
+- Validasi bps dan rentang waktu discount.
+- Update field discount.
 
-11. update_payment_token(active)
-- Signer: authority
-- Mengubah active flag payment mint.
+10. clear_discount()
+- Validasi publisher ownership.
+- Reset seluruh field discount ke None.
 
-12. init_game_store_config(active)
-- Signer: publisher
-- Butuh source+registry program yang sudah authorized dan active.
-- Validasi:
-  - game owner = source_program
-  - registry_game owner = registry_program
-  - registry_game.game == game.key
-  - registry_game.status == Active
-  - game.publisher == publisher
-- Inisialisasi GameStoreConfig (referral/discount default None).
-
-13. set_game_store_active(active)
-- Signer: publisher
-- Validasi source/registry sama seperti init_game_store_config.
-- Validasi game.publisher == publisher.
-
-14. set_game_payment_option(base_price, active)
-- Signer: publisher
-- base_price harus > 0.
-- Butuh AcceptedPaymentToken aktif dan mint cocok.
-- Validasi game_store_config.active == true.
-- Validasi registry status Active dan publisher cocok.
-
-15. remove_game_payment_option()
-- Signer: publisher
-- Menutup GamePaymentOption (close ke publisher).
-- Validasi mint cocok dan publisher cocok.
-
-16. set_discount(discount_bps, discount_starts_at, discount_expires_at)
-- Signer: publisher
-- Validasi publisher cocok.
-- Validasi registry status Active.
-- Jika discount_bps=Some(v), v <= 10_000.
-- Jika start+end ada, wajib start < end.
-
-17. clear_discount()
-- Signer: publisher
-- Validasi publisher cocok.
-- Set semua field discount ke None.
-
-18. set_referral_bps(referral_bps)
-- Signer: publisher
-- Validasi publisher cocok.
-- Normalisasi:
+11. set_referral_bps(referral_bps)
+- Validasi publisher ownership.
+- Normalisasi value:
   - None -> None
   - Some(0) -> None
-  - Some(v>0) -> Some(v), dengan v <= store_config.max_referral_bps
+  - Some(v>0) -> Some(v), v <= max_referral_bps
 
-19. buy_game(paid_amount, referrer)
-- Signer: buyer
-- Validasi:
-  - registry_game.game == game
-  - registry_game.status == Active
-  - game_store_config.active == true
-  - game_payment_option.active == true
-  - payment_mint cocok pada AcceptedPaymentToken dan GamePaymentOption
-  - paid_amount > 0
-  - paid_amount harus sama dengan final_price terhitung
-- final_price dihitung dari base_price + discount window.
-- referral_bps_applied dihitung dari default/override dan keberadaan referrer.
-- Membuat PurchaseReceipt dan emit events pembelian.
+12. buy_game(paid_amount, referrer)
+- Validasi registry status, listing status, payment mint, dan final price.
+- Hitung split nominal:
+  - platform_fee_amount
+  - publisher_amount
+  - referral_amount (jika referrer ada)
+- Transfer SPL token buyer -> treasury.
+- Transfer SPL token buyer -> publisher.
+- Jika referral_amount > 0, transfer buyer -> referrer (dengan validasi token account referrer).
+- CPI `pgl1::mint_license` menggunakan `store_actor` yang authorized.
+- Simpan purchase_receipt dan emit event.
+
+Buy Flow (Current vs Target)
+- Current:
+  - Settlement SPL token + mint license + receipt sudah aktif.
+- Target lanjutan (belum ada):
+  - refund/cancel flow
+  - dispute/reconciliation flow
+  - anti-fraud policy layer tambahan
+
+Operational Prerequisites
+1. `initialize_store` sudah dijalankan.
+2. `authorized_source_program` dan `authorized_registry_program` sudah aktif.
+3. `accepted_payment_token` store sudah aktif.
+4. Game sudah terdaftar di Registry dengan status `Active`.
+5. `init_game_store_config` + `set_game_payment_option` sudah dilakukan publisher.
+6. `store_actor` ada di PGL-1 authorized_actor dan status active.
 
 Events
 - StoreInitialized
@@ -245,8 +260,7 @@ Errors
 - RegistryGameMismatch
 - PaymentFailed
 - LicenseMintFailed
-
-Integration Notes
-- buy_game saat ini belum melakukan settlement transfer token maupun CPI mint license; file kode menandai bagian ini sebagai integration hooks.
-- Parameter referrer di buy_game saat ini hanya dipakai sebagai flag ada/tidaknya referrer (is_some), belum ada validasi akun referrer di accounts list.
-- Error seperti PaymentFailed/LicenseMintFailed/AlreadyOwned tersedia untuk integrasi lanjutan, namun flow saat ini fokus pada validasi dan pencatatan receipt.
+- MissingReferrerTokenAccount
+- InvalidReferrerTokenAccount
+- InvalidTreasury
+- InvalidStoreActor

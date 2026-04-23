@@ -7,21 +7,19 @@ import {
 } from "./helpers/peridot";
 
 describe("publisher store configuration", () => {
-  it("currently rejects external game/registry mirrors due owner mismatch", async () => {
+  it("configures listing for canonical pgl/registry game", async () => {
     const base = await setupPeridotFixture();
     const game = await createRegisteredGame(base);
 
-    let failed = false;
-    try {
-      await configureStoreForGame(base, game, {
-        basePrice: DEFAULT_GAME_PRICE,
-        active: true,
-      });
-    } catch (error: any) {
-      failed = true;
-      expect(String(error)).to.include("AccountOwnedByWrongProgram");
-    }
+    const listing = await configureStoreForGame(base, game, {
+      basePrice: DEFAULT_GAME_PRICE,
+      active: true,
+    });
 
-    expect(failed).to.eq(true);
+    const gameStoreConfig = (await base.storeProgram.account.gameStoreConfig.fetch(
+      listing.gameStoreConfigPda,
+    )) as any;
+    expect(gameStoreConfig.game.toBase58()).to.eq(game.gamePda.toBase58());
+    expect(gameStoreConfig.active).to.eq(true);
   });
 });

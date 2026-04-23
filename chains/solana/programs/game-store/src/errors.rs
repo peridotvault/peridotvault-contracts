@@ -50,4 +50,12 @@ pub enum StoreError {
     PaymentFailed,
     #[msg("License mint failed")]
     LicenseMintFailed,
+    #[msg("Missing referrer token account")]
+    MissingReferrerTokenAccount,
+    #[msg("Invalid referrer token account")]
+    InvalidReferrerTokenAccount,
+    #[msg("Invalid treasury")]
+    InvalidTreasury,
+    #[msg("Invalid store actor")]
+    InvalidStoreActor,
 }

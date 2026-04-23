@@ -95,24 +95,3 @@ pub struct PurchaseReceipt {
 impl PurchaseReceipt {
     pub const LEN: usize = 32 + 32 + 32 + 8 + 8 + 2 + 8 + 1;
 }
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
-pub enum RegistryGameStatus {
-    Active,
-    Suspended,
-    Banned,
-}
-
-#[account]
-pub struct SourceGameMirror {
-    pub publisher: Pubkey,
-}
-
-#[account]
-pub struct RegistryGameMirror {
-    pub game: Pubkey,
-    pub game_id: String,
-    pub registered_at: i64,
-    pub status: RegistryGameStatus,
-    pub bump: u8,
-}

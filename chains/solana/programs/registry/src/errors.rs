@@ -40,4 +40,10 @@ pub enum RegistryError {
 
     #[msg("Invalid treasury")]
     InvalidTreasury,
+
+    #[msg("Invalid PGL-1 program")]
+    InvalidPgl1Program,
+
+    #[msg("Invalid PGL-1 config account")]
+    InvalidPgl1Config,
 }

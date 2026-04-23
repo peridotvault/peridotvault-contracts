@@ -1,6 +1,10 @@
 use anchor_lang::prelude::*;
 
-use crate::{errors::StoreError, events::GamePaymentOptionRemoved, state::{AuthorizedSourceProgram, GamePaymentOption, SourceGameMirror}};
+use crate::{
+    errors::StoreError,
+    events::GamePaymentOptionRemoved,
+    state::{AuthorizedSourceProgram, GamePaymentOption},
+};
 
 #[derive(Accounts)]
 pub struct RemoveGamePaymentOption<'info> {
@@ -12,10 +16,8 @@ pub struct RemoveGamePaymentOption<'info> {
         bump = authorized_source_program.bump,
     )]
     pub authorized_source_program: Account<'info, AuthorizedSourceProgram>,
-    /// CHECK: trusted program id only
-    pub source_program: UncheckedAccount<'info>,
-    #[account(owner = source_program.key() @ StoreError::UnsupportedSourceGameOwner)]
-    pub game: Account<'info, SourceGameMirror>,
+    pub source_program: Program<'info, pgl1::program::Pgl1>,
+    pub game: Account<'info, pgl1::state::Game>,
     /// CHECK: mint PDA seed input
     pub mint: UncheckedAccount<'info>,
     #[account(

@@ -62,7 +62,7 @@ pub(crate) fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: S
     creator_state.next_nonce = creator_state
         .next_nonce
         .checked_add(1)
-        .ok_or(PglError::GameAlreadyExists)?;
+        .ok_or(PglError::NonceOverflow)?;
 
     emit!(GameCreated {
         game: game.key(),

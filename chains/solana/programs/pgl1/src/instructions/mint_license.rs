@@ -18,6 +18,11 @@ pub(crate) fn handler(ctx: Context<MintLicense>, expires_at: Option<i64>) -> Res
     }
 
     let license = &mut ctx.accounts.license;
+    // Defensive guard: reject duplicate mint if this PDA was already initialized before.
+    require!(
+        license.holder == Pubkey::default() && license.game == Pubkey::default(),
+        PglError::LicenseAlreadyExists
+    );
     license.holder = ctx.accounts.holder.key();
     license.game = ctx.accounts.game.key();
     license.issued_at = now;

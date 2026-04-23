@@ -6,18 +6,19 @@ Program Identity
 - Crate/lib: my-program / my_program
 
 Overview
-- Registry adalah onboarding dan governance layer untuk game di ekosistem.
-- Tanggung jawab utama:
-  - menyimpan konfigurasi registry (authority, treasury)
-  - mengelola token fee onboarding + nominal fee
-  - mengelola publish grant (bebas fee)
-  - membuat game di PGL-1 via CPI dan langsung register game tersebut
-  - mengelola status game (Active/Suspended/Banned)
+- Registry adalah onboarding + governance layer untuk game canonical.
+- Fungsi utama:
+  - konfigurasi admin registry
+  - allowlist payment token onboarding + fee per token
+  - publish grant (fee exemption)
+  - CPI create game ke PGL-1 + register game
+  - kontrol status game (Active/Suspended/Banned)
 
 State Accounts
 1. RegistryConfig
 - authority: Pubkey
 - treasury: Pubkey
+- pgl1_program: Pubkey (program PGL-1 yang diizinkan)
 - bump: u8
 
 2. AcceptedPaymentToken
@@ -37,7 +38,7 @@ State Accounts
 - publisher: Pubkey
 - expired_at: Option<i64>
 - bump: u8
-- None berarti grant tetap aktif.
+- None = grant aktif tanpa batas waktu.
 
 Enum
 - GameStatus::Active (0)
@@ -50,55 +51,108 @@ PDA Seeds
 - registry_game: ["registry_game", game_pubkey]
 - publish_grant: ["publish_grant", publisher_pubkey]
 
-Instructions
+Instruction Security Matrix
+- initialize_registry
+  - Caller: signer pertama (authority awal)
+  - Guard: init config sekali, treasury != default
+- set_treasury
+  - Caller: Admin Registry
+  - Guard: has_one authority, treasury != default
+- add_payment_token
+  - Caller: Admin Registry
+  - Guard: has_one authority, fee_amount > 0
+- update_payment_token
+  - Caller: Admin Registry
+  - Guard: has_one authority, fee_amount > 0
+- remove_payment_token
+  - Caller: Admin Registry
+  - Guard: has_one authority
+- set_publish_grant
+  - Caller: Admin Registry
+  - Guard: has_one authority, expired_at (jika ada) > 0
+- create_game_and_register
+  - Caller: Publisher signer
+  - Guard:
+    - game_id/metadata_uri valid
+    - pgl1_program harus == config.pgl1_program
+    - pgl_config harus PDA canonical PGL-1
+    - pgl_treasury harus == pgl_config.treasury
+    - fee onboarding ditagih jika grant tidak aktif
+- update_game_status
+  - Caller: Admin Registry
+  - Guard: has_one authority + finite transition rule
+
+Flow Per Instruction
 1. initialize_registry(treasury)
-- Signer: authority
-- Membuat RegistryConfig.
-- treasury wajib bukan default Pubkey.
+- Validasi treasury.
+- Init registry_config.
+- Simpan authority, treasury, dan pgl1_program default = ID PGL-1.
 
 2. set_treasury(treasury)
-- Signer: authority
-- has_one authority pada RegistryConfig.
-- treasury wajib bukan default Pubkey.
+- Validasi admin.
+- Validasi treasury non-default.
+- Update treasury.
 
 3. add_payment_token(fee_amount)
-- Signer: authority
-- Menambahkan mint ke allowlist fee registry.
-- active di-set true.
-- fee_amount wajib > 0.
+- Validasi admin.
+- Validasi fee_amount > 0.
+- Buat accepted_payment_token + set active=true.
 
 4. update_payment_token(active, fee_amount)
-- Signer: authority
-- Mengubah status active dan fee_amount.
-- fee_amount wajib > 0.
+- Validasi admin.
+- Validasi fee_amount > 0.
+- Update status dan fee.
 
 5. remove_payment_token()
-- Signer: authority
-- Menutup account accepted_payment_token.
+- Validasi admin.
+- Close accepted_payment_token.
 
 6. set_publish_grant(expired_at)
-- Signer: authority
-- init_if_needed PublishGrant untuk publisher target.
-- Jika expired_at=Some(ts), ts harus > 0.
+- Validasi admin.
+- init_if_needed publish_grant.
+- Simpan expired_at; None berarti indefinite grant.
 
 7. create_game_and_register(game_id, metadata_uri)
-- Signer: publisher
-- Validasi game_id non-empty, max 64.
-- Validasi metadata_uri non-empty.
-- Jika publisher tidak punya publish grant aktif:
-  - accepted_payment_token harus active
-  - fee_amount harus > 0
-  - transfer_checked token dari publisher_payment_account ke treasury_payment_account
-- Selalu melakukan CPI ke PGL-1 create_game.
-- Membuat RegistryGame dengan status awal Active.
+- Validasi input game.
+- Validasi trust boundary PGL-1 (program/config/treasury).
+- Cek publish grant optional dari remaining account.
+- Jika grant tidak aktif: transfer_checked fee publisher -> treasury.
+- CPI call `pgl1::create_game`.
+- Init registry_game dengan status default Active.
 
 8. update_game_status(status_u8)
-- Signer: authority
-- Status transition yang diizinkan:
+- Validasi admin.
+- Parse status target.
+- Validasi transisi:
   - Active <-> Suspended
   - Active -> Banned
   - Suspended -> Banned
-- Banned tidak bisa kembali ke status lain.
+  - Banned -> (tidak bisa balik)
+- Update status.
+
+Default Status
+- Game baru hasil `create_game_and_register` langsung berstatus `Active`.
+
+Grant Semantics
+- Publish grant aktif jika:
+  - account publish_grant valid untuk publisher
+  - `expired_at` == None, atau `now <= expired_at`
+- Saat grant aktif, fee token onboarding di-skip.
+
+Required Accounts Even When Grant Active
+- Walaupun grant aktif, account list berikut tetap wajib tersedia:
+  - payment_mint
+  - accepted_payment_token
+  - publisher_payment_account
+  - treasury_payment_account
+  - token_program
+- Fee bisa nol (skipped), tapi account masih dibutuhkan untuk struktur accounts instruction.
+
+CPI Trust Assumptions
+- Registry sekarang mengunci target PGL-1 via `config.pgl1_program`.
+- `pgl_config` harus PDA canonical dari program PGL-1 tersebut.
+- `pgl_treasury` harus cocok dengan `pgl_config.treasury`.
+- Dengan ini, misrouting CPI ke program/config palsu terblokir.
 
 Events
 - RegistryInitialized
@@ -124,8 +178,5 @@ Errors
 - InvalidMetadataUri
 - InvalidPublishGrantAccount
 - InvalidTreasury
-
-Integration Notes
-- create_game_and_register memerlukan account payment token di accounts list, walaupun fee bisa di-skip saat grant aktif.
-- CPI ke PGL-1 disusun manual via instruction discriminator hash("global:create_game").
-- Program tidak menyimpan metadata game detail selain game_id dan pointer game Pubkey.
+- InvalidPgl1Program
+- InvalidPgl1Config

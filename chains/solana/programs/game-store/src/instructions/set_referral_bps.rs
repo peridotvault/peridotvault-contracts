@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::{
     errors::StoreError,
     events::ReferralBpsUpdated,
-    state::{AuthorizedSourceProgram, GameStoreConfig, SourceGameMirror, StoreConfig},
+    state::{AuthorizedSourceProgram, GameStoreConfig, StoreConfig},
 };
 
 #[derive(Accounts)]
@@ -20,10 +20,8 @@ pub struct SetReferralBps<'info> {
         bump = authorized_source_program.bump,
     )]
     pub authorized_source_program: Account<'info, AuthorizedSourceProgram>,
-    /// CHECK: trusted program id only
-    pub source_program: UncheckedAccount<'info>,
-    #[account(owner = source_program.key() @ StoreError::UnsupportedSourceGameOwner)]
-    pub game: Account<'info, SourceGameMirror>,
+    pub source_program: Program<'info, pgl1::program::Pgl1>,
+    pub game: Account<'info, pgl1::state::Game>,
     #[account(
         mut,
         seeds = [b"game_store_config", game.key().as_ref()],

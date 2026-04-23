@@ -31,6 +31,8 @@ pub(crate) fn handler(
     max_referral_bps: u16,
     store_actor: Pubkey,
 ) -> Result<()> {
+    require!(treasury != Pubkey::default(), StoreError::InvalidTreasury);
+    require!(store_actor != Pubkey::default(), StoreError::InvalidStoreActor);
     require!(platform_fee_bps <= PLATFORM_FEE_BPS_MAX, StoreError::InvalidPlatformFeeBps);
     require!(max_referral_bps <= MAX_REFERRAL_BPS_HARD_CAP, StoreError::InvalidMaxReferralBps);
     require!(default_referral_bps <= max_referral_bps, StoreError::InvalidDefaultReferralBps);

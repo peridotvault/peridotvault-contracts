@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{events::TreasuryUpdated, state::StoreConfig};
+use crate::{errors::StoreError, events::TreasuryUpdated, state::StoreConfig};
 
 #[derive(Accounts)]
 pub struct SetTreasury<'info> {
@@ -15,6 +15,7 @@ pub struct SetTreasury<'info> {
 }
 
 pub(crate) fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
+    require!(treasury != Pubkey::default(), StoreError::InvalidTreasury);
     ctx.accounts.store_config.treasury = treasury;
 
     emit!(TreasuryUpdated { treasury });

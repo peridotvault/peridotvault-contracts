@@ -28,4 +28,7 @@ pub enum PglError {
 
     #[msg("Invalid expiry")]
     InvalidExpiry,
+
+    #[msg("Creator nonce overflow")]
+    NonceOverflow,
 }

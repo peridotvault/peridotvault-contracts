@@ -1,11 +1,4 @@
-use anchor_lang::{
-    prelude::*,
-    solana_program::{
-        instruction::{AccountMeta, Instruction},
-        program::invoke,
-        system_program,
-    },
-};
+use anchor_lang::{prelude::*, solana_program::system_program};
 use anchor_spl::token_interface::{
     transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
@@ -60,35 +53,25 @@ pub struct CreateGameAndRegister<'info> {
     )]
     pub registry_game: Account<'info, RegistryGame>,
 
-    /// CHECK: expected to be created by CPI into the PGL-1 program
+    /// CHECK: expected to be created by CPI into the PGL-1 program.
     #[account(mut)]
     pub game: UncheckedAccount<'info>,
 
-    /// CHECK: forwarded to PGL-1 create_game CPI
+    /// CHECK: forwarded to PGL-1 create_game CPI.
     #[account(mut)]
     pub pgl_creator_state: UncheckedAccount<'info>,
 
-    /// CHECK: forwarded to PGL-1 create_game CPI
-    pub pgl_config: UncheckedAccount<'info>,
+    pub pgl_config: Account<'info, pgl1::state::PglConfig>,
 
-    /// CHECK: forwarded to PGL-1 create_game CPI
+    /// CHECK: validated against pgl_config.treasury.
     #[account(mut)]
     pub pgl_treasury: UncheckedAccount<'info>,
 
-    /// CHECK: external PGL-1 program
-    pub pgl1_program: UncheckedAccount<'info>,
+    pub pgl1_program: Program<'info, pgl1::program::Pgl1>,
 
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
-
-#[derive(AnchorSerialize, AnchorDeserialize)]
-struct Pgl1CreateGameArgs {
-    pub game_id: String,
-    pub metadata_uri: String,
-}
-
-const PGL1_CREATE_GAME_DISCRIMINATOR: [u8; 8] = [124, 69, 75, 66, 184, 220, 72, 206];
 
 pub(crate) fn handler(
     ctx: Context<CreateGameAndRegister>,
@@ -98,6 +81,25 @@ pub(crate) fn handler(
     require!(!game_id.trim().is_empty(), RegistryError::InvalidGameId);
     require!(game_id.len() <= MAX_GAME_ID_LEN, RegistryError::InvalidGameId);
     require!(!metadata_uri.trim().is_empty(), RegistryError::InvalidMetadataUri);
+
+    require_keys_eq!(
+        ctx.accounts.pgl1_program.key(),
+        ctx.accounts.config.pgl1_program,
+        RegistryError::InvalidPgl1Program
+    );
+
+    let (expected_pgl_config, _) =
+        Pubkey::find_program_address(&[pgl1::state::PGL_CONFIG_SEED], &ctx.accounts.pgl1_program.key());
+    require_keys_eq!(
+        ctx.accounts.pgl_config.key(),
+        expected_pgl_config,
+        RegistryError::InvalidPgl1Config
+    );
+    require_keys_eq!(
+        ctx.accounts.pgl_treasury.key(),
+        ctx.accounts.pgl_config.treasury,
+        RegistryError::InvalidTreasury
+    );
 
     let now = Clock::get()?.unix_timestamp;
     let publish_grant_account = ctx.remaining_accounts.first();
@@ -135,17 +137,17 @@ pub(crate) fn handler(
         )?;
     }
 
-    cpi_create_game_in_pgl1(
-        &ctx.accounts.publisher.to_account_info(),
-        &ctx.accounts.pgl_config.to_account_info(),
-        &ctx.accounts.pgl_creator_state.to_account_info(),
-        &ctx.accounts.game.to_account_info(),
-        &ctx.accounts.pgl_treasury.to_account_info(),
-        &ctx.accounts.system_program.to_account_info(),
-        &ctx.accounts.pgl1_program.to_account_info(),
-        game_id.clone(),
-        metadata_uri,
-    )?;
+    let cpi_accounts = pgl1::cpi::accounts::CreateGame {
+        creator: ctx.accounts.publisher.to_account_info(),
+        pgl_config: ctx.accounts.pgl_config.to_account_info(),
+        treasury: ctx.accounts.pgl_treasury.to_account_info(),
+        creator_state: ctx.accounts.pgl_creator_state.to_account_info(),
+        game: ctx.accounts.game.to_account_info(),
+        system_program: ctx.accounts.system_program.to_account_info(),
+    };
+
+    let cpi_ctx = CpiContext::new(ctx.accounts.pgl1_program.to_account_info(), cpi_accounts);
+    pgl1::cpi::create_game(cpi_ctx, game_id.clone(), metadata_uri)?;
 
     let registry_game = &mut ctx.accounts.registry_game;
     registry_game.game = ctx.accounts.game.key();
@@ -196,55 +198,4 @@ fn load_optional_publish_grant(
     let grant = PublishGrant::try_deserialize(&mut data_slice)?;
 
     Ok(Some(grant))
-}
-
-fn cpi_create_game_in_pgl1<'info>(
-    creator: &AccountInfo<'info>,
-    pgl_config: &AccountInfo<'info>,
-    creator_state: &AccountInfo<'info>,
-    game: &AccountInfo<'info>,
-    treasury: &AccountInfo<'info>,
-    system_program_ai: &AccountInfo<'info>,
-    pgl1_program: &AccountInfo<'info>,
-    game_id: String,
-    metadata_uri: String,
-) -> Result<()> {
-    let mut data = Vec::with_capacity(128);
-    data.extend_from_slice(&PGL1_CREATE_GAME_DISCRIMINATOR);
-
-    let args = Pgl1CreateGameArgs {
-        game_id,
-        metadata_uri,
-    };
-    args.serialize(&mut data)?;
-
-    let accounts = vec![
-        AccountMeta::new(*creator.key, true),
-        AccountMeta::new_readonly(*pgl_config.key, false),
-        AccountMeta::new(*treasury.key, false),
-        AccountMeta::new(*creator_state.key, false),
-        AccountMeta::new(*game.key, false),
-        AccountMeta::new_readonly(*system_program_ai.key, false),
-    ];
-
-    let ix = Instruction {
-        program_id: *pgl1_program.key,
-        accounts,
-        data,
-    };
-
-    invoke(
-        &ix,
-        &[
-            creator.clone(),
-            pgl_config.clone(),
-            treasury.clone(),
-            creator_state.clone(),
-            game.clone(),
-            system_program_ai.clone(),
-            pgl1_program.clone(),
-        ],
-    )?;
-
-    Ok(())
 }

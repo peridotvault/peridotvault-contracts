@@ -4,8 +4,7 @@ use crate::{
     errors::StoreError,
     events::DiscountSet,
     state::{
-        AuthorizedRegistryProgram, AuthorizedSourceProgram, GameStoreConfig, RegistryGameMirror,
-        RegistryGameStatus, SourceGameMirror,
+        AuthorizedRegistryProgram, AuthorizedSourceProgram, GameStoreConfig,
     },
 };
 
@@ -18,20 +17,16 @@ pub struct SetDiscount<'info> {
         bump = authorized_source_program.bump,
     )]
     pub authorized_source_program: Account<'info, AuthorizedSourceProgram>,
-    /// CHECK: trusted program id only
-    pub source_program: UncheckedAccount<'info>,
+    pub source_program: Program<'info, pgl1::program::Pgl1>,
     #[account(
         constraint = authorized_registry_program.active @ StoreError::RegistryProgramNotAuthorized,
         seeds = [b"authorized_registry_program", registry_program.key().as_ref()],
         bump = authorized_registry_program.bump,
     )]
     pub authorized_registry_program: Account<'info, AuthorizedRegistryProgram>,
-    /// CHECK: trusted program id only
-    pub registry_program: UncheckedAccount<'info>,
-    #[account(owner = source_program.key() @ StoreError::UnsupportedSourceGameOwner)]
-    pub game: Account<'info, SourceGameMirror>,
-    #[account(owner = registry_program.key() @ StoreError::RegistryProgramNotAuthorized)]
-    pub registry_game: Account<'info, RegistryGameMirror>,
+    pub registry_program: Program<'info, registry_program::program::Registry>,
+    pub game: Account<'info, pgl1::state::Game>,
+    pub registry_game: Account<'info, registry_program::state::RegistryGame>,
     #[account(
         mut,
         seeds = [b"game_store_config", game.key().as_ref()],
@@ -49,7 +44,13 @@ pub(crate) fn handler(
 ) -> Result<()> {
     require_keys_eq!(ctx.accounts.game.publisher, ctx.accounts.publisher.key(), StoreError::Unauthorized);
     require_keys_eq!(ctx.accounts.registry_game.game, ctx.accounts.game.key(), StoreError::RegistryGameMismatch);
-    require!(matches!(ctx.accounts.registry_game.status, RegistryGameStatus::Active), StoreError::GameNotActive);
+    require!(
+        matches!(
+            ctx.accounts.registry_game.status,
+            registry_program::state::GameStatus::Active
+        ),
+        StoreError::GameNotActive
+    );
 
     if let Some(bps) = discount_bps {
         require!(bps <= 10_000, StoreError::InvalidDiscountBps);

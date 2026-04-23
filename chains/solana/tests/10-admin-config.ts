@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { Keypair } from "@solana/web3.js";
+import { Keypair, PublicKey } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import {
   DEFAULT_MAX_REFERRAL_BPS,
@@ -68,6 +68,7 @@ describe("admin config", () => {
     expect(pglAfter.treasury.toBase58()).to.eq(newTreasury.toBase58());
     expect(pglAfter.createGameFeeLamports.toString()).to.eq(newCreateFee.toString());
     expect(registryAfter.treasury.toBase58()).to.eq(newTreasury.toBase58());
+    expect(registryAfter.pgl1Program.toBase58()).to.eq(base.pglProgram.programId.toBase58());
     expect(storeAfter.treasury.toBase58()).to.eq(newTreasury.toBase58());
     expect(storeAfter.platformFeeBps).to.eq(newPlatformFee);
     expect(storeAfter.defaultReferralBps).to.eq(newDefaultReferral);
@@ -107,5 +108,22 @@ describe("admin config", () => {
       .setTreasury(storeBefore.treasury)
       .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
       .rpc();
+  });
+
+  it("rejects default treasury for store", async () => {
+    const base = await setupPeridotFixture();
+
+    let failed = false;
+    try {
+      await base.storeProgram.methods
+        .setTreasury(PublicKey.default)
+        .accounts({ authority: base.authority.publicKey, storeConfig: base.storeConfigPda })
+        .rpc();
+    } catch (error: any) {
+      failed = true;
+      expect(String(error)).to.include("Invalid treasury");
+    }
+
+    expect(failed).to.eq(true);
   });
 });

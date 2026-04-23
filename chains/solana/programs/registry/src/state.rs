@@ -6,11 +6,12 @@ pub const MAX_GAME_ID_LEN: usize = 64;
 pub struct RegistryConfig {
     pub authority: Pubkey,
     pub treasury: Pubkey,
+    pub pgl1_program: Pubkey,
     pub bump: u8,
 }
 
 impl RegistryConfig {
-    pub const SPACE: usize = 8 + 32 + 32 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 32 + 1;
 }
 
 #[account]

@@ -947,6 +947,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "pgl1",
 ]
 
 [[package]]
@@ -1065,6 +1066,9 @@ name = "peridotvault-store"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "anchor-spl",
+ "my-program",
+ "pgl1",
 ]
 
 [[package]]

@@ -6,12 +6,12 @@ Program Identity
 - Crate: pgl1
 
 Overview
-- PGL-1 adalah canonical layer untuk game metadata inti dan lisensi.
+- PGL-1 adalah canonical source of truth untuk game metadata inti dan license ownership.
 - Program ini mengelola:
   - konfigurasi global (authority, treasury, create fee)
-  - daftar actor yang boleh menerbitkan/perpanjang lisensi
-  - game records canonical
-  - license records canonical
+  - daftar actor yang berwenang mint/renew license
+  - game canonical account
+  - license canonical account
 
 State Accounts
 1. PglConfig
@@ -53,58 +53,97 @@ PDA Seeds
 - game: ["game", creator_pubkey, creator_nonce_le_bytes]
 - license: ["license", holder_pubkey, game_pubkey]
 
-Instructions
+Instruction Security Matrix
+- initialize_pgl
+  - Caller: signer pertama (sekaligus authority awal)
+  - Guard: PDA pgl_config di-init sekali, treasury != default Pubkey
+- set_create_game_fee
+  - Caller: Admin PGL1
+  - Guard: signer == pgl_config.authority
+- set_treasury
+  - Caller: Admin PGL1
+  - Guard: signer == pgl_config.authority, treasury != default
+- add_authorized_actor
+  - Caller: Admin PGL1
+  - Guard: signer == pgl_config.authority
+- deactivate_authorized_actor
+  - Caller: Admin PGL1
+  - Guard: signer == pgl_config.authority
+- create_game
+  - Caller: creator signer
+  - Guard: game_id & metadata_uri valid, treasury harus cocok config, fee SOL harus cukup
+- set_publisher
+  - Caller: publisher saat ini
+  - Guard: game.publisher == signer, new_publisher != default
+- set_metadata_uri
+  - Caller: publisher saat ini
+  - Guard: game.publisher == signer, metadata_uri valid
+- mint_license
+  - Caller: actor signer
+  - Guard: actor harus authorized & active, expiry valid, dan reject duplicate license
+- renew_license
+  - Caller: actor signer
+  - Guard: actor harus authorized & active, expiry harus > now, dan jika sudah punya expiry harus meningkat
+
+Flow Per Instruction
 1. initialize_pgl(treasury, create_game_fee_lamports)
-- Signer: authority
-- Creates PglConfig.
-- treasury wajib bukan default Pubkey.
+- Validasi treasury.
+- Inisialisasi pgl_config.
+- Simpan authority, treasury, fee.
 
 2. set_create_game_fee(create_game_fee_lamports)
-- Signer: authority
-- Authority harus sama dengan pgl_config.authority.
+- Validasi caller admin.
+- Update fee global.
 
 3. set_treasury(treasury)
-- Signer: authority
-- Authority harus sama dengan pgl_config.authority.
-- treasury wajib bukan default Pubkey.
+- Validasi caller admin.
+- Validasi treasury non-default.
+- Update treasury.
 
 4. add_authorized_actor()
-- Signer: authority
-- Menulis/menimpa AuthorizedActor untuk actor target dan set active=true.
+- Validasi caller admin.
+- Init/update PDA authorized_actor.
+- Set active=true.
 
 5. deactivate_authorized_actor()
-- Signer: authority
-- Set active=false untuk actor target.
+- Validasi caller admin.
+- Set authorized_actor.active=false.
 
 6. create_game(game_id, metadata_uri)
-- Signer: creator
-- Validasi game_id non-empty, trimmed, max 64.
-- Validasi metadata_uri non-empty, trimmed, max 256.
-- Jika create_game_fee_lamports > 0, transfer SOL dari creator ke treasury.
-- init_if_needed CreatorState lalu pakai next_nonce untuk PDA game.
-- Menetapkan publisher awal = creator.
-- Increment creator_state.next_nonce.
+- Validasi game_id dan metadata_uri.
+- Jika fee > 0, transfer SOL creator -> treasury.
+- init_if_needed creator_state.
+- Buat game PDA berdasarkan nonce current.
+- Simpan game record, increment nonce (overflow -> NonceOverflow).
 
 7. set_publisher(new_publisher)
-- Signer: publisher saat ini
-- Hanya publisher saat ini yang boleh mengganti publisher.
-- new_publisher wajib bukan default Pubkey.
+- Validasi signer adalah publisher saat ini.
+- Validasi new_publisher.
+- Update game.publisher.
 
 8. set_metadata_uri(metadata_uri)
-- Signer: publisher saat ini
-- metadata_uri wajib non-empty dan max 256.
+- Validasi signer adalah publisher saat ini.
+- Validasi metadata_uri.
+- Update metadata URI.
 
 9. mint_license(expires_at)
-- Signer: actor
-- Actor harus ada di AuthorizedActor dan active=true.
-- expires_at (jika Some) harus > waktu saat ini.
-- Menginisialisasi License baru (holder + game).
+- Validasi actor authorized + active.
+- Validasi expires_at (jika ada) > now.
+- Guard duplicate: jika license sudah terisi, reject (LicenseAlreadyExists).
+- Init license PDA dan simpan issued_at/expires_at.
 
 10. renew_license(expires_at)
-- Signer: actor
-- Actor harus authorized dan active=true.
-- expires_at harus > waktu saat ini.
-- Jika license sudah punya expires_at, nilai baru harus lebih besar.
+- Validasi actor authorized + active.
+- Validasi expires_at > now.
+- Jika license sudah punya expiry, expiry baru harus lebih besar.
+- Update expires_at.
+
+State Transition Rules (License)
+- Mint:
+  - dari "belum ada license" -> "license aktif (issued)"
+- Renew:
+  - None -> Some(future_timestamp)
+  - Some(t1) -> Some(t2), dengan t2 > t1 wajib
 
 Events
 - PglInitialized
@@ -128,8 +167,9 @@ Errors
 - LicenseAlreadyExists
 - LicenseNotFound
 - InvalidExpiry
+- NonceOverflow
 
-Integration Notes
-- Tidak ada global uniqueness untuk game_id; identitas game ditentukan oleh PDA (creator + nonce).
-- Program ini tidak punya revoke license instruction.
-- create_game memakai system transfer (SOL), bukan SPL token fee.
+Known Limitations
+- Belum ada revoke/burn license instruction.
+- game_id tidak global-unique lintas creator; identity canonical ditentukan oleh PDA game (creator + nonce).
+- create_game fee menggunakan SOL transfer, bukan SPL token.

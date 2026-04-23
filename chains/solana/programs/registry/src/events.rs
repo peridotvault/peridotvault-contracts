@@ -4,6 +4,7 @@ use anchor_lang::prelude::*;
 pub struct RegistryInitialized {
     pub authority: Pubkey,
     pub treasury: Pubkey,
+    pub pgl1_program: Pubkey,
 }
 
 #[event]
