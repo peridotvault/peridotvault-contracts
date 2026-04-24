@@ -13,6 +13,73 @@ Overview
   - game canonical account
   - license canonical account
 
+Program Scope
+- In scope:
+  - canonical game creation + metadata ownership (publisher)
+  - canonical license issuance and renewal
+  - actor authorization list untuk operasi license
+- Out of scope:
+  - pricing/commerce/settlement token
+  - registry governance status game
+  - refund/dispute business logic
+
+Authority Model
+- PGL Admin (`pgl_config.authority`)
+  - mengelola config global dan daftar authorized actor
+- Publisher (`game.publisher`)
+  - mengelola publisher game dan metadata game sendiri
+- Authorized Actor (`authorized_actor.actor` + `active=true`)
+  - satu-satunya role yang boleh mint/renew license
+- Creator
+  - pihak yang membuat game; publisher awal diset ke creator
+
+Program-Level Access Control
+- Global admin gate:
+  - seluruh admin instruction wajib signer == `pgl_config.authority`
+- Publisher gate:
+  - mutasi game-level wajib signer == `game.publisher`
+- License gate:
+  - `mint_license`/`renew_license` wajib actor berada di PDA `authorized_actor` dan status `active`
+- PDA ownership gate:
+  - seluruh account penting diverifikasi lewat seeds+bump PDA canonical PGL-1
+
+Security Assumptions Review (2026-04-24)
+- Assumption 1: secure bootstrap initialization
+  - `initialize_pgl` bersifat first-writer-wins untuk `pgl_config`.
+  - Implikasi: jika deployment tidak langsung inisialisasi, pihak lain bisa mengambil authority awal.
+- Assumption 2: admin key is highly trusted
+  - `pgl_config.authority` adalah root of trust untuk fee/treasury/authorized actor.
+  - Tidak ada instruction rotasi authority saat ini, sehingga compromise/loss key bersifat high impact.
+- Assumption 3: authorized actor is trusted operator
+  - `mint_license`/`renew_license` tidak mewajibkan holder signer.
+  - Actor yang authorized dapat menerbitkan/memperpanjang license untuk holder mana pun.
+- Assumption 4: no on-chain revocation/pause
+  - Belum ada revoke/burn/pause instruction.
+  - License yang sudah terbit tidak bisa dicabut on-chain oleh admin.
+- Assumption 5: metadata mutability by publisher
+  - Publisher saat ini bisa mengubah `metadata_uri` kapan pun.
+  - Integrator tidak boleh mengasumsikan metadata immutable.
+- Assumption 6: game identity by PDA, not by game_id
+  - `game_id` bukan unique global key.
+  - Konsumen wajib treat `game` PDA sebagai identitas canonical.
+
+Recommended Hardening (Roadmap)
+- Tambah `set_authority(new_authority)` + optional two-step handover.
+- Tambah emergency pause untuk `mint_license`/`renew_license`.
+- Tambah revoke/burn/blacklist flow (jika model bisnis membutuhkan).
+- Tambah optional holder-consent mode (mis. holder signer required) untuk use case non-custodial.
+- Tambah test regression khusus bootstrap takeover dan admin key compromise playbook.
+
+Authorized Actor Model
+- Registration:
+  - Admin menambahkan actor via `add_authorized_actor` (active=true)
+- Deactivation:
+  - Admin menonaktifkan actor via `deactivate_authorized_actor`
+- Enforcement:
+  - `mint_license` dan `renew_license` reject actor yang tidak ada/aktif
+- Revocation behavior:
+  - deactivation hanya memblokir aksi baru; tidak membatalkan license yang sudah terbit
+
 State Accounts
 1. PglConfig
 - authority: Pubkey
@@ -137,6 +204,94 @@ Flow Per Instruction
 - Validasi expires_at > now.
 - Jika license sudah punya expiry, expiry baru harus lebih besar.
 - Update expires_at.
+
+Validation Flow (Execution Pipeline)
+1. Account constraint validation (Anchor layer)
+- PDA seeds + bump checks dijalankan dulu oleh Anchor.
+- Ownership/has_one/address constraint diverifikasi sebelum masuk handler.
+
+2. Role & authority validation (handler)
+- Admin-only: signer harus sama dengan `pgl_config.authority`.
+- Publisher-only: signer harus sama dengan `game.publisher`.
+- Actor-only: signer harus match `authorized_actor.actor` dan status active.
+
+3. Input validation
+- `game_id` wajib non-empty + trimmed + <= 64.
+- `metadata_uri` wajib non-empty + trimmed + <= 256.
+- `new_publisher` dan `treasury` tidak boleh default pubkey.
+
+4. Economic/temporal validation
+- `create_game`: jika fee > 0, balance SOL creator harus cukup.
+- `mint_license`/`renew_license`: expiry harus valid terhadap waktu sekarang.
+- `renew_license`: expiry baru wajib lebih besar dari expiry saat ini (monotonic increase).
+
+5. Uniqueness & replay protection
+- `create_game`: game PDA berbasis `(creator, nonce)`; nonce di-increment atomik.
+- `mint_license`: guard duplicate memastikan license yang sudah terisi tidak bisa di-mint ulang.
+
+6. State write + event emit
+- Setelah semua validasi lolos, baru lakukan state mutation dan emit event domain.
+
+Validation Helpers (Current Patterns)
+- Macro guards:
+  - `require!` untuk boolean invariant.
+  - `require_keys_eq!` untuk equality pubkey yang kritikal.
+- Anchor account constraints:
+  - `seeds`, `bump`, `address`, `constraint`, `init`, `init_if_needed`.
+- Canonical constants:
+  - `MAX_GAME_ID_LEN`, `MAX_METADATA_URI_LEN`.
+  - seed constants: `PGL_CONFIG_SEED`, `AUTHORIZED_ACTOR_SEED`, `CREATOR_STATE_SEED`, `GAME_SEED`, `LICENSE_SEED`.
+- Overflow-safe arithmetic:
+  - `checked_add` untuk nonce increment (`NonceOverflow` jika gagal).
+- Time source:
+  - `Clock::get()?.unix_timestamp` sebagai satu-satunya referensi waktu on-chain.
+
+Unit Test PGL-1 (Recommended Suite)
+- Suggested file:
+  - `tests/50-pgl1-core.ts`
+  - `tests/51-pgl1-access-control-negative.ts`
+- Positive unit tests:
+  - initialize pgl config sukses dengan treasury valid.
+  - set_create_game_fee oleh admin sukses.
+  - set_treasury oleh admin sukses.
+  - add_authorized_actor dan deactivate_authorized_actor sukses.
+  - create_game sukses:
+    - game fields benar
+    - publisher awal = creator
+    - creator_state.next_nonce bertambah.
+  - set_publisher sukses oleh publisher lama.
+  - set_metadata_uri sukses oleh publisher aktif.
+  - mint_license sukses oleh authorized actor aktif.
+  - renew_license sukses dengan expiry lebih besar.
+
+Negative Test for Access Control (Mandatory)
+- Admin control negatives:
+  - non-admin memanggil `set_create_game_fee` -> expect `Unauthorized`.
+  - non-admin memanggil `set_treasury` -> expect `Unauthorized`.
+  - non-admin memanggil `add_authorized_actor` -> expect `Unauthorized`.
+  - non-admin memanggil `deactivate_authorized_actor` -> expect `Unauthorized`.
+- Publisher control negatives:
+  - non-publisher memanggil `set_publisher` -> expect `Unauthorized`.
+  - non-publisher memanggil `set_metadata_uri` -> expect `Unauthorized`.
+- Actor control negatives:
+  - actor yang belum di-authorize memanggil `mint_license` -> expect `Unauthorized`/constraint failure.
+  - actor nonaktif memanggil `mint_license` -> expect `AuthorizedActorInactive`.
+  - actor nonaktif memanggil `renew_license` -> expect `AuthorizedActorInactive`.
+- License ownership negatives:
+  - holder/game mismatch saat `renew_license` -> expect `Unauthorized`.
+  - mint license kedua kali untuk holder+game sama -> expect `LicenseAlreadyExists`.
+- Input validation negatives:
+  - game_id kosong/lebih dari max -> expect `InvalidGameId`.
+  - metadata_uri kosong/lebih dari max -> expect `InvalidMetadataUri`.
+  - expiry <= now saat mint/renew -> expect `InvalidExpiry`.
+
+Test Coverage Mapping (Current Repo)
+- Sudah tercakup parsial di:
+  - `tests/10-admin-config.ts` (admin update config)
+  - `tests/21-publisher-create-game.ts` (create game path)
+  - `tests/31-gamer-library.ts` (mint license path)
+- Belum ada file dedicated khusus negative access control PGL-1.
+- Disarankan tambah `tests/51-pgl1-access-control-negative.ts` untuk hardening regression gate.
 
 State Transition Rules (License)
 - Mint:

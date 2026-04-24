@@ -14,6 +14,43 @@ Overview
   - CPI create game ke PGL-1 + register game
   - kontrol status game (Active/Suspended/Banned)
 
+Program Scope
+- In scope:
+  - onboarding game ke ekosistem melalui register flow
+  - governance status game (Active/Suspended/Banned)
+  - fee onboarding berdasarkan payment token allowlist
+  - grant fee exemption untuk publisher tertentu
+- Out of scope:
+  - mutasi metadata/publisher game canonical (tetap di PGL-1)
+  - listing price, discount, dan purchase settlement (tetap di Game Store)
+
+Authority Model
+- Registry Admin (`registry_config.authority`)
+  - full kontrol config registry, payment token, publish grant, dan status game
+- Publisher (signer saat `create_game_and_register`)
+  - membuat game baru via CPI ke PGL-1 dan mendaftarkan game tersebut
+- Trust anchor ke PGL-1:
+  - `registry_config.pgl1_program` menjadi root of trust untuk CPI create game
+
+Program-Level Access Control
+- Global admin gate:
+  - seluruh instruction governance/config memakai `has_one authority`
+- Publisher gate:
+  - `create_game_and_register` wajib signer publisher valid dan account payment token sesuai owner signer
+- CPI trust gate:
+  - `pgl1_program` harus match allowlist di config
+  - `pgl_config` wajib PDA canonical dari program PGL-1 tersebut
+  - `pgl_treasury` wajib sama dengan `pgl_config.treasury`
+- State transition gate:
+  - status transition dibatasi finite-state rule, khususnya `Banned` final/non-reversible
+
+Authorized Actor / Entity Model
+- Registry tidak memakai model `authorized_actor` seperti PGL-1.
+- Entitas yang dianggap "authorized" di registry berbasis:
+  - role admin (authority signer)
+  - allowlist `AcceptedPaymentToken` (token yang boleh dipakai fee)
+  - publish grant PDA untuk publisher tertentu (fee exemption policy)
+
 Publisher Authority Model
 - Registry tidak menyimpan pubkey publisher sebagai authority state untuk game.
 - Otoritas publisher selalu direferensikan lewat signer saat call + data canonical di PGL-1 game account.

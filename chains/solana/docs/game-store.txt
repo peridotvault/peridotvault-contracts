@@ -22,6 +22,50 @@ Overview
   - discount/referral override per game
   - buy flow settlement + license issue + receipt
 
+Program Scope
+- In scope:
+  - listing configuration per game/token
+  - pricing, discount, referral split, and payment settlement
+  - receipt pencatatan pembelian
+  - bridging purchase ke license issuance via CPI ke PGL-1
+- Out of scope:
+  - canonical game metadata ownership (tetap di PGL-1)
+  - governance status game ecosystem (tetap di Registry)
+  - revocation/refund/dispute final policy
+
+Authority Model
+- Store Admin (`store_config.authority`)
+  - mengelola global config, program allowlist, token allowlist
+- Publisher (`pgl1::Game.publisher`)
+  - mengelola listing game miliknya (active/payment option/discount/referral)
+- Buyer
+  - melakukan purchase sesuai policy listing aktif
+- Store Actor (`store_config.store_actor`)
+  - actor operasional untuk CPI `mint_license` ke PGL-1, wajib authorized di PGL-1
+
+Program-Level Access Control
+- Admin gate:
+  - admin/config instruction wajib `has_one authority`
+- Publisher gate:
+  - mutasi listing wajib signer == `pgl1::Game.publisher`
+  - tidak ada publisher pubkey yang disimpan di state store
+- Program allowlist gate:
+  - source program dan registry program harus ada dan `active=true` di allowlist store
+- Token allowlist gate:
+  - payment mint harus ada di `AcceptedPaymentToken` dan `active=true`
+- Buy gate:
+  - registry status wajib Active
+  - listing/store config wajib active
+  - paid amount wajib match computed final price
+  - token account ownership/mint consistency wajib valid
+
+Authorized Actor Model
+- Internal authorization (store):
+  - `AuthorizedSourceProgram` dan `AuthorizedRegistryProgram` mengontrol program external yang dipercaya
+- External authorization (PGL-1):
+  - `store_actor` harus memiliki account `pgl1::AuthorizedActor` aktif
+  - tanpa status authorized actor aktif, `buy_game` tidak bisa mint license
+
 Publisher Authority Model
 - Game Store tidak menyimpan publisher pubkey di account state store.
 - Semua mutasi oleh publisher selalu divalidasi langsung terhadap `pgl1::Game.publisher`.
