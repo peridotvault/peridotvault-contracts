@@ -41,7 +41,10 @@ impl RegistryGame {
 
 #[account]
 pub struct PublishGrant {
-    pub publisher: Pubkey,
+    // Backward-compatible reserved bytes.
+    // We intentionally do not persist publisher identity in registry state;
+    // authority is derived from PDA seed + signer checks against PGL1 game.
+    pub reserved: [u8; 32],
     pub expired_at: Option<i64>,
     pub bump: u8,
 }

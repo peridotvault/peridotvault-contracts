@@ -14,6 +14,10 @@ Overview
   - CPI create game ke PGL-1 + register game
   - kontrol status game (Active/Suspended/Banned)
 
+Publisher Authority Model
+- Registry tidak menyimpan pubkey publisher sebagai authority state untuk game.
+- Otoritas publisher selalu direferensikan lewat signer saat call + data canonical di PGL-1 game account.
+
 State Accounts
 1. RegistryConfig
 - authority: Pubkey
@@ -35,7 +39,7 @@ State Accounts
 - bump: u8
 
 4. PublishGrant
-- publisher: Pubkey
+- reserved: [u8; 32] (reserved for backward compatibility; bukan publisher)
 - expired_at: Option<i64>
 - bump: u8
 - None = grant aktif tanpa batas waktu.

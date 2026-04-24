@@ -22,6 +22,10 @@ Overview
   - discount/referral override per game
   - buy flow settlement + license issue + receipt
 
+Publisher Authority Model
+- Game Store tidak menyimpan publisher pubkey di account state store.
+- Semua mutasi oleh publisher selalu divalidasi langsung terhadap `pgl1::Game.publisher`.
+
 State Accounts
 1. StoreConfig
 - authority: Pubkey
