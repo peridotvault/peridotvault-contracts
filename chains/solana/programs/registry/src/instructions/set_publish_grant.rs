@@ -39,7 +39,6 @@ pub(crate) fn handler(ctx: Context<SetPublishGrant>, expired_at: Option<i64>) ->
     }
 
     let grant = &mut ctx.accounts.publish_grant;
-    grant.reserved = [0u8; 32];
     grant.expired_at = expired_at;
     grant.bump = ctx.bumps.publish_grant;
 

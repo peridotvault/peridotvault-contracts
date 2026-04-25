@@ -74,9 +74,10 @@ State Accounts
 - registered_at: i64
 - status: GameStatus
 - bump: u8
+- PDA seed: ["registry_game", game_pubkey] — uniqueness enforced via PDA collision.
 
 4. PublishGrant
-- reserved: [u8; 32] (reserved for backward compatibility; bukan publisher)
+- reserved: [u8; 32] (backward compatibility placeholder, zero-initialized, tidak dibaca di logic)
 - expired_at: Option<i64>
 - bump: u8
 - None = grant aktif tanpa batas waktu.
@@ -119,6 +120,7 @@ Instruction Security Matrix
     - pgl_config harus PDA canonical PGL-1
     - pgl_treasury harus == pgl_config.treasury
     - fee onboarding ditagih jika grant tidak aktif
+    - registry_game uniqueness (PDA collision via game_pubkey)
 - update_game_status
   - Caller: Admin Registry
   - Guard: has_one authority + finite transition rule
@@ -159,7 +161,7 @@ Flow Per Instruction
 - Cek publish grant optional dari remaining account.
 - Jika grant tidak aktif: transfer_checked fee publisher -> treasury.
 - CPI call `pgl1::create_game`.
-- Init registry_game dengan status default Active.
+- Init registry_game (seed: game_pubkey) dengan status default Active.
 
 8. update_game_status(status_u8)
 - Validasi admin.
