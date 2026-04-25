@@ -1,10 +1,10 @@
 [package]
-name = "my-program"
+name = "registry"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "my_program"
+name = "registry"
 crate-type = ["cdylib", "lib"]
 
 [features]

@@ -3,16 +3,18 @@ Registry (PeridotVault Registry v1)
 Program Identity
 - Program ID: DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL
 - Anchor module: registry
-- Crate/lib: my-program / my_program
+- Crate/lib: registry
 
 Overview
 - Registry adalah onboarding + governance layer untuk game canonical.
 - Fungsi utama:
   - konfigurasi admin registry
   - allowlist payment token onboarding + fee per token
-  - publish grant (fee exemption)
+  - publish grant (fee exemption) — create dan update terpisah
   - CPI create game ke PGL-1 + register game
+  - CPI ke Game Store untuk init config + set price (paid/free)
   - kontrol status game (Active/Suspended/Banned)
+  - close registry game (reclaim rent, hanya Suspended/Banned)
 
 Program Scope
 - In scope:
@@ -37,6 +39,7 @@ Program-Level Access Control
   - seluruh instruction governance/config memakai `has_one authority`
 - Publisher gate:
   - `create_game_and_register` wajib signer publisher valid dan account payment token sesuai owner signer
+  - `create_publish_grant` dan `update_publish_grant` wajib publisher signer
 - CPI trust gate:
   - `pgl1_program` harus match allowlist di config
   - `pgl_config` wajib PDA canonical dari program PGL-1 tersebut
@@ -77,7 +80,6 @@ State Accounts
 - PDA seed: ["registry_game", game_pubkey] — uniqueness enforced via PDA collision.
 
 4. PublishGrant
-- reserved: [u8; 32] (backward compatibility placeholder, zero-initialized, tidak dibaca di logic)
 - expired_at: Option<i64>
 - bump: u8
 - None = grant aktif tanpa batas waktu.
@@ -109,21 +111,31 @@ Instruction Security Matrix
 - remove_payment_token
   - Caller: Admin Registry
   - Guard: has_one authority
-- set_publish_grant
+- create_publish_grant
   - Caller: Admin Registry
-  - Guard: has_one authority, expired_at (jika ada) > 0
+  - Guard: has_one authority, publisher signer, expired_at > now (jika ada)
+- update_publish_grant
+  - Caller: Admin Registry
+  - Guard: has_one authority, publisher signer, expired_at > now (jika ada)
 - create_game_and_register
   - Caller: Publisher signer
   - Guard:
-    - game_id/metadata_uri valid
+    - game_id/metadata_uri valid (game_id max 64, metadata_uri max 256)
+    - self_program == registry program ID
+    - store_program == Game Store program ID (allowlist)
     - pgl1_program harus == config.pgl1_program
     - pgl_config harus PDA canonical PGL-1
     - pgl_treasury harus == pgl_config.treasury
-    - fee onboarding ditagih jika grant tidak aktif
+    - fee onboarding ditagih jika grant tidak aktif (token dipilih via payment_mint account)
     - registry_game uniqueness (PDA collision via game_pubkey)
+    - Jika base_price + mint_token Some: remaining accounts untuk store payment option wajib tersedia
 - update_game_status
   - Caller: Admin Registry
   - Guard: has_one authority + finite transition rule
+- close_registry_game
+  - Caller: Publisher signer
+  - Guard: game status harus Suspended atau Banned, treasury account match config.treasury
+  - Effect: registry_game PDA di-close, rent SOL dikirim ke treasury (bukan publisher)
 
 Flow Per Instruction
 1. initialize_registry(treasury)
@@ -150,18 +162,32 @@ Flow Per Instruction
 - Validasi admin.
 - Close accepted_payment_token.
 
-6. set_publish_grant(expired_at)
-- Validasi admin.
-- init_if_needed publish_grant.
-- Simpan expired_at; None berarti indefinite grant.
+6a. create_publish_grant(publisher, expired_at)
+- Validasi admin + publisher signer.
+- Validasi expired_at > now (jika ada).
+- Init publish_grant PDA.
 
-7. create_game_and_register(game_id, metadata_uri)
-- Validasi input game.
+6b. update_publish_grant(publisher, expired_at)
+- Validasi admin + publisher signer.
+- Validasi expired_at > now (jika ada).
+- Update expired_at pada grant yang sudah ada.
+
+7. create_game_and_register(game_id, metadata_uri, base_price, mint_token)
+- Validasi input game (game_id max 64, metadata_uri max 256).
+- Validasi self_program == registry program ID.
+- Validasi store_program == Game Store program ID.
 - Validasi trust boundary PGL-1 (program/config/treasury).
-- Cek publish grant optional dari remaining account.
-- Jika grant tidak aktif: transfer_checked fee publisher -> treasury.
+- Cek publish grant optional dari remaining account (index 0).
+- Jika grant tidak aktif: transfer_checked fee publisher -> treasury menggunakan payment_mint.
 - CPI call `pgl1::create_game`.
 - Init registry_game (seed: game_pubkey) dengan status default Active.
+- CPI ke Game Store `init_game_store_config` (active=true, default referral & discount).
+- Jika base_price Some(price) DAN mint_token Some(mint):
+  - remaining_accounts[1] = store_accepted_payment_token (store's allowlist)
+  - remaining_accounts[2] = store_game_payment_option (PDA di-init)
+  - CPI ke Game Store `set_game_payment_option` dengan base_price, active=true, dan mint_token.
+  - Game-store akan validasi: mint_token ada di store's AcceptedPaymentToken.
+- Jika base_price None ATAU mint_token None: game gratis, tidak ada GamePaymentOption yang dibuat.
 
 8. update_game_status(status_u8)
 - Validasi admin.
@@ -172,6 +198,15 @@ Flow Per Instruction
   - Suspended -> Banned
   - Banned -> (tidak bisa balik)
 - Update status.
+
+9. close_registry_game()
+- Validasi publisher signer.
+- Validasi game status == Suspended atau Banned (GameNotClosable jika Active).
+- Validasi treasury account match config.treasury.
+- Close registry_game PDA — rent SOL dikirim ke treasury (revenue untuk registry).
+- Game data hilang dari registry (tidak bisa di-recover).
+- Publisher bisa call instruction ini untuk cleanup game yang sudah di-suspend/ban.
+- Konsekuensi: publisher tidak dapat refund rent SOL, treasury mendapat SOL dari close.
 
 Default Status
 - Game baru hasil `create_game_and_register` langsung berstatus `Active`.
@@ -191,11 +226,32 @@ Required Accounts Even When Grant Active
   - token_program
 - Fee bisa nol (skipped), tapi account masih dibutuhkan untuk struktur accounts instruction.
 
+Remaining Accounts Layout for create_game_and_register
+- Index 0: publish_grant (optional) — untuk fee exemption
+- Index 1: store_accepted_payment_token (hanya jika base_price + mint_token Some)
+- Index 2: store_game_payment_option (hanya jika base_price + mint_token Some)
+- Jika grant ada DAN game berbayar: [grant, store_token, store_option]
+- Jika grant ada DAN game gratis: [grant]
+- Jika grant tidak ada DAN game berbayar: [store_token, store_option]
+- Jika grant tidak ada DAN game gratis: []
+
 CPI Trust Assumptions
 - Registry sekarang mengunci target PGL-1 via `config.pgl1_program`.
 - `pgl_config` harus PDA canonical dari program PGL-1 tersebut.
 - `pgl_treasury` harus cocok dengan `pgl_config.treasury`.
 - Dengan ini, misrouting CPI ke program/config palsu terblokir.
+- CPI ke Game Store dikunci via `store_program` (harus match Game Store program ID).
+- `store_authorized_source_program` dan `store_authorized_registry_program` divalidasi via seeds.
+- Game-store CPI menggunakan manual instruction construction (hardcoded discriminators) karena circular dependency registry <-> game-store. Discriminators harus diupdate jika game-store program berubah.
+
+Economic Model
+- Registry mendapat revenue dari:
+  - Onboarding fee per game (berdasarkan AcceptedPaymentToken.fee_amount)
+  - Rent SOL dari close_registry_game (rent dari PDA registry_game yang di-close)
+- Publisher membayar:
+  - Onboarding fee saat create_game_and_register (kecuali punya active publish grant)
+  - Rent SOL untuk registry_game PDA (tidak bisa di-recover, kecuali game di-close → rent ke treasury)
+- close_registry_game adalah konsekuensi bagi publisher: game dihapus, rent SOL masuk treasury registry.
 
 Events
 - RegistryInitialized
@@ -203,9 +259,11 @@ Events
 - PaymentTokenAdded
 - PaymentTokenUpdated
 - PaymentTokenRemoved
-- PublishGrantSet
+- PublishGrantCreated
+- PublishGrantUpdated
 - GameRegistered
 - GameStatusUpdated
+- GameClosed (game: Pubkey, game_id: String)
 
 Errors
 - Unauthorized
@@ -223,3 +281,7 @@ Errors
 - InvalidTreasury
 - InvalidPgl1Program
 - InvalidPgl1Config
+- InvalidStoreProgram
+- InvalidPrice
+- MissingStoreAccounts
+- GameNotClosable (game status bukan Suspended atau Banned)

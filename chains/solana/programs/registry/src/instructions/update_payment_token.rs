@@ -9,7 +9,6 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct UpdatePaymentToken<'info> {
-    #[account(mut)]
     pub authority: Signer<'info>,
 
     #[account(

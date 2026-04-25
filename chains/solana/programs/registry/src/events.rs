@@ -31,7 +31,13 @@ pub struct PaymentTokenRemoved {
 }
 
 #[event]
-pub struct PublishGrantSet {
+pub struct PublishGrantCreated {
+    pub publisher: Pubkey,
+    pub expired_at: Option<i64>,
+}
+
+#[event]
+pub struct PublishGrantUpdated {
     pub publisher: Pubkey,
     pub expired_at: Option<i64>,
 }
@@ -47,4 +53,10 @@ pub struct GameRegistered {
 pub struct GameStatusUpdated {
     pub game: Pubkey,
     pub status: u8,
+}
+
+#[event]
+pub struct GameClosed {
+    pub game: Pubkey,
+    pub game_id: String,
 }

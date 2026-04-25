@@ -1,4 +1,5 @@
 pub mod add_payment_token;
+pub mod close_registry_game;
 pub mod create_game_and_register;
 pub mod initialize_registry;
 pub mod remove_payment_token;
@@ -8,6 +9,7 @@ pub mod update_game_status;
 pub mod update_payment_token;
 
 pub use add_payment_token::*;
+pub use close_registry_game::*;
 pub use create_game_and_register::*;
 pub use initialize_registry::*;
 pub use remove_payment_token::*;

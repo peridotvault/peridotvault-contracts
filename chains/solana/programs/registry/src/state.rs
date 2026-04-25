@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 pub const MAX_GAME_ID_LEN: usize = 64;
+pub const MAX_METADATA_URI_LEN: usize = 256;
 
 #[account]
 pub struct RegistryConfig {
@@ -41,13 +42,12 @@ impl RegistryGame {
 
 #[account]
 pub struct PublishGrant {
-    pub reserved: [u8; 32],
     pub expired_at: Option<i64>,
     pub bump: u8,
 }
 
 impl PublishGrant {
-    pub const SPACE: usize = 8 + 32 + 1 + 8 + 1;
+    pub const SPACE: usize = 8 + 1 + 8 + 1;
 
     pub fn is_active_at(&self, now: i64) -> bool {
         match self.expired_at {

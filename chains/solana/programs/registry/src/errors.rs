@@ -46,4 +46,16 @@ pub enum RegistryError {
 
     #[msg("Invalid PGL-1 config account")]
     InvalidPgl1Config,
+
+    #[msg("Invalid store program")]
+    InvalidStoreProgram,
+
+    #[msg("Invalid price")]
+    InvalidPrice,
+
+    #[msg("Missing store accounts for paid game")]
+    MissingStoreAccounts,
+
+    #[msg("Game not closable (must be Suspended or Banned)")]
+    GameNotClosable,
 }

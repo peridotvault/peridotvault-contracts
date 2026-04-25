@@ -8,7 +8,6 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct SetTreasury<'info> {
-    #[account(mut)]
     pub authority: Signer<'info>,
 
     #[account(

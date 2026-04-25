@@ -37,19 +37,29 @@ pub mod registry {
         instructions::remove_payment_token::handler(ctx)
     }
 
-    pub fn set_publish_grant(ctx: Context<SetPublishGrant>, expired_at: Option<i64>) -> Result<()> {
-        instructions::set_publish_grant::handler(ctx, expired_at)
+    pub fn create_publish_grant(ctx: Context<CreatePublishGrant>, expired_at: Option<i64>) -> Result<()> {
+        instructions::set_publish_grant::create_handler(ctx, expired_at)
     }
 
-    pub fn create_game_and_register(
-        ctx: Context<CreateGameAndRegister>,
+    pub fn update_publish_grant(ctx: Context<UpdatePublishGrant>, expired_at: Option<i64>) -> Result<()> {
+        instructions::set_publish_grant::update_handler(ctx, expired_at)
+    }
+
+    pub fn create_game_and_register<'info>(
+        ctx: Context<'_, '_, '_, 'info, CreateGameAndRegister<'info>>,
         game_id: String,
         metadata_uri: String,
+        base_price: Option<u64>,
+        mint_token: Option<Pubkey>,
     ) -> Result<()> {
-        instructions::create_game_and_register::handler(ctx, game_id, metadata_uri)
+        instructions::create_game_and_register::handler(ctx, game_id, metadata_uri, base_price, mint_token)
     }
 
     pub fn update_game_status(ctx: Context<UpdateGameStatus>, status: u8) -> Result<()> {
         instructions::update_game_status::handler(ctx, status)
+    }
+
+    pub fn close_registry_game(ctx: Context<CloseRegistryGame>) -> Result<()> {
+        instructions::close_registry_game::handler(ctx)
     }
 }
