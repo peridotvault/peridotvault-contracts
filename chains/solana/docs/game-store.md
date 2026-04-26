@@ -143,6 +143,7 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 | payment_mint | `Pubkey` |
 | paid_amount | `u64` |
 | final_price | `u64` |
+| referrer | `Pubkey` (`Pubkey::default()` jika tidak ada) |
 | referral_bps_applied | `u16` |
 | purchased_at | `i64` |
 | bump | `u8` |
@@ -187,7 +188,7 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 | `clear_discount` | Publisher | Publisher owner, source (role=0) authorized active, reset discount fields ke None |
 | `set_referral_bps` | Publisher | Publisher owner, source (role=0) authorized active, `value <= max_referral_bps`, normalisasi `Some(0) -> None` |
 | `set_store_actor` | Admin Store | `has_one authority`, `new_store_actor != default` |
-| `buy_game` | Buyer (+ store_actor sebagai signer terpisah) | Registry Active, listing aktif, `paid_amount == final_price`, token accounts konsisten, store_actor authorized di PGL-1, **license PDA harus kosong** (belum punya / sudah expired-burned), mint license via CPI + receipt write |
+| `buy_game` | Buyer (+ store_actor sebagai signer terpisah) | Registry Active, listing aktif, `paid_amount == final_price`, token accounts konsisten, store_actor authorized di PGL-1, **license PDA harus kosong**, mint license via CPI + receipt write (simpan `referrer` jika ada) |
 
 ## Flow Per Instruction
 
@@ -289,12 +290,12 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 - Hitung split nominal:
   - `platform_fee_amount`
   - `publisher_amount`
-  - `referral_amount` (jika referrer ada)
+  - `referral_amount` (jika `referrer` provided)
 - Transfer SPL token buyer -> treasury
 - Transfer SPL token buyer -> publisher
 - Jika `referral_amount > 0`, transfer buyer -> referrer (dengan validasi token account referrer)
 - CPI `pgl1::mint_license` menggunakan `store_actor` yang authorized
-- Simpan/update purchase_receipt dan emit event
+- Simpan/update purchase_receipt (termasuk `referrer` pubkey) dan emit event
 
 ## Buy Flow (Current vs Target)
 
@@ -336,8 +337,8 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 | `DiscountCleared` | Discount untuk game direset |
 | `ReferralBpsUpdated` | Referral BPS untuk game diubah |
 | `StoreActorUpdated` | Store actor address diubah |
-| `GamePurchased` | Game berhasil dibeli |
-| `PurchaseReceiptCreated` | Purchase receipt berhasil dibuat |
+| `GamePurchased` | Game berhasil dibeli (termasuk referrer dan referral BPS) |
+| `PurchaseReceiptCreated` | Purchase receipt berhasil dibuat (termasuk referrer) |
 
 ## Errors
 

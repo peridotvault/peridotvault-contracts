@@ -154,6 +154,8 @@ pub(crate) fn handler(ctx: Context<BuyGame>, paid_amount: u64, referrer: Option<
     let final_price = compute_final_price(base_price, &ctx.accounts.game_store_config, now)?;
     require!(paid_amount == final_price, StoreError::InvalidPaymentAmount);
 
+    let referrer_key = referrer.unwrap_or(Pubkey::default());
+
     let effective_referral_bps = compute_effective_referral_bps(
         &ctx.accounts.store_config,
         &ctx.accounts.game_store_config,
@@ -252,6 +254,7 @@ pub(crate) fn handler(ctx: Context<BuyGame>, paid_amount: u64, referrer: Option<
     receipt.payment_mint = ctx.accounts.payment_mint.key();
     receipt.paid_amount = paid_amount;
     receipt.final_price = final_price;
+    receipt.referrer = referrer_key;
     receipt.referral_bps_applied = effective_referral_bps;
     receipt.purchased_at = now;
     receipt.bump = ctx.bumps.purchase_receipt;
@@ -262,12 +265,14 @@ pub(crate) fn handler(ctx: Context<BuyGame>, paid_amount: u64, referrer: Option<
         payment_mint: receipt.payment_mint,
         paid_amount: receipt.paid_amount,
         final_price: receipt.final_price,
+        referrer: receipt.referrer,
         referral_bps_applied: receipt.referral_bps_applied,
     });
 
     emit!(PurchaseReceiptCreated {
         buyer: receipt.buyer,
         game: receipt.game,
+        referrer: receipt.referrer,
     });
 
     Ok(())

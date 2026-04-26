@@ -80,11 +80,12 @@ pub struct PurchaseReceipt {
     pub payment_mint: Pubkey,
     pub paid_amount: u64,
     pub final_price: u64,
+    pub referrer: Pubkey,
     pub referral_bps_applied: u16,
     pub purchased_at: i64,
     pub bump: u8,
 }
 
 impl PurchaseReceipt {
-    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 2 + 8 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 32 + 2 + 8 + 1;
 }

@@ -102,6 +102,7 @@ pub struct GamePurchased {
     pub payment_mint: Pubkey,
     pub paid_amount: u64,
     pub final_price: u64,
+    pub referrer: Pubkey,
     pub referral_bps_applied: u16,
 }
 
@@ -109,6 +110,7 @@ pub struct GamePurchased {
 pub struct PurchaseReceiptCreated {
     pub buyer: Pubkey,
     pub game: Pubkey,
+    pub referrer: Pubkey,
 }
 
 #[event]
