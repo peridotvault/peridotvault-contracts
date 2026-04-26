@@ -4,7 +4,7 @@ use crate::{
     errors::StoreError,
     events::GameStoreActiveUpdated,
     state::{
-        AuthorizedRegistryProgram, AuthorizedSourceProgram, GameStoreConfig,
+        AuthorizedProgram, GameStoreConfig,
     },
 };
 
@@ -13,17 +13,11 @@ pub struct SetGameStoreActive<'info> {
     pub publisher: Signer<'info>,
     #[account(
         constraint = authorized_source_program.active @ StoreError::SourceProgramNotAuthorized,
-        seeds = [b"authorized_source_program", source_program.key().as_ref()],
+        seeds = [b"authorized_program", source_program.key().as_ref()],
         bump = authorized_source_program.bump,
     )]
-    pub authorized_source_program: Account<'info, AuthorizedSourceProgram>,
+    pub authorized_source_program: Account<'info, AuthorizedProgram>,
     pub source_program: Program<'info, pgl1::program::Pgl1>,
-    #[account(
-        constraint = authorized_registry_program.active @ StoreError::RegistryProgramNotAuthorized,
-        seeds = [b"authorized_registry_program", registry_program.key().as_ref()],
-        bump = authorized_registry_program.bump,
-    )]
-    pub authorized_registry_program: Account<'info, AuthorizedRegistryProgram>,
     pub registry_program: Program<'info, registry_program::program::Registry>,
     pub game: Account<'info, pgl1::state::Game>,
     pub registry_game: Account<'info, registry_program::state::RegistryGame>,

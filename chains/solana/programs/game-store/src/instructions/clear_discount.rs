@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::{
     errors::StoreError,
     events::DiscountCleared,
-    state::{AuthorizedSourceProgram, GameStoreConfig},
+    state::{AuthorizedProgram, GameStoreConfig},
 };
 
 #[derive(Accounts)]
@@ -11,10 +11,10 @@ pub struct ClearDiscount<'info> {
     pub publisher: Signer<'info>,
     #[account(
         constraint = authorized_source_program.active @ StoreError::SourceProgramNotAuthorized,
-        seeds = [b"authorized_source_program", source_program.key().as_ref()],
+        seeds = [b"authorized_program", source_program.key().as_ref()],
         bump = authorized_source_program.bump,
     )]
-    pub authorized_source_program: Account<'info, AuthorizedSourceProgram>,
+    pub authorized_source_program: Account<'info, AuthorizedProgram>,
     pub source_program: Program<'info, pgl1::program::Pgl1>,
     pub game: Account<'info, pgl1::state::Game>,
     #[account(

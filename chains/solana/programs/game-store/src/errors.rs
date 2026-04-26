@@ -60,4 +60,8 @@ pub enum StoreError {
     InvalidStoreActor,
     #[msg("Game payment option mismatch")]
     GamePaymentOptionMismatch,
+    #[msg("Invalid program role")]
+    InvalidRole,
+    #[msg("Program role insufficient for this action")]
+    InsufficientRole,
 }

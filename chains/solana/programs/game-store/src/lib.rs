@@ -7,7 +7,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd");
+declare_id!("6gMd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd");
 
 #[program]
 pub mod peridotvault_store {
@@ -50,28 +50,16 @@ pub mod peridotvault_store {
         set_max_referral::handler(ctx, max_referral_bps)
     }
 
-    pub fn add_authorized_source_program(ctx: Context<AddAuthorizedSourceProgram>) -> Result<()> {
-        add_authorized_source_program::handler(ctx)
+    pub fn add_authorized_program(ctx: Context<AddAuthorizedProgram>, role: u8) -> Result<()> {
+        add_authorized_program::handler(ctx, role)
     }
 
-    pub fn update_authorized_source_program(
-        ctx: Context<UpdateAuthorizedSourceProgram>,
+    pub fn update_authorized_program(
+        ctx: Context<UpdateAuthorizedProgram>,
         active: bool,
+        role: Option<u8>,
     ) -> Result<()> {
-        update_authorized_source_program::handler(ctx, active)
-    }
-
-    pub fn add_authorized_registry_program(
-        ctx: Context<AddAuthorizedRegistryProgram>,
-    ) -> Result<()> {
-        add_authorized_registry_program::handler(ctx)
-    }
-
-    pub fn update_authorized_registry_program(
-        ctx: Context<UpdateAuthorizedRegistryProgram>,
-        active: bool,
-    ) -> Result<()> {
-        update_authorized_registry_program::handler(ctx, active)
+        update_authorized_program::handler(ctx, active, role)
     }
 
     pub fn add_payment_token(ctx: Context<AddPaymentToken>) -> Result<()> {

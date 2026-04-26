@@ -27,25 +27,16 @@ pub struct MaxReferralUpdated {
 }
 
 #[event]
-pub struct AuthorizedSourceProgramAdded {
+pub struct AuthorizedProgramAdded {
     pub program_id: Pubkey,
+    pub role: u8,
 }
 
 #[event]
-pub struct AuthorizedSourceProgramUpdated {
+pub struct AuthorizedProgramUpdated {
     pub program_id: Pubkey,
     pub active: bool,
-}
-
-#[event]
-pub struct AuthorizedRegistryProgramAdded {
-    pub program_id: Pubkey,
-}
-
-#[event]
-pub struct AuthorizedRegistryProgramUpdated {
-    pub program_id: Pubkey,
-    pub active: bool,
+    pub role: u8,
 }
 
 #[event]

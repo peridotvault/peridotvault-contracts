@@ -1,5 +1,8 @@
 use anchor_lang::prelude::*;
 
+pub const ROLE_SOURCE: u8 = 0;
+pub const ROLE_REGISTRY: u8 = 1;
+
 pub const BPS_DENOMINATOR: u64 = 10_000;
 pub const PLATFORM_FEE_BPS_MAX: u16 = 10_000;
 pub const MAX_REFERRAL_BPS_HARD_CAP: u16 = 5_000;
@@ -23,16 +26,13 @@ impl StoreConfig {
 pub struct AuthorizedProgram {
     pub program_id: Pubkey,
     pub active: bool,
+    pub role: u8,
     pub bump: u8,
 }
 
 impl AuthorizedProgram {
-    pub const SPACE: usize = 8 + 32 + 1 + 1;
+    pub const SPACE: usize = 8 + 32 + 1 + 1 + 1;
 }
-
-// Type aliases for backward compatibility and semantic clarity.
-pub type AuthorizedSourceProgram = AuthorizedProgram;
-pub type AuthorizedRegistryProgram = AuthorizedProgram;
 
 #[account]
 pub struct AcceptedPaymentToken {

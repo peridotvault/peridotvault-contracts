@@ -7,7 +7,7 @@ use crate::{
     errors::StoreError,
     events::{GamePurchased, PurchaseReceiptCreated},
     state::{
-        AcceptedPaymentToken, AuthorizedRegistryProgram, AuthorizedSourceProgram, BPS_DENOMINATOR,
+        AcceptedPaymentToken, AuthorizedProgram, BPS_DENOMINATOR,
         GamePaymentOption, GameStoreConfig, PurchaseReceipt, StoreConfig,
     },
 };
@@ -25,18 +25,18 @@ pub struct BuyGame<'info> {
 
     #[account(
         constraint = authorized_source_program.active @ StoreError::SourceProgramNotAuthorized,
-        seeds = [b"authorized_source_program", source_program.key().as_ref()],
+        seeds = [b"authorized_program", source_program.key().as_ref()],
         bump = authorized_source_program.bump,
     )]
-    pub authorized_source_program: Box<Account<'info, AuthorizedSourceProgram>>,
+    pub authorized_source_program: Box<Account<'info, AuthorizedProgram>>,
     pub source_program: Program<'info, pgl1::program::Pgl1>,
 
     #[account(
         constraint = authorized_registry_program.active @ StoreError::RegistryProgramNotAuthorized,
-        seeds = [b"authorized_registry_program", registry_program.key().as_ref()],
+        seeds = [b"authorized_program", registry_program.key().as_ref()],
         bump = authorized_registry_program.bump,
     )]
-    pub authorized_registry_program: Box<Account<'info, AuthorizedRegistryProgram>>,
+    pub authorized_registry_program: Box<Account<'info, AuthorizedProgram>>,
     pub registry_program: Program<'info, registry_program::program::Registry>,
 
     pub game: Box<Account<'info, pgl1::state::Game>>,
@@ -110,12 +110,11 @@ pub struct BuyGame<'info> {
     pub license: UncheckedAccount<'info>,
 
     #[account(
-        init,
+        init_if_needed,
         payer = buyer,
         space = PurchaseReceipt::SPACE,
         seeds = [b"purchase_receipt", buyer.key().as_ref(), game.key().as_ref()],
         bump,
-        constraint = purchase_receipt.purchased_at == 0 @ StoreError::AlreadyOwned
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 

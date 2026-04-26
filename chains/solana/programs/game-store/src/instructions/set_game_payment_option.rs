@@ -4,29 +4,36 @@ use crate::{
     errors::StoreError,
     events::GamePaymentOptionSet,
     state::{
-        AcceptedPaymentToken, AuthorizedRegistryProgram, AuthorizedSourceProgram, GamePaymentOption,
-        GameStoreConfig,
+        AcceptedPaymentToken, AuthorizedProgram, GamePaymentOption,
+        GameStoreConfig, ROLE_REGISTRY,
     },
 };
 
 #[derive(Accounts)]
 pub struct SetGamePaymentOption<'info> {
     #[account(mut)]
-    pub publisher: Signer<'info>,
-    #[account(
-        constraint = authorized_source_program.active @ StoreError::SourceProgramNotAuthorized,
-        seeds = [b"authorized_source_program", source_program.key().as_ref()],
-        bump = authorized_source_program.bump,
-    )]
-    pub authorized_source_program: Account<'info, AuthorizedSourceProgram>,
+    pub payer: Signer<'info>,
+
+    pub publisher: Option<Signer<'info>>,
+
     pub source_program: Program<'info, pgl1::program::Pgl1>,
     #[account(
+        constraint = authorized_source_program.active @ StoreError::SourceProgramNotAuthorized,
+        constraint = authorized_source_program.role == 0 @ StoreError::InsufficientRole,
+        seeds = [b"authorized_program", source_program.key().as_ref()],
+        bump = authorized_source_program.bump,
+    )]
+    pub authorized_source_program: Account<'info, AuthorizedProgram>,
+
+    pub registry_program: Program<'info, registry_program::program::Registry>,
+    #[account(
         constraint = authorized_registry_program.active @ StoreError::RegistryProgramNotAuthorized,
-        seeds = [b"authorized_registry_program", registry_program.key().as_ref()],
+        constraint = authorized_registry_program.role >= ROLE_REGISTRY @ StoreError::InsufficientRole,
+        seeds = [b"authorized_program", registry_program.key().as_ref()],
         bump = authorized_registry_program.bump,
     )]
-    pub authorized_registry_program: Account<'info, AuthorizedRegistryProgram>,
-    pub registry_program: Program<'info, registry_program::program::Registry>,
+    pub authorized_registry_program: Account<'info, AuthorizedProgram>,
+
     pub game: Account<'info, pgl1::state::Game>,
     pub registry_game: Account<'info, registry_program::state::RegistryGame>,
     #[account(
@@ -45,7 +52,7 @@ pub struct SetGamePaymentOption<'info> {
     pub accepted_payment_token: Account<'info, AcceptedPaymentToken>,
     #[account(
         init_if_needed,
-        payer = publisher,
+        payer = payer,
         space = GamePaymentOption::SPACE,
         seeds = [b"game_payment_option", game.key().as_ref(), mint.key().as_ref()],
         bump
@@ -56,7 +63,18 @@ pub struct SetGamePaymentOption<'info> {
 
 pub(crate) fn handler(ctx: Context<SetGamePaymentOption>, base_price: u64, active: bool) -> Result<()> {
     require!(base_price > 0, StoreError::InvalidPrice);
-    require_keys_eq!(ctx.accounts.game.publisher, ctx.accounts.publisher.key(), StoreError::Unauthorized);
+
+    let publisher_key = ctx.accounts.game.publisher;
+
+    if let Some(ref publisher) = ctx.accounts.publisher {
+        require_keys_eq!(publisher.key(), publisher_key, StoreError::Unauthorized);
+    } else {
+        require!(
+            ctx.accounts.authorized_registry_program.role >= ROLE_REGISTRY,
+            StoreError::InsufficientRole
+        );
+    }
+
     require_keys_eq!(ctx.accounts.registry_game.game, ctx.accounts.game.key(), StoreError::RegistryGameMismatch);
     require!(
         matches!(
