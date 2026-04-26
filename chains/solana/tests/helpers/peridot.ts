@@ -22,6 +22,9 @@ export const DEFAULT_GAME_PRICE = 20_000_000;
 export const PAYMENT_DECIMALS = 6;
 export const PUBLISHER_MINT_AMOUNT = 1_000_000_000;
 
+export const ROLE_SOURCE = 0;
+export const ROLE_REGISTRY = 1;
+
 export const STATUS_ACTIVE = 0;
 export const STATUS_SUSPENDED = 1;
 export const STATUS_BANNED = 2;
@@ -222,22 +225,22 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
   }
 
   const authorizedSourceProgramPda = derivePda(
-    [Buffer.from("authorized_source_program"), pglProgram.programId.toBuffer()],
+    [Buffer.from("authorized_program"), pglProgram.programId.toBuffer()],
     storeProgram.programId,
   );
   const authorizedRegistryProgramPda = derivePda(
-    [Buffer.from("authorized_registry_program"), registryProgram.programId.toBuffer()],
+    [Buffer.from("authorized_program"), registryProgram.programId.toBuffer()],
     storeProgram.programId,
   );
 
   if (!(await accountExists(provider.connection, authorizedSourceProgramPda))) {
     await storeProgram.methods
-      .addAuthorizedSourceProgram()
+      .addAuthorizedProgram(ROLE_SOURCE)
       .accounts({
         authority: authority.publicKey,
         storeConfig: storeConfigPda,
         programId: pglProgram.programId,
-        authorizedSourceProgram: authorizedSourceProgramPda,
+        authorizedProgram: authorizedSourceProgramPda,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
@@ -245,12 +248,12 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
 
   if (!(await accountExists(provider.connection, authorizedRegistryProgramPda))) {
     await storeProgram.methods
-      .addAuthorizedRegistryProgram()
+      .addAuthorizedProgram(ROLE_REGISTRY)
       .accounts({
         authority: authority.publicKey,
         storeConfig: storeConfigPda,
         programId: registryProgram.programId,
-        authorizedRegistryProgram: authorizedRegistryProgramPda,
+        authorizedProgram: authorizedRegistryProgramPda,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
