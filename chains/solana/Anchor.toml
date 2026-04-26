@@ -1,20 +1,20 @@
 [toolchain]
-package_manager = "pnpm"
 anchor_version = "0.32.1"
+package_manager = "pnpm"
 
 [features]
 resolution = true
 skip-lint = false
 
 [programs.devnet]
-game_store = "6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd"
-pgl1 = "DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor"
-registry = "DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL"
+game_store = "8xi62uARkmBcKKwG3M8uvFnaayZL4MFvkQ91WG16eBCj"
+pgl1 = "5YctJfQJ6qfYDchYKyHFyjeKa3dx8Z6kg5pt68yaZ6c3"
+registry = "8pgmtQDVpMX4FHmoCmWJCoB94RY56GKWUzo8f8e1Xfpo"
 
 [programs.localnet]
-game_store = "6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd"
-pgl1 = "DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor"
-registry = "DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL"
+game_store = "FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC"
+pgl1 = "5YctJfQJ6qfYDchYKyHFyjeKa3dx8Z6kg5pt68yaZ6c3"
+registry = "8pgmtQDVpMX4FHmoCmWJCoB94RY56GKWUzo8f8e1Xfpo"
 
 [registry]
 url = "https://api.apr.dev"

@@ -10,9 +10,9 @@ import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js"
 import * as os from "os";
 import * as path from "path";
 
-export const PGL1_PROGRAM_ID = new PublicKey("DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor");
-export const REGISTRY_PROGRAM_ID = new PublicKey("DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL");
-export const STORE_PROGRAM_ID = new PublicKey("6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd");
+export const PGL1_PROGRAM_ID = new PublicKey("AHpAEMxUEk4Um3E6PgXxFQiiTBhSQP9Ej2Sy77Y7WU6H");
+export const REGISTRY_PROGRAM_ID = new PublicKey("2H2RfFxMYxh6njAJNekPacK671DL9q2W89YjiQhAM4ut");
+export const STORE_PROGRAM_ID = new PublicKey("FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC");
 
 export const DEFAULT_PLATFORM_FEE_BPS = 1_000;
 export const DEFAULT_REFERRAL_BPS = 200;

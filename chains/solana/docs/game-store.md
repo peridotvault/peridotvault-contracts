@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Program ID** | `6gMd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd` |
+| **Program ID** | `FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC` |
 | **Anchor module** | `peridotvault_store` |
 | **Crate/lib** | `peridotvault-store` / `peridotvault_store` |
 

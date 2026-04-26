@@ -7,7 +7,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("6gMd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd");
+declare_id!("8xi62uARkmBcKKwG3M8uvFnaayZL4MFvkQ91WG16eBCj");
 
 #[program]
 pub mod peridotvault_store {
