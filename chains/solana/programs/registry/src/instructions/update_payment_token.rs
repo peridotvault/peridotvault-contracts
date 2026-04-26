@@ -32,13 +32,17 @@ pub(crate) fn handler(ctx: Context<UpdatePaymentToken>, active: bool, fee_amount
     require!(fee_amount > 0, RegistryError::InvalidFeeAmount);
 
     let token = &mut ctx.accounts.accepted_payment_token;
+    let old_active = token.active;
+    let old_fee_amount = token.fee_amount;
     token.active = active;
     token.fee_amount = fee_amount;
 
     emit!(PaymentTokenUpdated {
         mint: token.mint,
-        active,
-        fee_amount,
+        old_active,
+        new_active: active,
+        old_fee_amount,
+        new_fee_amount: fee_amount,
     });
 
     Ok(())

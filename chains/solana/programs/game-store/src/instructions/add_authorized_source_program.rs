@@ -17,7 +17,7 @@ pub struct AddAuthorizedSourceProgram<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + AuthorizedSourceProgram::LEN,
+        space = AuthorizedSourceProgram::SPACE,
         seeds = [b"authorized_source_program", program_id.key().as_ref()],
         bump
     )]

@@ -18,10 +18,16 @@ pub struct CloseRegistryGame<'info> {
     pub config: Account<'info, RegistryConfig>,
 
     #[account(
+        constraint = game.publisher == publisher.key() @ RegistryError::Unauthorized
+    )]
+    pub game: Account<'info, pgl1::state::Game>,
+
+    #[account(
         mut,
         seeds = [b"registry_game", registry_game.game.as_ref()],
         bump = registry_game.bump,
-        close = treasury
+        close = treasury,
+        constraint = registry_game.game == game.key() @ RegistryError::GameMismatch
     )]
     pub registry_game: Account<'info, RegistryGame>,
 
@@ -46,6 +52,7 @@ pub(crate) fn handler(ctx: Context<CloseRegistryGame>) -> Result<()> {
     emit!(GameClosed {
         game: ctx.accounts.registry_game.game,
         game_id: ctx.accounts.registry_game.game_id.clone(),
+        closed_by: ctx.accounts.publisher.key(),
     });
 
     Ok(())

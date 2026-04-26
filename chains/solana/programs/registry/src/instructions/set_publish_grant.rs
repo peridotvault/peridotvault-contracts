@@ -77,11 +77,13 @@ pub(crate) fn update_handler(ctx: Context<UpdatePublishGrant>, expired_at: Optio
     }
 
     let grant = &mut ctx.accounts.publish_grant;
+    let old_expired_at = grant.expired_at;
     grant.expired_at = expired_at;
 
     emit!(PublishGrantUpdated {
         publisher: ctx.accounts.publisher.key(),
-        expired_at,
+        old_expired_at,
+        new_expired_at: expired_at,
     });
 
     Ok(())

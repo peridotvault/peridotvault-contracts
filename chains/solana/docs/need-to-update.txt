@@ -12,7 +12,7 @@ Issue: publish_grant_account used ctx.remaining_accounts.first() (index 0),
        and store accounts also used ctx.remaining_accounts.get(0) and get(1).
        This caused paid game registration to be completely broken when both
        grant and store accounts were passed.
-Fix: Added offset calculation — store accounts use index 1 or 0 depending
+Fix: Added offset calculation — store accounts use index 0 or 1 depending
      on whether a grant account was passed in remaining_accounts.
 Status: FIXED
 
@@ -31,7 +31,7 @@ Issue: registry_game is init'd by Anchor BEFORE the pgl1::create_game CPI.
 Fix: Added close_registry_game instruction that allows publisher to close
      the game account. Rent SOL is sent to treasury (not publisher) as
      registry revenue. Only games with Suspended or Banned status can be closed.
-     This is intentional: publisher bears the cost of failed/abandoned games.
+     Added ownership check: publisher must match game.publisher from PGL-1.
 Status: FIXED
 
 [H3 - High] Hardcoded CPI Discriminators for Game Store Program
@@ -125,6 +125,68 @@ Issue: authority marked #[account(mut)] where lamports are never modified.
 Fix: Removed #[account(mut)] from authority in those three instructions.
 Status: FIXED
 
+ADDITIONAL IMPROVEMENTS (Post-Audit)
+-------------------------------------
+
+[A1] close_registry_game Ownership Check
+File: src/instructions/close_registry_game.rs
+Issue: Any signer could close any Suspended/Banned game — no ownership verification.
+Fix: Added PGL-1 game account validation: publisher must match game.publisher.
+     Added GameMismatch error for registry_game/game mismatch.
+Status: FIXED
+
+[A2] pgl1 add_authorized_actor init_if_needed
+File: pgl1/src/instructions/add_authorized_actor.rs
+Issue: init_if_needed allows re-activating deactivated actors.
+Fix: Changed to init — duplicate calls will fail with "already in use".
+Status: FIXED
+
+[A3] pgl1 create_game CreatorState validation
+File: pgl1/src/instructions/create_game.rs
+Issue: init_if_needed on CreatorState could cause unexpected behavior.
+Fix: Added explicit validation: if CreatorState exists, creator must match signer.
+Status: FIXED
+
+[A4] game-store set_game_payment_option validation
+File: game-store/src/instructions/set_game_payment_option.rs
+Issue: init_if_needed allows anyone to change price by re-calling.
+Fix: Added validation: if payment option exists, game must match.
+     Added GamePaymentOptionMismatch error.
+Status: FIXED
+
+[A5] game-store add_payment_token mint validation
+File: game-store/src/instructions/add_payment_token.rs
+Issue: UncheckedAccount for mint — no validation it's a valid SPL mint.
+Fix: Changed to InterfaceAccount<'info, Mint> for proper SPL mint validation.
+Status: FIXED
+
+[A6] game-store set_store_actor instruction
+File: game-store/src/instructions/set_store_actor.rs
+Issue: No instruction to update store_actor after initialization.
+Fix: Added set_store_actor instruction with AuthorityUpdated event.
+Status: FIXED
+
+[A7] Events enriched with old values
+Files: pgl1/events.rs, registry/events.rs
+Issue: Events missing old values makes off-chain auditing harder.
+Fix: Added old_fee/new_fee, old_treasury/new_treasury, old_uri/new_uri,
+     old_expires_at/new_expires_at, old_active/new_active, old_status/new_status,
+     publisher, registered_at, closed_by, authority to relevant events.
+Status: FIXED
+
+[A8] Removed self_program from create_game_and_register
+File: registry/src/instructions/create_game_and_register.rs
+Issue: Unnecessary account input adds complexity.
+Fix: Removed self_program account. Registry program ID is hardcoded via crate::ID.
+Status: FIXED
+
+[A9] Balance check before fee transfer
+File: registry/src/instructions/create_game_and_register.rs
+Issue: No validation that publisher_payment_account has sufficient balance.
+Fix: Added require!(publisher_payment_account.amount >= fee_amount, ...).
+     Added InsufficientFeeBalance error.
+Status: FIXED
+
 SUMMARY
 -------
 | Severity | Fixed | Remaining | Total |
@@ -133,10 +195,57 @@ SUMMARY
 | High     |   3   |     0*    |   3   |
 | Medium   |   5   |     0     |   5   |
 | Low      |   4   |     0     |   4   |
-| Total    |  13   |     0*    |  13   |
+| Additional|  9   |     0     |   9   |
+| Total    |  22   |     0*    |  22   |
 
 * H3 is documented with security comment. Full fix requires resolving
   circular dependency between registry and game-store programs.
+
+INTENTIONALLY NOT FIXED
+-----------------------
+1. pgl1 account close instructions — Closing Game/License accounts could break
+   buy_game flow. CreatorState/AuthorizedActor are small and rarely created.
+2. Unify AuthorizedSourceProgram/AuthorizedRegistryProgram — Breaking change to
+   game-store state layout. Low risk since they're separate allowlists.
+3. Standardize SPACE vs LEN naming — Cosmetic only, no security impact.
+4. registry_game validation on discount/referral — These instructions already
+   validate game_store_config.has_one = game, which indirectly validates ownership.
+5. Remove paid_amount from PurchaseReceipt — Breaking change to account layout.
+   Both fields serve different purposes (paid_amount = what buyer sent,
+   final_price = what was actually charged after discounts).
+
+TEST COVERAGE
+-------------
+Test file: tests/50-registry-tests.ts
+Total test cases: 42 (13 happy path, 29 negative)
+
+Coverage by instruction:
+- initialize_registry: 3 tests (1 happy, 2 negative)
+- set_treasury: 3 tests (1 happy, 2 negative)
+- add_payment_token: 4 tests (1 happy, 3 negative)
+- update_payment_token: 3 tests (1 happy, 2 negative)
+- remove_payment_token: 2 tests (1 happy, 1 negative)
+- create_publish_grant: 5 tests (2 happy, 3 negative)
+- update_publish_grant: 3 tests (1 happy, 2 negative)
+- create_game_and_register: 6 tests (1 happy, 5 negative)
+- update_game_status: 8 tests (4 happy, 4 negative)
+- close_registry_game: 4 tests (2 happy, 2 negative)
+
+Security assumption tests:
+- Authority gate enforcement (all admin instructions)
+- PDA seed uniqueness (duplicate prevention)
+- State machine invariants (Banned is terminal)
+- Input bounds (max lengths, min values)
+- Account ownership (Anchor-enforced)
+- CPI program ID validation (hardcoded checks)
+- Treasury validation on close (rent goes to correct address)
+- Publisher ownership on close (game.publisher match)
+- Balance check before fee transfer
+
+Documentation:
+- docs/security-assumptions.txt — comprehensive security review
+- docs/registry.txt — full program specification
+- docs/need-to-update.txt — this file
 
 BREAKING CHANGES
 ----------------
@@ -150,6 +259,13 @@ BREAKING CHANGES
 4. New instruction: close_registry_game
    - Non-breaking (additive)
    - Rent SOL goes to treasury (not publisher) on close
+   - Requires PGL-1 game account for ownership validation
 5. New events: PublishGrantCreated, PublishGrantUpdated, GameClosed
    - Replaced PublishGrantSet event
-6. New error: GameNotClosable
+   - All events enriched with old/new values
+6. New errors: GameNotClosable, GameMismatch, InsufficientFeeBalance
+7. create_game_and_register signature changed:
+   - Removed self_program account
+   - Added base_price and mint_token parameters
+8. game-store: add_payment_token now uses InterfaceAccount<Mint>
+9. game-store: New set_store_actor instruction

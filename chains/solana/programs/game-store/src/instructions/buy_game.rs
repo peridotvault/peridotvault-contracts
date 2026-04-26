@@ -112,7 +112,7 @@ pub struct BuyGame<'info> {
     #[account(
         init,
         payer = buyer,
-        space = 8 + PurchaseReceipt::LEN,
+        space = PurchaseReceipt::SPACE,
         seeds = [b"purchase_receipt", buyer.key().as_ref(), game.key().as_ref()],
         bump,
         constraint = purchase_receipt.purchased_at == 0 @ StoreError::AlreadyOwned

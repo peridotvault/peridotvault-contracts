@@ -31,4 +31,10 @@ pub enum PglError {
 
     #[msg("Creator nonce overflow")]
     NonceOverflow,
+
+    #[msg("Creator state still has pending games")]
+    CreatorStateNotEmpty,
+
+    #[msg("Authorized actor is still active")]
+    AuthorizedActorStillActive,
 }

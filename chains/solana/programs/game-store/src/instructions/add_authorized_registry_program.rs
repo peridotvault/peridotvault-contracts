@@ -17,7 +17,7 @@ pub struct AddAuthorizedRegistryProgram<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + AuthorizedRegistryProgram::LEN,
+        space = AuthorizedRegistryProgram::SPACE,
         seeds = [b"authorized_registry_program", program_id.key().as_ref()],
         bump
     )]

@@ -108,9 +108,6 @@ pub struct CreateGameAndRegister<'info> {
     #[account(mut)]
     pub store_game_store_config: UncheckedAccount<'info>,
 
-    /// CHECK: self program ID, forwarded to game-store CPI.
-    pub self_program: UncheckedAccount<'info>,
-
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
@@ -126,11 +123,6 @@ pub(crate) fn handler<'info>(
     require!(game_id.len() <= MAX_GAME_ID_LEN, RegistryError::InvalidGameId);
     require!(!metadata_uri.trim().is_empty(), RegistryError::InvalidMetadataUri);
     require!(metadata_uri.len() <= MAX_METADATA_URI_LEN, RegistryError::InvalidMetadataUri);
-    require_keys_eq!(
-        ctx.accounts.self_program.key(),
-        crate::ID,
-        RegistryError::Unauthorized
-    );
     require_keys_eq!(
         ctx.accounts.store_program.key(),
         GAME_STORE_PROGRAM_ID,
@@ -179,6 +171,12 @@ pub(crate) fn handler<'info>(
             RegistryError::InvalidFeeAmount
         );
 
+        let fee_amount = ctx.accounts.accepted_payment_token.fee_amount;
+        require!(
+            ctx.accounts.publisher_payment_account.amount >= fee_amount,
+            RegistryError::InsufficientFeeBalance
+        );
+
         let cpi_accounts = TransferChecked {
             from: ctx.accounts.publisher_payment_account.to_account_info(),
             mint: ctx.accounts.payment_mint.to_account_info(),
@@ -190,7 +188,7 @@ pub(crate) fn handler<'info>(
 
         transfer_checked(
             cpi_ctx,
-            ctx.accounts.accepted_payment_token.fee_amount,
+            fee_amount,
             ctx.accounts.payment_mint.decimals,
         )?;
     }
@@ -220,7 +218,6 @@ pub(crate) fn handler<'info>(
         &ctx.accounts.store_authorized_source_program,
         &ctx.accounts.pgl1_program.to_account_info(),
         &ctx.accounts.store_authorized_registry_program,
-        &ctx.accounts.self_program,
         &ctx.accounts.game,
         &ctx.accounts.registry_game.to_account_info(),
         &ctx.accounts.store_game_store_config,
@@ -239,7 +236,6 @@ pub(crate) fn handler<'info>(
             &ctx.accounts.store_authorized_source_program,
             &ctx.accounts.pgl1_program.to_account_info(),
             &ctx.accounts.store_authorized_registry_program,
-            &ctx.accounts.self_program,
             &ctx.accounts.game,
             &ctx.accounts.registry_game.to_account_info(),
             &ctx.accounts.store_game_store_config,
@@ -254,7 +250,9 @@ pub(crate) fn handler<'info>(
     emit!(GameRegistered {
         game: game_pubkey,
         game_id,
+        publisher: ctx.accounts.publisher.key(),
         status: GameStatus::Active.as_u8(),
+        registered_at: now,
     });
 
     Ok(())
@@ -265,7 +263,6 @@ fn invoke_init_game_store_config<'info>(
     authorized_source_program: &AccountInfo<'info>,
     source_program: &AccountInfo<'info>,
     authorized_registry_program: &AccountInfo<'info>,
-    registry_program: &AccountInfo<'info>,
     game: &AccountInfo<'info>,
     registry_game: &AccountInfo<'info>,
     game_store_config: &AccountInfo<'info>,
@@ -280,7 +277,7 @@ fn invoke_init_game_store_config<'info>(
         AccountMeta::new_readonly(authorized_source_program.key(), false),
         AccountMeta::new_readonly(source_program.key(), false),
         AccountMeta::new_readonly(authorized_registry_program.key(), false),
-        AccountMeta::new_readonly(registry_program.key(), false),
+        AccountMeta::new_readonly(crate::ID, false),
         AccountMeta::new_readonly(game.key(), false),
         AccountMeta::new_readonly(registry_game.key(), false),
         AccountMeta::new(game_store_config.key(), false),
@@ -300,7 +297,6 @@ fn invoke_init_game_store_config<'info>(
             authorized_source_program.clone(),
             source_program.clone(),
             authorized_registry_program.clone(),
-            registry_program.clone(),
             game.clone(),
             registry_game.clone(),
             game_store_config.clone(),
@@ -316,7 +312,6 @@ fn invoke_set_game_payment_option<'info>(
     authorized_source_program: &AccountInfo<'info>,
     source_program: &AccountInfo<'info>,
     authorized_registry_program: &AccountInfo<'info>,
-    registry_program: &AccountInfo<'info>,
     game: &AccountInfo<'info>,
     registry_game: &AccountInfo<'info>,
     game_store_config: &AccountInfo<'info>,
@@ -336,7 +331,7 @@ fn invoke_set_game_payment_option<'info>(
         AccountMeta::new_readonly(authorized_source_program.key(), false),
         AccountMeta::new_readonly(source_program.key(), false),
         AccountMeta::new_readonly(authorized_registry_program.key(), false),
-        AccountMeta::new_readonly(registry_program.key(), false),
+        AccountMeta::new_readonly(crate::ID, false),
         AccountMeta::new_readonly(game.key(), false),
         AccountMeta::new_readonly(registry_game.key(), false),
         AccountMeta::new_readonly(game_store_config.key(), false),
@@ -359,7 +354,6 @@ fn invoke_set_game_payment_option<'info>(
             authorized_source_program.clone(),
             source_program.clone(),
             authorized_registry_program.clone(),
-            registry_program.clone(),
             game.clone(),
             registry_game.clone(),
             game_store_config.clone(),

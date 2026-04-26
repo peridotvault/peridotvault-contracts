@@ -10,11 +10,12 @@ pub(crate) fn handler(ctx: Context<SetCreateGameFee>, create_game_fee_lamports: 
     let config = &mut ctx.accounts.pgl_config;
     require_keys_eq!(config.authority, ctx.accounts.authority.key(), PglError::Unauthorized);
 
+    let old_fee = config.create_game_fee_lamports;
     config.create_game_fee_lamports = create_game_fee_lamports;
 
     emit!(CreateGameFeeUpdated {
-        authority: config.authority,
-        create_game_fee_lamports,
+        old_fee,
+        new_fee: create_game_fee_lamports,
     });
 
     Ok(())

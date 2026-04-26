@@ -58,4 +58,6 @@ pub enum StoreError {
     InvalidTreasury,
     #[msg("Invalid store actor")]
     InvalidStoreActor,
+    #[msg("Game payment option mismatch")]
+    GamePaymentOptionMismatch,
 }

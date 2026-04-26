@@ -9,14 +9,21 @@ pub struct PglInitialized {
 
 #[event]
 pub struct CreateGameFeeUpdated {
-    pub authority: Pubkey,
-    pub create_game_fee_lamports: u64,
+    pub old_fee: u64,
+    pub new_fee: u64,
 }
 
 #[event]
 pub struct TreasuryUpdated {
     pub authority: Pubkey,
-    pub treasury: Pubkey,
+    pub old_treasury: Pubkey,
+    pub new_treasury: Pubkey,
+}
+
+#[event]
+pub struct AuthorityUpdated {
+    pub old_authority: Pubkey,
+    pub new_authority: Pubkey,
 }
 
 #[event]
@@ -27,6 +34,16 @@ pub struct AuthorizedActorAdded {
 #[event]
 pub struct AuthorizedActorDeactivated {
     pub actor: Pubkey,
+}
+
+#[event]
+pub struct AuthorizedActorClosed {
+    pub actor: Pubkey,
+}
+
+#[event]
+pub struct CreatorStateClosed {
+    pub creator: Pubkey,
 }
 
 #[event]
@@ -51,7 +68,8 @@ pub struct PublisherUpdated {
 pub struct MetadataUriUpdated {
     pub game: Pubkey,
     pub publisher: Pubkey,
-    pub metadata_uri: String,
+    pub old_uri: String,
+    pub new_uri: String,
 }
 
 #[event]
@@ -68,5 +86,6 @@ pub struct LicenseRenewed {
     pub license: Pubkey,
     pub holder: Pubkey,
     pub game: Pubkey,
-    pub expires_at: i64,
+    pub old_expires_at: Option<i64>,
+    pub new_expires_at: i64,
 }

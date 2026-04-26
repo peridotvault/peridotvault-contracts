@@ -15,7 +15,7 @@ pub struct InitializeStore<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + StoreConfig::LEN,
+        space = StoreConfig::SPACE,
         seeds = [b"store_config"],
         bump
     )]

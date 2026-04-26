@@ -12,11 +12,13 @@ pub(crate) fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()>
     let config = &mut ctx.accounts.pgl_config;
     require_keys_eq!(config.authority, ctx.accounts.authority.key(), PglError::Unauthorized);
 
+    let old_treasury = config.treasury;
     config.treasury = treasury;
 
     emit!(TreasuryUpdated {
         authority: config.authority,
-        treasury,
+        old_treasury,
+        new_treasury: treasury,
     });
 
     Ok(())

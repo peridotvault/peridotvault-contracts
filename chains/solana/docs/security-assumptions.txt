@@ -1,0 +1,254 @@
+# Registry Program - Security Assumptions & Audit Review
+
+**Program ID:** `DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL`
+**Date:** 2026-04-25
+
+---
+
+## 1. Authority Model
+
+### 1.1 Registry Admin (`registry_config.authority`)
+- **Assumption:** Authority key is secure and not compromised.
+- **Guarantee:** All admin instructions enforce `has_one = authority` constraint on `registry_config`.
+- **Instructions gated:** `set_treasury`, `add_payment_token`, `update_payment_token`, `remove_payment_token`, `create_publish_grant`, `update_publish_grant`, `update_game_status`.
+- **Risk if violated:** Attacker with authority key can change treasury, modify fees, grant/revoke publishing rights, and change any game's status.
+
+### 1.2 Publisher
+- **Assumption:** Publisher is a valid PGL-1 game creator (enforced by PGL-1 CPI).
+- **Guarantee:** Publisher must sign `create_game_and_register`, `create_publish_grant`, `update_publish_grant`, and `close_registry_game`.
+- **Risk if violated:** Unauthorized parties could register games or close game accounts.
+
+---
+
+## 2. CPI Trust Boundaries
+
+### 2.1 PGL-1 Program Trust
+- **Assumption:** `config.pgl1_program` is the legitimate PGL-1 program.
+- **Guarantee:**
+  - `pgl1_program` must match `config.pgl1_program` (enforced via `require_keys_eq`).
+  - `pgl_config` must be the canonical PDA from the PGL-1 program (seed: `["pgl_config"]`).
+  - `pgl_treasury` must match `pgl_config.treasury`.
+- **Risk if violated:** CPI could be routed to a malicious program that creates fake games.
+- **Mitigation:** `pgl1_program` is hardcoded to `pgl1::ID` at initialization, not settable by authority.
+
+### 2.2 Game Store Program Trust
+- **Assumption:** `store_program` is the legitimate Game Store program (`6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd`).
+- **Guarantee:**
+  - `store_program` key is validated against hardcoded `GAME_STORE_PROGRAM_ID`.
+  - `store_authorized_source_program` and `store_authorized_registry_program` PDAs are validated via seeds.
+  - `self_program` is validated against `crate::ID`.
+- **Risk if violated:** CPI could initialize game store config with wrong parameters.
+- **Mitigation:** Hardcoded program ID validation + seed-based PDA derivation.
+
+### 2.3 Manual CPI Discriminators (Game Store)
+- **Assumption:** Game Store program instruction discriminators do not change.
+- **Current State:** Discriminators are hardcoded as byte arrays.
+- **Risk:** If Game Store program is upgraded and instruction layout changes, wrong instructions could be called.
+- **Mitigation:** Documented with security comment. Full fix requires resolving circular dependency.
+
+---
+
+## 3. Account Validation
+
+### 3.1 PDA Seed Uniqueness
+| Account | Seeds | Uniqueness Guarantee |
+|---------|-------|---------------------|
+| `registry_config` | `["registry_config"]` | Singleton per program |
+| `accepted_payment_token` | `["accepted_payment_token", mint]` | One per token mint |
+| `registry_game` | `["registry_game", game_pubkey]` | One per PGL game account |
+| `publish_grant` | `["publish_grant", publisher]` | One per publisher |
+
+### 3.2 Account Ownership
+- All Anchor `Account<'info, T>` types automatically verify ownership by the current program.
+- `UncheckedAccount` types are used for:
+  - `game` — validated by PGL-1 CPI
+  - `pgl_creator_state` — forwarded to PGL-1 CPI
+  - `pgl_treasury` — validated against `pgl_config.treasury`
+  - `store_program` — validated against hardcoded ID
+  - `store_authorized_source_program` — existence check only, game-store validates data
+  - `store_authorized_registry_program` — existence check only, game-store validates data
+  - `store_game_store_config` — initialized by game-store CPI
+  - `self_program` — validated against `crate::ID`
+  - `treasury` (in close_registry_game) — validated against `config.treasury`
+
+### 3.3 Remaining Accounts Safety
+- `remaining_accounts` is used for optional `publish_grant` and store payment accounts.
+- **Index layout:**
+  - Index 0: `publish_grant` (optional, for fee exemption)
+  - Index 1: `store_accepted_payment_token` (only if `base_price` + `mint_token` are Some)
+  - Index 2: `store_game_payment_option` (only if `base_price` + `mint_token` are Some)
+- **Offset calculation:** Store accounts use index 0 or 1 depending on whether grant account was passed.
+- **Risk:** If caller passes accounts in wrong order, CPI will fail with constraint error from game-store.
+
+---
+
+## 4. State Machine
+
+### 4.1 Game Status Transitions
+```
+Active ──→ Suspended ──→ Active    (reversible)
+   │            │
+   │            └──→ Banned        (terminal)
+   └───────────────→ Banned        (terminal)
+```
+- **Banned is terminal:** No transitions from Banned state.
+- **Enforcement:** `update_game_status` uses explicit match on `(current, next)` pairs.
+- **Invalid transitions:** Return `InvalidStatusTransition` error.
+
+### 4.2 Publish Grant Lifecycle
+```
+(None) ──→ Create ──→ Active ──→ Expired (automatic, time-based)
+                    │
+                    └──→ Update (new expiry)
+```
+- **Creation:** Requires authority + publisher signer.
+- **Update:** Requires authority + publisher signer. Cannot create if doesn't exist.
+- **Expiry:** Checked at runtime via `Clock::get()?.unix_timestamp`.
+- **Past expiry rejected:** `expired_at` must be > current timestamp.
+
+---
+
+## 5. Economic Model
+
+### 5.1 Revenue Streams
+| Source | Description | Recipient |
+|--------|-------------|-----------|
+| Onboarding fee | Per-game registration fee | Registry treasury |
+| Rent from close | SOL from closed `registry_game` PDA | Registry treasury |
+
+### 5.2 Fee Exemption
+- Publishers with active `publish_grant` skip onboarding fee.
+- Grant is active if: `expired_at == None` OR `now <= expired_at`.
+- **Risk:** Authority can grant unlimited fee exemptions.
+
+### 5.3 Close Registry Game
+- **Who can call:** Publisher (signer).
+- **Prerequisite:** Game status must be `Suspended` or `Banned`.
+- **Effect:** `registry_game` PDA is closed, rent SOL sent to treasury.
+- **Irreversible:** Game data is lost, cannot be recovered.
+- **Economic impact:** Publisher bears the cost of failed/abandoned games.
+
+---
+
+## 6. Input Validation
+
+| Field | Validation | Max Length |
+|-------|-----------|------------|
+| `game_id` | Non-empty, non-whitespace | 64 bytes |
+| `metadata_uri` | Non-empty, non-whitespace | 256 bytes |
+| `base_price` | Must be > 0 if Some | N/A |
+| `fee_amount` | Must be > 0 | N/A |
+| `treasury` | Must not be `Pubkey::default()` | N/A |
+| `expired_at` | Must be > current timestamp if Some | N/A |
+
+---
+
+## 7. Known Limitations & Trade-offs
+
+### 7.1 No Game ID Uniqueness Enforcement
+- `game_id` is NOT enforced as unique on-chain.
+- Uniqueness is on `game` pubkey (PGL-1 game account).
+- **Implication:** Two different games could have the same `game_id` string.
+- **Mitigation:** Off-chain indexer/validator should enforce uniqueness if needed.
+
+### 7.2 Dangling RegistryGame on CPI Failure
+- `registry_game` is initialized BEFORE the PGL-1 CPI.
+- If PGL-1 CPI fails, `registry_game` is already created.
+- **Mitigation:** Publisher can call `close_registry_game` after game is Suspended/Banned (but rent goes to treasury, not publisher).
+
+### 7.3 Hardcoded CPI Discriminators
+- Game Store CPI uses hardcoded discriminators.
+- **Risk:** If Game Store program is upgraded, discriminators may become invalid.
+- **Mitigation:** Documented; full fix requires resolving circular dependency.
+
+### 7.4 Store Authorized PDAs Are UncheckedAccount
+- `store_authorized_source_program` and `store_authorized_registry_program` are `UncheckedAccount`.
+- Registry only validates existence via PDA seeds.
+- **Risk:** If Game Store program trusts data from these accounts, malicious data could be passed.
+- **Mitigation:** Game Store program validates these accounts independently. Registry does not deserialize or trust data from them.
+
+---
+
+## 8. Reentrancy
+
+- **Status:** No reentrancy risk.
+- **Reason:** Solana runtime prevents reentrancy on the same account within a single transaction. Registry makes CPIs to PGL-1 and Game Store but never calls back into itself.
+
+---
+
+## 9. Upgrade Safety
+
+### 9.1 Breaking Changes in Current Version
+1. `PublishGrant` account layout changed (removed `reserved` field).
+2. `set_publish_grant` split into `create_publish_grant` + `update_publish_grant`.
+3. Package renamed from `my-program` to `registry`.
+4. New instruction: `close_registry_game`.
+5. New events: `PublishGrantCreated`, `PublishGrantUpdated`, `GameClosed`.
+6. New error: `GameNotClosable`.
+
+### 9.2 Future Upgrade Considerations
+- If `registry_config` layout changes, existing config PDA must be migrated.
+- If `accepted_payment_token` layout changes, existing token PDAs must be migrated.
+- If `registry_game` layout changes, existing game PDAs must be migrated.
+- **Recommendation:** Use `upgradeable_loader` for program upgrades.
+
+---
+
+## 10. Test Coverage
+
+### 10.1 Happy Path Tests
+- `initialize_registry` — creates config correctly
+- `set_treasury` — updates treasury
+- `add_payment_token` — adds token with valid fee
+- `update_payment_token` — updates token status and fee
+- `remove_payment_token` — removes token, refunds rent
+- `create_publish_grant` — creates grant (no expiry, future expiry)
+- `update_publish_grant` — updates existing grant
+- `create_game_and_register` — creates game, registers with Active status
+- `update_game_status` — all valid transitions
+- `close_registry_game` — closes Suspended/Banned game, rent to treasury
+
+### 10.2 Negative Tests
+- Double initialization rejected
+- Default treasury rejected
+- Non-authority signer rejected (all admin instructions)
+- Zero fee amount rejected
+- Duplicate token addition rejected
+- Duplicate grant creation rejected
+- Past expiry rejected
+- Empty/long game_id rejected
+- Empty/long metadata_uri rejected
+- Duplicate game registration rejected
+- Invalid status transitions rejected (Banned → Active, Banned → Suspended, invalid value)
+- Closing Active game rejected
+- Wrong treasury account on close rejected
+- Grant creation without publisher signer rejected
+- Grant update without publisher signer rejected
+- Grant update on non-existent grant rejected
+
+### 10.3 Security Assumption Tests
+- Authority gate enforcement (all admin instructions)
+- PDA seed uniqueness (duplicate prevention)
+- State machine invariants (Banned is terminal)
+- Input bounds (max lengths, min values)
+- Account ownership (Anchor-enforced)
+- CPI program ID validation (hardcoded checks)
+
+---
+
+## 11. Recommendations
+
+### 11.1 High Priority
+1. **Resolve circular dependency** between registry and game-store to enable proper CPI crate import.
+2. **Add integration tests** that verify CPI discriminators match the expected program.
+3. **Add `close_registry_game` event emission** to track when games are closed.
+
+### 11.2 Medium Priority
+4. **Consider game_id uniqueness index** if business logic requires unique game IDs.
+5. **Add rate limiting** for game registration if needed to prevent spam.
+6. **Add emergency pause** mechanism for registry operations.
+
+### 11.3 Low Priority
+7. **Rename package** from `registry` to `peridotvault-registry` for consistency.
+8. **Add program version** constant for upgrade tracking.
+9. **Document PDA bump verification** for all seed-based accounts.

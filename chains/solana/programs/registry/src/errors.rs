@@ -58,4 +58,10 @@ pub enum RegistryError {
 
     #[msg("Game not closable (must be Suspended or Banned)")]
     GameNotClosable,
+
+    #[msg("Game mismatch (registry_game.game != game)")]
+    GameMismatch,
+
+    #[msg("Insufficient fee balance in publisher payment account")]
+    InsufficientFeeBalance,
 }

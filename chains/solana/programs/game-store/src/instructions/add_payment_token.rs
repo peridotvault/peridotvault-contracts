@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::token_interface::Mint;
 
 use crate::{events::PaymentTokenAdded, state::{AcceptedPaymentToken, StoreConfig}};
 
@@ -12,12 +13,11 @@ pub struct AddPaymentToken<'info> {
         has_one = authority
     )]
     pub store_config: Account<'info, StoreConfig>,
-    /// CHECK: SPL mint address
-    pub mint: UncheckedAccount<'info>,
+    pub mint: InterfaceAccount<'info, Mint>,
     #[account(
         init,
         payer = authority,
-        space = 8 + AcceptedPaymentToken::LEN,
+        space = AcceptedPaymentToken::SPACE,
         seeds = [b"accepted_payment_token", mint.key().as_ref()],
         bump
     )]

@@ -119,3 +119,9 @@ pub struct PurchaseReceiptCreated {
     pub buyer: Pubkey,
     pub game: Pubkey,
 }
+
+#[event]
+pub struct StoreActorUpdated {
+    pub old_store_actor: Pubkey,
+    pub new_store_actor: Pubkey,
+}

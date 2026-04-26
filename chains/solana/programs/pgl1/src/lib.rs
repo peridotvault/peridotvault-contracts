@@ -32,12 +32,24 @@ pub mod pgl1 {
         set_treasury::handler(ctx, treasury)
     }
 
+    pub fn set_authority(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
+        set_authority::handler(ctx, new_authority)
+    }
+
     pub fn add_authorized_actor(ctx: Context<AddAuthorizedActor>) -> Result<()> {
         add_authorized_actor::handler(ctx)
     }
 
     pub fn deactivate_authorized_actor(ctx: Context<DeactivateAuthorizedActor>) -> Result<()> {
         deactivate_authorized_actor::handler(ctx)
+    }
+
+    pub fn close_authorized_actor(ctx: Context<CloseAuthorizedActor>) -> Result<()> {
+        close_authorized_actor::handler(ctx)
+    }
+
+    pub fn close_creator_state(ctx: Context<CloseCreatorState>) -> Result<()> {
+        close_creator_state::handler(ctx)
     }
 
     pub fn create_game(

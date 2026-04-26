@@ -43,7 +43,9 @@ pub(crate) fn handler(ctx: Context<UpdateGameStatus>, status: u8) -> Result<()> 
 
     emit!(GameStatusUpdated {
         game: ctx.accounts.registry_game.game,
-        status,
+        old_status: current_status.as_u8(),
+        new_status: status,
+        authority: ctx.accounts.authority.key(),
     });
 
     Ok(())

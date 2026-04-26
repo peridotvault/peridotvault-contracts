@@ -31,7 +31,7 @@ pub struct InitGameStoreConfig<'info> {
     #[account(
         init,
         payer = publisher,
-        space = 8 + GameStoreConfig::LEN,
+        space = GameStoreConfig::SPACE,
         seeds = [b"game_store_config", game.key().as_ref()],
         bump
     )]

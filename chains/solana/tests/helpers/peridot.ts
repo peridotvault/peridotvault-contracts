@@ -402,7 +402,7 @@ export async function createRegisteredGame(
   );
 
   await base.registryProgram.methods
-    .setPublishGrant(null)
+    .createPublishGrant(null)
     .accounts({
       authority: base.authority.publicKey,
       config: base.registryConfigPda,
@@ -410,14 +410,20 @@ export async function createRegisteredGame(
       publishGrant: publishGrantPda,
       systemProgram: SystemProgram.programId,
     })
+    .signers([publisher])
     .rpc();
 
   const pglConfig = (await base.pglProgram.account.pglConfig.fetch(
     base.pglConfigPda,
   )) as any;
 
+  const storeGameStoreConfigPda = derivePda(
+    [Buffer.from("game_store_config"), gamePda.toBuffer()],
+    base.storeProgram.programId,
+  );
+
   await base.registryProgram.methods
-    .createGameAndRegister(gameId, metadataUri)
+    .createGameAndRegister(gameId, metadataUri, null, null)
     .accounts({
       publisher: publisher.publicKey,
       config: base.registryConfigPda,
@@ -431,6 +437,11 @@ export async function createRegisteredGame(
       pglConfig: base.pglConfigPda,
       pglTreasury: pglConfig.treasury,
       pgl1Program: base.pglProgram.programId,
+      storeProgram: base.storeProgram.programId,
+      storeAuthorizedSourceProgram: base.authorizedSourceProgramPda,
+      storeAuthorizedRegistryProgram: base.authorizedRegistryProgramPda,
+      storeGameStoreConfig: storeGameStoreConfigPda,
+      selfProgram: base.registryProgram.programId,
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })

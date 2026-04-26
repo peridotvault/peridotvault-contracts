@@ -49,7 +49,7 @@ Security Assumptions Review (2026-04-24)
   - Implikasi: jika deployment tidak langsung inisialisasi, pihak lain bisa mengambil authority awal.
 - Assumption 2: admin key is highly trusted
   - `pgl_config.authority` adalah root of trust untuk fee/treasury/authorized actor.
-  - Tidak ada instruction rotasi authority saat ini, sehingga compromise/loss key bersifat high impact.
+  - Instruction `set_authority` tersedia untuk rotasi authority.
 - Assumption 3: authorized actor is trusted operator
   - `mint_license`/`renew_license` tidak mewajibkan holder signer.
   - Actor yang authorized dapat menerbitkan/memperpanjang license untuk holder mana pun.
@@ -64,7 +64,6 @@ Security Assumptions Review (2026-04-24)
   - Konsumen wajib treat `game` PDA sebagai identitas canonical.
 
 Recommended Hardening (Roadmap)
-- Tambah `set_authority(new_authority)` + optional two-step handover.
 - Tambah emergency pause untuk `mint_license`/`renew_license`.
 - Tambah revoke/burn/blacklist flow (jika model bisnis membutuhkan).
 - Tambah optional holder-consent mode (mis. holder signer required) untuk use case non-custodial.
@@ -72,13 +71,15 @@ Recommended Hardening (Roadmap)
 
 Authorized Actor Model
 - Registration:
-  - Admin menambahkan actor via `add_authorized_actor` (active=true)
+  - Admin menambahkan actor via `add_authorized_actor` (active=true, init-only)
 - Deactivation:
   - Admin menonaktifkan actor via `deactivate_authorized_actor`
 - Enforcement:
   - `mint_license` dan `renew_license` reject actor yang tidak ada/aktif
 - Revocation behavior:
   - deactivation hanya memblokir aksi baru; tidak membatalkan license yang sudah terbit
+- Re-activation:
+  - Tidak bisa re-activate actor yang sudah di-deactivate. Harus buat actor baru.
 
 State Accounts
 1. PglConfig
@@ -130,15 +131,19 @@ Instruction Security Matrix
 - set_treasury
   - Caller: Admin PGL1
   - Guard: signer == pgl_config.authority, treasury != default
+- set_authority
+  - Caller: Admin PGL1
+  - Guard: signer == pgl_config.authority, new_authority != default
 - add_authorized_actor
   - Caller: Admin PGL1
-  - Guard: signer == pgl_config.authority
+  - Guard: signer == pgl_config.authority, init-only (tidak bisa re-init)
 - deactivate_authorized_actor
   - Caller: Admin PGL1
   - Guard: signer == pgl_config.authority
 - create_game
   - Caller: creator signer
   - Guard: game_id & metadata_uri valid, treasury harus cocok config, fee SOL harus cukup
+  - CreatorState: jika sudah ada, creator harus match signer
 - set_publisher
   - Caller: publisher saat ini
   - Guard: game.publisher == signer, new_publisher != default
@@ -161,49 +166,59 @@ Flow Per Instruction
 2. set_create_game_fee(create_game_fee_lamports)
 - Validasi caller admin.
 - Update fee global.
+- Emit CreateGameFeeUpdated dengan old_fee dan new_fee.
 
 3. set_treasury(treasury)
 - Validasi caller admin.
 - Validasi treasury non-default.
 - Update treasury.
+- Emit TreasuryUpdated dengan old_treasury dan new_treasury.
 
-4. add_authorized_actor()
+4. set_authority(new_authority)
 - Validasi caller admin.
-- Init/update PDA authorized_actor.
+- Validasi new_authority non-default.
+- Update authority.
+- Emit AuthorityUpdated dengan old_authority dan new_authority.
+
+5. add_authorized_actor()
+- Validasi caller admin.
+- Init PDA authorized_actor (init-only, tidak bisa re-init).
 - Set active=true.
 
-5. deactivate_authorized_actor()
+6. deactivate_authorized_actor()
 - Validasi caller admin.
 - Set authorized_actor.active=false.
 
-6. create_game(game_id, metadata_uri)
+7. create_game(game_id, metadata_uri)
 - Validasi game_id dan metadata_uri.
 - Jika fee > 0, transfer SOL creator -> treasury.
-- init_if_needed creator_state.
+- Jika creator_state belum ada: init. Jika sudah ada: validasi creator match signer.
 - Buat game PDA berdasarkan nonce current.
 - Simpan game record, increment nonce (overflow -> NonceOverflow).
 
-7. set_publisher(new_publisher)
+8. set_publisher(new_publisher)
 - Validasi signer adalah publisher saat ini.
 - Validasi new_publisher.
 - Update game.publisher.
 
-8. set_metadata_uri(metadata_uri)
+9. set_metadata_uri(metadata_uri)
 - Validasi signer adalah publisher saat ini.
 - Validasi metadata_uri.
 - Update metadata URI.
+- Emit MetadataUriUpdated dengan old_uri dan new_uri.
 
-9. mint_license(expires_at)
+10. mint_license(expires_at)
 - Validasi actor authorized + active.
 - Validasi expires_at (jika ada) > now.
 - Guard duplicate: jika license sudah terisi, reject (LicenseAlreadyExists).
 - Init license PDA dan simpan issued_at/expires_at.
 
-10. renew_license(expires_at)
+11. renew_license(expires_at)
 - Validasi actor authorized + active.
 - Validasi expires_at > now.
 - Jika license sudah punya expiry, expiry baru harus lebih besar.
 - Update expires_at.
+- Emit LicenseRenewed dengan old_expires_at dan new_expires_at.
 
 Validation Flow (Execution Pipeline)
 1. Account constraint validation (Anchor layer)
@@ -302,15 +317,16 @@ State Transition Rules (License)
 
 Events
 - PglInitialized
-- CreateGameFeeUpdated
-- TreasuryUpdated
+- CreateGameFeeUpdated (old_fee, new_fee)
+- TreasuryUpdated (authority, old_treasury, new_treasury)
+- AuthorityUpdated (old_authority, new_authority)
 - AuthorizedActorAdded
 - AuthorizedActorDeactivated
 - GameCreated
 - PublisherUpdated
-- MetadataUriUpdated
+- MetadataUriUpdated (game, publisher, old_uri, new_uri)
 - LicenseMinted
-- LicenseRenewed
+- LicenseRenewed (license, holder, game, old_expires_at, new_expires_at)
 
 Errors
 - Unauthorized

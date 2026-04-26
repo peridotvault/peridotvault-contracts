@@ -19,13 +19,16 @@ pub(crate) fn handler(ctx: Context<RenewLicense>, expires_at: i64) -> Result<()>
     if let Some(current_exp) = license.expires_at {
         require!(expires_at > current_exp, PglError::InvalidExpiry);
     }
+
+    let old_expires_at = license.expires_at;
     license.expires_at = Some(expires_at);
 
     emit!(LicenseRenewed {
         license: license.key(),
         holder: license.holder,
         game: license.game,
-        expires_at,
+        old_expires_at,
+        new_expires_at: expires_at,
     });
 
     Ok(())

@@ -16,12 +16,14 @@ pub(crate) fn handler(ctx: Context<SetMetadataUri>, metadata_uri: String) -> Res
     let signer = ctx.accounts.publisher.key();
     require_keys_eq!(game.publisher, signer, PglError::Unauthorized);
 
+    let old_uri = game.metadata_uri.clone();
     game.metadata_uri = metadata_uri.clone();
 
     emit!(MetadataUriUpdated {
         game: game.key(),
         publisher: game.publisher,
-        metadata_uri,
+        old_uri,
+        new_uri: metadata_uri,
     });
 
     Ok(())

@@ -48,6 +48,12 @@ pub(crate) fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: S
     if creator_state.creator == Pubkey::default() {
         creator_state.creator = creator.key();
         creator_state.bump = ctx.bumps.creator_state;
+    } else {
+        require_keys_eq!(
+            creator_state.creator,
+            creator.key(),
+            PglError::Unauthorized
+        );
     }
 
     let game = &mut ctx.accounts.game;

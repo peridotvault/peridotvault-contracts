@@ -22,9 +22,10 @@ pub struct SetTreasury<'info> {
 pub(crate) fn handler(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
     require!(treasury != Pubkey::default(), RegistryError::InvalidTreasury);
 
+    let old_treasury = ctx.accounts.config.treasury;
     ctx.accounts.config.treasury = treasury;
 
-    emit!(TreasuryUpdated { treasury });
+    emit!(TreasuryUpdated { old_treasury, new_treasury: treasury });
 
     Ok(())
 }

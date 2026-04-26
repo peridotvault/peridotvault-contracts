@@ -46,7 +46,7 @@ pub struct SetGamePaymentOption<'info> {
     #[account(
         init_if_needed,
         payer = publisher,
-        space = 8 + GamePaymentOption::LEN,
+        space = GamePaymentOption::SPACE,
         seeds = [b"game_payment_option", game.key().as_ref(), mint.key().as_ref()],
         bump
     )]
@@ -69,6 +69,10 @@ pub(crate) fn handler(ctx: Context<SetGamePaymentOption>, base_price: u64, activ
     require_keys_eq!(ctx.accounts.accepted_payment_token.mint, ctx.accounts.mint.key(), StoreError::PaymentTokenNotAllowed);
 
     let option = &mut ctx.accounts.game_payment_option;
+    if option.game != Pubkey::default() {
+        require_keys_eq!(option.game, ctx.accounts.game.key(), StoreError::GamePaymentOptionMismatch);
+    }
+
     option.game = ctx.accounts.game.key();
     option.mint = ctx.accounts.mint.key();
     option.base_price = base_price;

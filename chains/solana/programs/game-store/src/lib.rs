@@ -119,6 +119,10 @@ pub mod peridotvault_store {
         set_referral_bps::handler(ctx, referral_bps)
     }
 
+    pub fn set_store_actor(ctx: Context<SetStoreActor>, new_store_actor: Pubkey) -> Result<()> {
+        set_store_actor::handler(ctx, new_store_actor)
+    }
+
     pub fn buy_game(
         ctx: Context<BuyGame>,
         paid_amount: u64,

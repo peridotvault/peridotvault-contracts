@@ -16,30 +16,23 @@ pub struct StoreConfig {
 }
 
 impl StoreConfig {
-    pub const LEN: usize = 32 + 32 + 2 + 2 + 2 + 32 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 2 + 2 + 2 + 32 + 1;
 }
 
 #[account]
-pub struct AuthorizedSourceProgram {
+pub struct AuthorizedProgram {
     pub program_id: Pubkey,
     pub active: bool,
     pub bump: u8,
 }
 
-impl AuthorizedSourceProgram {
-    pub const LEN: usize = 32 + 1 + 1;
+impl AuthorizedProgram {
+    pub const SPACE: usize = 8 + 32 + 1 + 1;
 }
 
-#[account]
-pub struct AuthorizedRegistryProgram {
-    pub program_id: Pubkey,
-    pub active: bool,
-    pub bump: u8,
-}
-
-impl AuthorizedRegistryProgram {
-    pub const LEN: usize = 32 + 1 + 1;
-}
+// Type aliases for backward compatibility and semantic clarity.
+pub type AuthorizedSourceProgram = AuthorizedProgram;
+pub type AuthorizedRegistryProgram = AuthorizedProgram;
 
 #[account]
 pub struct AcceptedPaymentToken {
@@ -49,7 +42,7 @@ pub struct AcceptedPaymentToken {
 }
 
 impl AcceptedPaymentToken {
-    pub const LEN: usize = 32 + 1 + 1;
+    pub const SPACE: usize = 8 + 32 + 1 + 1;
 }
 
 #[account]
@@ -64,7 +57,7 @@ pub struct GameStoreConfig {
 }
 
 impl GameStoreConfig {
-    pub const LEN: usize = 32 + 1 + 3 + 3 + 9 + 9 + 1;
+    pub const SPACE: usize = 8 + 32 + 1 + 3 + 3 + 9 + 9 + 1;
 }
 
 #[account]
@@ -77,7 +70,7 @@ pub struct GamePaymentOption {
 }
 
 impl GamePaymentOption {
-    pub const LEN: usize = 32 + 32 + 8 + 1 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 8 + 1 + 1;
 }
 
 #[account]
@@ -93,5 +86,5 @@ pub struct PurchaseReceipt {
 }
 
 impl PurchaseReceipt {
-    pub const LEN: usize = 32 + 32 + 32 + 8 + 8 + 2 + 8 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 2 + 8 + 1;
 }

@@ -2,32 +2,28 @@ use anchor_lang::prelude::*;
 
 use crate::{
     errors::PglError,
-    events::AuthorizedActorAdded,
+    events::AuthorizedActorClosed,
     state::{AuthorizedActor, PglConfig, AUTHORIZED_ACTOR_SEED, PGL_CONFIG_SEED},
 };
 
-pub(crate) fn handler(ctx: Context<AddAuthorizedActor>) -> Result<()> {
+pub(crate) fn handler(ctx: Context<CloseAuthorizedActor>) -> Result<()> {
     let config = &ctx.accounts.pgl_config;
     require_keys_eq!(config.authority, ctx.accounts.authority.key(), PglError::Unauthorized);
 
-    let actor = &mut ctx.accounts.authorized_actor;
-    actor.actor = ctx.accounts.actor.key();
-    actor.active = true;
-    actor.bump = ctx.bumps.authorized_actor;
+    let actor = &ctx.accounts.authorized_actor;
+    require!(!actor.active, PglError::AuthorizedActorStillActive);
 
-    emit!(AuthorizedActorAdded {
-        actor: actor.actor,
-    });
+    emit!(AuthorizedActorClosed { actor: actor.actor });
 
     Ok(())
 }
 
 #[derive(Accounts)]
-pub struct AddAuthorizedActor<'info> {
+pub struct CloseAuthorizedActor<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    /// CHECK: this is the actor being authorized and is only used as a seed value / stored pubkey.
+    /// CHECK: this is the actor being closed and is only used as a seed value.
     pub actor: UncheckedAccount<'info>,
 
     #[account(
@@ -37,13 +33,10 @@ pub struct AddAuthorizedActor<'info> {
     pub pgl_config: Account<'info, PglConfig>,
 
     #[account(
-        init,
-        payer = authority,
-        space = AuthorizedActor::SPACE,
+        mut,
+        close = authority,
         seeds = [AUTHORIZED_ACTOR_SEED, actor.key().as_ref()],
-        bump,
+        bump = authorized_actor.bump,
     )]
     pub authorized_actor: Account<'info, AuthorizedActor>,
-
-    pub system_program: Program<'info, System>,
 }
