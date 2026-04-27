@@ -1,0 +1,8 @@
+[project]
+name = "pgl1"
+
+[toolchain]
+type = "solana"
+
+[testing]
+framework = "none"

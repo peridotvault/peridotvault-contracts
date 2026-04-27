@@ -1,0 +1,8 @@
+[project]
+name = "game_store"
+
+[toolchain]
+type = "solana"
+
+[testing]
+framework = "none"
