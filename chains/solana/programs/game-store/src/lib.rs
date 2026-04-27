@@ -7,7 +7,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("8xi62uARkmBcKKwG3M8uvFnaayZL4MFvkQ91WG16eBCj");
+declare_id!("G9roe9Dm2Rr261z3xKNcNKcFeQ5wovr8VwEwRDQ8YJVs");
 
 #[program]
 pub mod game_store {
