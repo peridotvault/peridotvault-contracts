@@ -2,14 +2,14 @@ use crate::{
     errors::RegistryError,
     events::GameRegistered,
     external::{
-        self, GameStoreProgram, Pgl1Program, PglConfigAccount, PglGame, GAME_STORE_PROGRAM_ID,
+        self, GameStoreProgram, Pgl1Program, PglConfigAccount, GAME_STORE_PROGRAM_ID,
         INIT_GAME_STORE_CONFIG_DISC, PGL_CONFIG_SEED, SET_GAME_PAYMENT_OPTION_DISC,
     },
     instructions::{read_option_address, read_option_u64, read_string},
     state::{
-        AcceptedPaymentToken, GameStatus, PublishGrant, RegistryConfig, RegistryGame,
-        ACCEPTED_PAYMENT_TOKEN_SEED, MAX_GAME_ID_LEN, MAX_METADATA_URI_LEN, PUBLISH_GRANT_SEED,
-        REGISTRY_CONFIG_SEED, REGISTRY_GAME_SEED,
+        AcceptedPaymentToken, GameStatus, RegistryConfig, RegistryGame,
+        ACCEPTED_PAYMENT_TOKEN_SEED, MAX_GAME_ID_LEN, MAX_METADATA_URI_LEN, REGISTRY_CONFIG_SEED,
+        REGISTRY_GAME_SEED,
     },
 };
 use quasar_lang::{

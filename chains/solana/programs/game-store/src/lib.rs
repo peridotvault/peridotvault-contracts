@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(unexpected_cfgs)]
 #[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
 extern crate std;
 
