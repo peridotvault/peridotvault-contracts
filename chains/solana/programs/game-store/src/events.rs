@@ -1,120 +1,128 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
-#[event]
 pub struct StoreInitialized {
-    pub authority: Pubkey,
-    pub treasury: Pubkey,
+    pub authority: Address,
+    pub treasury: Address,
 }
 
-#[event]
 pub struct TreasuryUpdated {
-    pub treasury: Pubkey,
+    pub treasury: Address,
 }
 
-#[event]
 pub struct PlatformFeeUpdated {
     pub platform_fee_bps: u16,
 }
 
-#[event]
 pub struct DefaultReferralUpdated {
     pub default_referral_bps: u16,
 }
 
-#[event]
 pub struct MaxReferralUpdated {
     pub max_referral_bps: u16,
 }
 
-#[event]
 pub struct AuthorizedProgramAdded {
-    pub program_id: Pubkey,
+    pub program_id: Address,
     pub role: u8,
 }
 
-#[event]
 pub struct AuthorizedProgramUpdated {
-    pub program_id: Pubkey,
+    pub program_id: Address,
     pub active: bool,
     pub role: u8,
 }
 
-#[event]
 pub struct PaymentTokenAdded {
-    pub mint: Pubkey,
+    pub mint: Address,
 }
 
-#[event]
 pub struct PaymentTokenUpdated {
-    pub mint: Pubkey,
+    pub mint: Address,
     pub active: bool,
 }
 
-#[event]
 pub struct GameStoreConfigInitialized {
-    pub game: Pubkey,
+    pub game: Address,
     pub active: bool,
 }
 
-#[event]
 pub struct GameStoreActiveUpdated {
-    pub game: Pubkey,
+    pub game: Address,
     pub active: bool,
 }
 
-#[event]
 pub struct GamePaymentOptionSet {
-    pub game: Pubkey,
-    pub mint: Pubkey,
+    pub game: Address,
+    pub mint: Address,
     pub base_price: u64,
     pub active: bool,
 }
 
-#[event]
 pub struct GamePaymentOptionRemoved {
-    pub game: Pubkey,
-    pub mint: Pubkey,
+    pub game: Address,
+    pub mint: Address,
 }
 
-#[event]
 pub struct DiscountSet {
-    pub game: Pubkey,
-    pub discount_bps: Option<u16>,
-    pub discount_starts_at: Option<i64>,
-    pub discount_expires_at: Option<i64>,
+    pub game: Address,
+    pub discount_bps_present: bool,
+    pub discount_bps: u16,
+    pub discount_starts_at_present: bool,
+    pub discount_starts_at: i64,
+    pub discount_expires_at_present: bool,
+    pub discount_expires_at: i64,
 }
 
-#[event]
 pub struct DiscountCleared {
-    pub game: Pubkey,
+    pub game: Address,
 }
 
-#[event]
 pub struct ReferralBpsUpdated {
-    pub game: Pubkey,
-    pub referral_bps: Option<u16>,
+    pub game: Address,
+    pub referral_bps_present: bool,
+    pub referral_bps: u16,
 }
 
-#[event]
 pub struct GamePurchased {
-    pub buyer: Pubkey,
-    pub game: Pubkey,
-    pub payment_mint: Pubkey,
+    pub buyer: Address,
+    pub game: Address,
+    pub payment_mint: Address,
     pub paid_amount: u64,
     pub final_price: u64,
-    pub referrer: Pubkey,
+    pub referrer: Address,
     pub referral_bps_applied: u16,
 }
 
-#[event]
 pub struct PurchaseReceiptCreated {
-    pub buyer: Pubkey,
-    pub game: Pubkey,
-    pub referrer: Pubkey,
+    pub buyer: Address,
+    pub game: Address,
+    pub referrer: Address,
 }
 
-#[event]
 pub struct StoreActorUpdated {
-    pub old_store_actor: Pubkey,
-    pub new_store_actor: Pubkey,
+    pub old_store_actor: Address,
+    pub new_store_actor: Address,
 }
+
+macro_rules! impl_noop_emit { ($($name:ident),* $(,)?) => { $(impl $name { #[inline(always)] pub fn emit_log(self) -> Result<(), ProgramError> { Ok(()) } })* }; }
+impl_noop_emit!(
+    StoreInitialized,
+    TreasuryUpdated,
+    PlatformFeeUpdated,
+    DefaultReferralUpdated,
+    MaxReferralUpdated,
+    AuthorizedProgramAdded,
+    AuthorizedProgramUpdated,
+    PaymentTokenAdded,
+    PaymentTokenUpdated,
+    GameStoreConfigInitialized,
+    GameStoreActiveUpdated,
+    GamePaymentOptionSet,
+    GamePaymentOptionRemoved,
+    DiscountSet,
+    DiscountCleared,
+    ReferralBpsUpdated,
+    GamePurchased,
+    PurchaseReceiptCreated,
+    StoreActorUpdated
+);

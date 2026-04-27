@@ -5,7 +5,7 @@
 | Field | Value |
 |-------|-------|
 | **Program ID** | `FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC` |
-| **Anchor module** | `game_store` |
+| **Quasar module** | `game_store` |
 | **Crate/lib** | `game-store` / `game_store` |
 
 ## Current Integration Status

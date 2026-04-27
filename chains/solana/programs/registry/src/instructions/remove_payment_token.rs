@@ -1,39 +1,28 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token_interface::Mint;
-
 use crate::{
-    errors::RegistryError,
     events::PaymentTokenRemoved,
-    state::{AcceptedPaymentToken, RegistryConfig},
+    state::{
+        AcceptedPaymentToken, RegistryConfig, ACCEPTED_PAYMENT_TOKEN_SEED, REGISTRY_CONFIG_SEED,
+    },
 };
-
+use quasar_lang::prelude::*;
+use quasar_spl::{InterfaceAccount, Mint};
 #[derive(Accounts)]
 pub struct RemovePaymentToken<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    #[account(
-        seeds = [b"registry_config"],
-        bump = config.bump,
-        has_one = authority @ RegistryError::Unauthorized
-    )]
-    pub config: Account<'info, RegistryConfig>,
-
-    pub mint: InterfaceAccount<'info, Mint>,
-
-    #[account(
-        mut,
-        close = authority,
-        seeds = [b"accepted_payment_token", mint.key().as_ref()],
-        bump = accepted_payment_token.bump
-    )]
-    pub accepted_payment_token: Account<'info, AcceptedPaymentToken>,
+    pub authority: &'info mut Signer,
+    #[account(seeds=[REGISTRY_CONFIG_SEED], bump=config.bump, has_one=authority)]
+    pub config: &'info Account<RegistryConfig>,
+    pub mint: &'info InterfaceAccount<Mint>,
+    #[account(mut, seeds=[ACCEPTED_PAYMENT_TOKEN_SEED, mint], bump=accepted_payment_token.bump)]
+    pub accepted_payment_token: &'info mut Account<AcceptedPaymentToken>,
 }
-
-pub(crate) fn handler(ctx: Context<RemovePaymentToken>) -> Result<()> {
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, RemovePaymentToken<'info>>,
+) -> Result<(), ProgramError> {
     emit!(PaymentTokenRemoved {
-        mint: ctx.accounts.mint.key(),
-    });
-
+        mint: *ctx.accounts.mint.address()
+    })?;
+    ctx.accounts
+        .accepted_payment_token
+        .close(ctx.accounts.authority.to_account_view())?;
     Ok(())
 }

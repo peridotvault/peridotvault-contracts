@@ -1,90 +1,66 @@
-use anchor_lang::prelude::*;
-
 use crate::{
     errors::RegistryError,
     events::{PublishGrantCreated, PublishGrantUpdated},
-    state::{PublishGrant, RegistryConfig},
+    instructions::read_option_i64,
+    state::{PublishGrant, RegistryConfig, PUBLISH_GRANT_SEED, REGISTRY_CONFIG_SEED},
 };
-
+use quasar_lang::{prelude::*, sysvars::Sysvar};
 #[derive(Accounts)]
 pub struct CreatePublishGrant<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    #[account(
-        seeds = [b"registry_config"],
-        bump = config.bump,
-        has_one = authority @ RegistryError::Unauthorized
-    )]
-    pub config: Account<'info, RegistryConfig>,
-
-    pub publisher: Signer<'info>,
-
-    #[account(
-        init,
-        payer = authority,
-        space = PublishGrant::SPACE,
-        seeds = [b"publish_grant", publisher.key().as_ref()],
-        bump
-    )]
-    pub publish_grant: Account<'info, PublishGrant>,
-
-    pub system_program: Program<'info, System>,
+    pub authority: &'info mut Signer,
+    #[account(seeds=[REGISTRY_CONFIG_SEED], bump=config.bump, has_one=authority)]
+    pub config: &'info Account<RegistryConfig>,
+    pub publisher: &'info Signer,
+    #[account(init, payer=authority, space=<PublishGrant as Space>::SPACE, seeds=[PUBLISH_GRANT_SEED, publisher], bump)]
+    pub publish_grant: &'info mut Account<PublishGrant>,
+    pub system_program: &'info Program<System>,
 }
-
-pub(crate) fn create_handler(ctx: Context<CreatePublishGrant>, expired_at: Option<i64>) -> Result<()> {
+pub(crate) fn create_handler<'info>(
+    ctx: &mut Ctx<'info, CreatePublishGrant<'info>>,
+) -> Result<(), ProgramError> {
+    let mut offset = 0;
+    let expired_at = read_option_i64(ctx.data, &mut offset)?;
     if let Some(ts) = expired_at {
-        require!(ts > Clock::get()?.unix_timestamp, RegistryError::InvalidExpiry);
+        require!(
+            ts > Clock::get()?.unix_timestamp.get(),
+            RegistryError::InvalidExpiry
+        );
     }
-
-    let grant = &mut ctx.accounts.publish_grant;
-    grant.expired_at = expired_at;
-    grant.bump = ctx.bumps.publish_grant;
-
+    ctx.accounts
+        .publish_grant
+        .set_inner(expired_at.into(), ctx.bumps.publish_grant);
     emit!(PublishGrantCreated {
-        publisher: ctx.accounts.publisher.key(),
-        expired_at,
-    });
-
+        publisher: *ctx.accounts.publisher.address(),
+        expired_at
+    })?;
     Ok(())
 }
-
 #[derive(Accounts)]
 pub struct UpdatePublishGrant<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    #[account(
-        seeds = [b"registry_config"],
-        bump = config.bump,
-        has_one = authority @ RegistryError::Unauthorized
-    )]
-    pub config: Account<'info, RegistryConfig>,
-
-    pub publisher: Signer<'info>,
-
-    #[account(
-        mut,
-        seeds = [b"publish_grant", publisher.key().as_ref()],
-        bump = publish_grant.bump
-    )]
-    pub publish_grant: Account<'info, PublishGrant>,
+    pub authority: &'info Signer,
+    #[account(seeds=[REGISTRY_CONFIG_SEED], bump=config.bump, has_one=authority)]
+    pub config: &'info Account<RegistryConfig>,
+    pub publisher: &'info Signer,
+    #[account(mut, seeds=[PUBLISH_GRANT_SEED, publisher], bump=publish_grant.bump)]
+    pub publish_grant: &'info mut Account<PublishGrant>,
 }
-
-pub(crate) fn update_handler(ctx: Context<UpdatePublishGrant>, expired_at: Option<i64>) -> Result<()> {
+pub(crate) fn update_handler<'info>(
+    ctx: &mut Ctx<'info, UpdatePublishGrant<'info>>,
+) -> Result<(), ProgramError> {
+    let mut offset = 0;
+    let expired_at = read_option_i64(ctx.data, &mut offset)?;
     if let Some(ts) = expired_at {
-        require!(ts > Clock::get()?.unix_timestamp, RegistryError::InvalidExpiry);
+        require!(
+            ts > Clock::get()?.unix_timestamp.get(),
+            RegistryError::InvalidExpiry
+        );
     }
-
-    let grant = &mut ctx.accounts.publish_grant;
-    let old_expired_at = grant.expired_at;
-    grant.expired_at = expired_at;
-
+    let old_expired_at = ctx.accounts.publish_grant.expired_at.get();
+    ctx.accounts.publish_grant.expired_at = expired_at.into();
     emit!(PublishGrantUpdated {
-        publisher: ctx.accounts.publisher.key(),
+        publisher: *ctx.accounts.publisher.address(),
         old_expired_at,
-        new_expired_at: expired_at,
-    });
-
+        new_expired_at: expired_at
+    })?;
     Ok(())
 }

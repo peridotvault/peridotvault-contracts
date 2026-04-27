@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
 use crate::{
     errors::PglError,
@@ -6,44 +6,41 @@ use crate::{
     state::{AuthorizedActor, PglConfig, AUTHORIZED_ACTOR_SEED, PGL_CONFIG_SEED},
 };
 
-pub(crate) fn handler(ctx: Context<AddAuthorizedActor>) -> Result<()> {
-    let config = &ctx.accounts.pgl_config;
-    require_keys_eq!(config.authority, ctx.accounts.authority.key(), PglError::Unauthorized);
-
-    let actor = &mut ctx.accounts.authorized_actor;
-    actor.actor = ctx.accounts.actor.key();
-    actor.active = true;
-    actor.bump = ctx.bumps.authorized_actor;
-
-    emit!(AuthorizedActorAdded {
-        actor: actor.actor,
-    });
-
-    Ok(())
-}
-
 #[derive(Accounts)]
 pub struct AddAuthorizedActor<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    /// CHECK: this is the actor being authorized and is only used as a seed value / stored pubkey.
-    pub actor: UncheckedAccount<'info>,
-
-    #[account(
-        seeds = [PGL_CONFIG_SEED],
-        bump = pgl_config.bump,
-    )]
-    pub pgl_config: Account<'info, PglConfig>,
-
+    pub authority: &'info mut Signer,
+    pub actor: &'info UncheckedAccount,
+    #[account(seeds = [PGL_CONFIG_SEED], bump = pgl_config.bump)]
+    pub pgl_config: &'info Account<PglConfig>,
     #[account(
         init,
         payer = authority,
-        space = AuthorizedActor::SPACE,
-        seeds = [AUTHORIZED_ACTOR_SEED, actor.key().as_ref()],
-        bump,
+        space = <AuthorizedActor as Space>::SPACE,
+        seeds = [AUTHORIZED_ACTOR_SEED, actor],
+        bump
     )]
-    pub authorized_actor: Account<'info, AuthorizedActor>,
+    pub authorized_actor: &'info mut Account<AuthorizedActor>,
+    pub system_program: &'info Program<System>,
+}
 
-    pub system_program: Program<'info, System>,
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, AddAuthorizedActor<'info>>,
+) -> Result<(), ProgramError> {
+    require_keys_eq!(
+        ctx.accounts.pgl_config.authority,
+        *ctx.accounts.authority.address(),
+        PglError::Unauthorized
+    );
+
+    ctx.accounts.authorized_actor.set_inner(
+        *ctx.accounts.actor.address(),
+        true,
+        ctx.bumps.authorized_actor,
+    );
+
+    emit!(AuthorizedActorAdded {
+        actor: *ctx.accounts.actor.address(),
+    })?;
+
+    Ok(())
 }

@@ -1,27 +1,31 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
-use crate::{events::PaymentTokenUpdated, state::{AcceptedPaymentToken, StoreConfig}};
+use crate::{
+    events::PaymentTokenUpdated,
+    state::{AcceptedPaymentToken, StoreConfig},
+};
 
 #[derive(Accounts)]
 pub struct UpdatePaymentToken<'info> {
-    pub authority: Signer<'info>,
+    pub authority: &'info Signer,
     #[account(
         seeds = [b"store_config"],
         bump = store_config.bump,
         has_one = authority
     )]
-    pub store_config: Account<'info, StoreConfig>,
-    #[account(
-        mut,
-        seeds = [b"accepted_payment_token", accepted_payment_token.mint.as_ref()],
-        bump = accepted_payment_token.bump
-    )]
-    pub accepted_payment_token: Account<'info, AcceptedPaymentToken>,
+    pub store_config: &'info Account<StoreConfig>,
+    #[account(mut)]
+    pub accepted_payment_token: &'info mut Account<AcceptedPaymentToken>,
 }
 
-pub(crate) fn handler(ctx: Context<UpdatePaymentToken>, active: bool) -> Result<()> {
-    let token = &mut ctx.accounts.accepted_payment_token;
-    token.active = active;
-    emit!(PaymentTokenUpdated { mint: token.mint, active });
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, UpdatePaymentToken<'info>>,
+    active: bool,
+) -> Result<(), ProgramError> {
+    ctx.accounts.accepted_payment_token.active = active.into();
+    emit!(PaymentTokenUpdated {
+        mint: ctx.accounts.accepted_payment_token.mint,
+        active
+    })?;
     Ok(())
 }

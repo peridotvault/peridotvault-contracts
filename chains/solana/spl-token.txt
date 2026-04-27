@@ -1,12 +1,12 @@
 solana config set --url http://127.0.0.1:8899
 solana airdrop 10
 
-# SPL Token CLI Step-by-Step (SYNC WITH ANCHOR LOCALNET + CONSOLE)
+# SPL Token CLI Step-by-Step (LOCALNET)
 #
 # Fokus:
 # - Pakai wallet utama kamu (tanpa bikin wallet baru)
 # - Jalan di localnet
-# - Sinkron dengan `pnpm anchor:localnet` dan `pnpm console`
+# - Sinkron dengan Quasar build + local validator/deploy flow
 
 # ============================================================
 # A) FIX ERROR SPL-TOKEN (khusus error libssl.3.dylib)
@@ -23,7 +23,7 @@ solana airdrop 10
 # B) START LOCALNET YANG SAMA DENGAN CONSOLE
 # ============================================================
 # Terminal A (biarkan hidup):
-pnpm anchor:localnet
+quasar build
 
 # Terminal B:
 solana config set --url http://127.0.0.1:8899
@@ -86,21 +86,18 @@ spl-token accounts --url http://127.0.0.1:8899
 spl-token supply $TOKEN_MINT --url http://127.0.0.1:8899
 
 # ============================================================
-# H) HUBUNGKAN KE CONSOLE APP
+# H) HUBUNGKAN KE CLIENT APP
 # ============================================================
-# Setelah token dibuat, buka console:
-pnpm console
-#
-# Lalu menu:
-# - Registry Menu -> Add / Update Payment Token
-# - Store Menu -> Add / Update Payment Token
+# Setelah token dibuat, gunakan client Quasar/Solana untuk:
+# - Registry: Add / Update Payment Token
+# - Store: Add / Update Payment Token
 # - lanjut Create Game / Buy Game flow
 
 # ============================================================
 # I) RESET LOCALNET (kalau mau ulang dari nol)
 # ============================================================
 # Stop Terminal A (Ctrl+C), lalu start lagi:
-# pnpm anchor:localnet
+# quasar build
 #
 # Semua state localnet sebelumnya akan hilang.
 

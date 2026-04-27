@@ -1,7 +1,4 @@
-use anchor_lang::{
-    prelude::*,
-    system_program::{transfer, Transfer},
-};
+use quasar_lang::{cpi, prelude::*, sysvars::Sysvar};
 
 use crate::{
     errors::PglError,
@@ -12,7 +9,31 @@ use crate::{
     },
 };
 
-pub(crate) fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: String) -> Result<()> {
+#[derive(Accounts)]
+pub struct CreateGame<'info> {
+    pub creator: &'info mut Signer,
+    #[account(seeds = [PGL_CONFIG_SEED], bump = pgl_config.bump)]
+    pub pgl_config: &'info Account<PglConfig>,
+    #[account(mut, address = pgl_config.treasury @ PglError::Unauthorized)]
+    pub treasury: &'info UncheckedAccount,
+    #[account(
+        init_if_needed,
+        payer = creator,
+        space = <CreatorState as Space>::SPACE,
+        seeds = [CREATOR_STATE_SEED, creator],
+        bump
+    )]
+    pub creator_state: &'info mut Account<CreatorState>,
+    pub game: &'info mut UncheckedAccount,
+    pub system_program: &'info Program<System>,
+}
+
+pub(crate) fn handler<'info>(ctx: &mut Ctx<'info, CreateGame<'info>>) -> Result<(), ProgramError> {
+    let mut offset = 0usize;
+    let game_id = crate::instructions::read_string(ctx.data, &mut offset, MAX_GAME_ID_LEN)?;
+    let metadata_uri =
+        crate::instructions::read_string(ctx.data, &mut offset, MAX_METADATA_URI_LEN)?;
+
     require!(
         !game_id.trim().is_empty() && game_id.len() <= MAX_GAME_ID_LEN,
         PglError::InvalidGameId
@@ -22,103 +43,105 @@ pub(crate) fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: S
         PglError::InvalidMetadataUri
     );
 
-    let config = &ctx.accounts.pgl_config;
-    let creator = &ctx.accounts.creator;
-
-    if config.create_game_fee_lamports > 0 {
+    let fee = ctx.accounts.pgl_config.create_game_fee_lamports.get();
+    if fee > 0 {
         require!(
-            creator.to_account_info().lamports() >= config.create_game_fee_lamports,
+            ctx.accounts.creator.to_account_view().lamports() >= fee,
             PglError::InsufficientCreateGameFee
         );
-
-        let cpi_ctx = CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
-            Transfer {
-                from: creator.to_account_info(),
-                to: ctx.accounts.treasury.to_account_info(),
-            },
-        );
-        transfer(cpi_ctx, config.create_game_fee_lamports)?;
+        cpi::system::transfer(
+            ctx.accounts.creator.to_account_view(),
+            ctx.accounts.treasury.to_account_view(),
+            fee,
+        )
+        .invoke()?;
     }
 
-    let creator_state = &mut ctx.accounts.creator_state;
-    let nonce = creator_state.next_nonce;
-    let now = Clock::get()?.unix_timestamp;
+    let nonce = ctx.accounts.creator_state.next_nonce.get();
+    let now = Clock::get()?.unix_timestamp.get();
 
-    if creator_state.creator == Pubkey::default() {
-        creator_state.creator = creator.key();
-        creator_state.bump = ctx.bumps.creator_state;
+    if ctx.accounts.creator_state.creator == Address::default() {
+        ctx.accounts.creator_state.creator = *ctx.accounts.creator.address();
+        ctx.accounts.creator_state.bump = ctx.bumps.creator_state;
     } else {
         require_keys_eq!(
-            creator_state.creator,
-            creator.key(),
+            ctx.accounts.creator_state.creator,
+            *ctx.accounts.creator.address(),
             PglError::Unauthorized
         );
     }
 
-    let game = &mut ctx.accounts.game;
-    game.creator = creator.key();
-    game.nonce = nonce;
-    game.publisher = creator.key();
-    game.game_id = game_id.clone();
-    game.metadata_uri = metadata_uri.clone();
-    game.created_at = now;
-    game.bump = ctx.bumps.game;
+    let nonce_bytes = nonce.to_le_bytes();
+    let (expected_game, bump) = quasar_lang::pda::based_try_find_program_address(
+        &[
+            GAME_SEED,
+            ctx.accounts.creator.address().as_ref(),
+            &nonce_bytes,
+        ],
+        &crate::ID,
+    )?;
+    require_keys_eq!(
+        *ctx.accounts.game.address(),
+        expected_game,
+        PglError::GameAlreadyExists
+    );
+    require!(
+        ctx.accounts.game.to_account_view().data_len() == 0,
+        PglError::GameAlreadyExists
+    );
 
-    creator_state.next_nonce = creator_state
-        .next_nonce
-        .checked_add(1)
-        .ok_or(PglError::NonceOverflow)?;
+    let bump_bytes = [bump];
+    let seeds = [
+        cpi::Seed::from(GAME_SEED),
+        cpi::Seed::from(ctx.accounts.creator.address().as_ref()),
+        cpi::Seed::from(&nonce_bytes),
+        cpi::Seed::from(&bump_bytes),
+    ];
+    ctx.accounts
+        .system_program
+        .create_account_with_minimum_balance(
+            ctx.accounts.creator,
+            ctx.accounts.game,
+            Game::SPACE as u64,
+            &crate::ID,
+            None,
+        )?
+        .invoke_signed(&seeds)?;
+
+    let game_view =
+        unsafe { &mut *(ctx.accounts.game as *mut UncheckedAccount as *mut AccountView) };
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            <Game as Discriminator>::DISCRIMINATOR.as_ptr(),
+            game_view.data_mut_ptr(),
+            <Game as Discriminator>::DISCRIMINATOR.len(),
+        );
+    }
+    let mut game = Game::from_account_view(game_view)?;
+    game.set_inner(
+        *ctx.accounts.creator.address(),
+        nonce,
+        *ctx.accounts.creator.address(),
+        now,
+        bump,
+        game_id,
+        metadata_uri,
+        ctx.accounts.creator.to_account_view(),
+        None,
+    )?;
+
+    let next_nonce = nonce.checked_add(1).ok_or(PglError::NonceOverflow)?;
+    ctx.accounts.creator_state.next_nonce = next_nonce.into();
 
     emit!(GameCreated {
-        game: game.key(),
-        creator: game.creator,
-        publisher: game.publisher,
+        game: *ctx.accounts.game.address(),
+        creator: *ctx.accounts.creator.address(),
+        publisher: *ctx.accounts.creator.address(),
         nonce,
         game_id,
         metadata_uri,
         created_at: now,
-    });
+    })?;
 
     Ok(())
-}
-
-#[derive(Accounts)]
-#[instruction(game_id: String, metadata_uri: String)]
-pub struct CreateGame<'info> {
-    #[account(mut)]
-    pub creator: Signer<'info>,
-
-    #[account(
-        seeds = [PGL_CONFIG_SEED],
-        bump = pgl_config.bump,
-    )]
-    pub pgl_config: Account<'info, PglConfig>,
-
-    /// CHECK: treasury pubkey is validated against config.
-    #[account(
-        mut,
-        address = pgl_config.treasury @ PglError::Unauthorized,
-    )]
-    pub treasury: UncheckedAccount<'info>,
-
-    #[account(
-        init_if_needed,
-        payer = creator,
-        space = CreatorState::SPACE,
-        seeds = [CREATOR_STATE_SEED, creator.key().as_ref()],
-        bump,
-    )]
-    pub creator_state: Account<'info, CreatorState>,
-
-    #[account(
-        init,
-        payer = creator,
-        space = Game::SPACE,
-        seeds = [GAME_SEED, creator.key().as_ref(), &creator_state.next_nonce.to_le_bytes()],
-        bump,
-    )]
-    pub game: Account<'info, Game>,
-
-    pub system_program: Program<'info, System>,
 }

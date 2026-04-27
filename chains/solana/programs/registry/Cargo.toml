@@ -8,17 +8,13 @@ name = "registry"
 crate-type = ["cdylib", "lib"]
 
 [features]
-no-entrypoint = []
-no-idl = []
-no-log-ix-name = []
-cpi = ["no-entrypoint"]
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "pgl1/idl-build"]
-anchor-debug = []
 custom-heap = []
 custom-panic = []
+alloc = []
+debug = []
+client = []
 default = []
 
 [dependencies]
-anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
-anchor-spl = { version = "0.32.1", features = ["token_2022", "token_2022_extensions"] }
-pgl1 = { path = "../pgl1", features = ["cpi"] }
+quasar-lang = "0.0.0"
+quasar-spl = "0.0.0"

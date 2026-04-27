@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
 pub const ROLE_SOURCE: u8 = 0;
 pub const ROLE_REGISTRY: u8 = 1;
@@ -7,85 +7,152 @@ pub const BPS_DENOMINATOR: u64 = 10_000;
 pub const PLATFORM_FEE_BPS_MAX: u16 = 10_000;
 pub const MAX_REFERRAL_BPS_HARD_CAP: u16 = 5_000;
 
-#[account]
+#[repr(C)]
+#[derive(Copy, Clone, Default, Eq, PartialEq)]
+pub struct OptionU16 {
+    tag: u8,
+    value: [u8; 2],
+}
+
+impl OptionU16 {
+    pub const NONE: Self = Self {
+        tag: 0,
+        value: [0; 2],
+    };
+
+    #[inline(always)]
+    pub fn get(&self) -> Option<u16> {
+        if self.tag == 0 {
+            None
+        } else {
+            Some(u16::from_le_bytes(self.value))
+        }
+    }
+
+    #[inline(always)]
+    pub fn set(&mut self, value: Option<u16>) {
+        match value {
+            None => *self = Self::NONE,
+            Some(v) => {
+                self.tag = 1;
+                self.value = v.to_le_bytes();
+            }
+        }
+    }
+}
+
+impl From<Option<u16>> for OptionU16 {
+    #[inline(always)]
+    fn from(value: Option<u16>) -> Self {
+        let mut out = Self::NONE;
+        out.set(value);
+        out
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default, Eq, PartialEq)]
+pub struct OptionI64 {
+    tag: u8,
+    value: [u8; 8],
+}
+
+impl OptionI64 {
+    pub const NONE: Self = Self {
+        tag: 0,
+        value: [0; 8],
+    };
+
+    #[inline(always)]
+    pub fn get(&self) -> Option<i64> {
+        if self.tag == 0 {
+            None
+        } else {
+            Some(i64::from_le_bytes(self.value))
+        }
+    }
+
+    #[inline(always)]
+    pub fn set(&mut self, value: Option<i64>) {
+        match value {
+            None => *self = Self::NONE,
+            Some(v) => {
+                self.tag = 1;
+                self.value = v.to_le_bytes();
+            }
+        }
+    }
+}
+
+impl From<Option<i64>> for OptionI64 {
+    #[inline(always)]
+    fn from(value: Option<i64>) -> Self {
+        let mut out = Self::NONE;
+        out.set(value);
+        out
+    }
+}
+
+const _: () = assert!(core::mem::align_of::<OptionU16>() == 1);
+const _: () = assert!(core::mem::size_of::<OptionU16>() == 3);
+const _: () = assert!(core::mem::align_of::<OptionI64>() == 1);
+const _: () = assert!(core::mem::size_of::<OptionI64>() == 9);
+
+#[account(discriminator = [108, 23, 66, 65, 67, 124, 167, 135])]
 pub struct StoreConfig {
-    pub authority: Pubkey,
-    pub treasury: Pubkey,
+    pub authority: Address,
+    pub treasury: Address,
     pub platform_fee_bps: u16,
     pub default_referral_bps: u16,
     pub max_referral_bps: u16,
-    pub store_actor: Pubkey,
+    pub store_actor: Address,
     pub bump: u8,
 }
 
-impl StoreConfig {
-    pub const SPACE: usize = 8 + 32 + 32 + 2 + 2 + 2 + 32 + 1;
-}
-
-#[account]
+#[account(discriminator = [18, 164, 77, 11, 61, 253, 148, 223])]
 pub struct AuthorizedProgram {
-    pub program_id: Pubkey,
+    pub program_id: Address,
     pub active: bool,
     pub role: u8,
     pub bump: u8,
 }
 
-impl AuthorizedProgram {
-    pub const SPACE: usize = 8 + 32 + 1 + 1 + 1;
-}
-
-#[account]
+#[account(discriminator = [101, 168, 82, 98, 20, 218, 130, 107])]
 pub struct AcceptedPaymentToken {
-    pub mint: Pubkey,
+    pub mint: Address,
     pub active: bool,
     pub bump: u8,
 }
 
-impl AcceptedPaymentToken {
-    pub const SPACE: usize = 8 + 32 + 1 + 1;
-}
-
-#[account]
+#[account(discriminator = [147, 51, 220, 95, 81, 151, 19, 208])]
 pub struct GameStoreConfig {
-    pub game: Pubkey,
+    pub game: Address,
     pub active: bool,
-    pub referral_bps: Option<u16>,
-    pub discount_bps: Option<u16>,
-    pub discount_starts_at: Option<i64>,
-    pub discount_expires_at: Option<i64>,
+    pub referral_bps: OptionU16,
+    pub discount_bps: OptionU16,
+    pub discount_starts_at: OptionI64,
+    pub discount_expires_at: OptionI64,
     pub bump: u8,
 }
 
-impl GameStoreConfig {
-    pub const SPACE: usize = 8 + 32 + 1 + 3 + 3 + 9 + 9 + 1;
-}
-
-#[account]
+#[account(discriminator = [7, 115, 189, 102, 10, 48, 220, 137])]
 pub struct GamePaymentOption {
-    pub game: Pubkey,
-    pub mint: Pubkey,
+    pub game: Address,
+    pub mint: Address,
     pub base_price: u64,
     pub active: bool,
     pub bump: u8,
 }
 
-impl GamePaymentOption {
-    pub const SPACE: usize = 8 + 32 + 32 + 8 + 1 + 1;
-}
-
-#[account]
+#[account(discriminator = [79, 127, 222, 137, 154, 131, 150, 134])]
 pub struct PurchaseReceipt {
-    pub buyer: Pubkey,
-    pub game: Pubkey,
-    pub payment_mint: Pubkey,
+    pub buyer: Address,
+    pub game: Address,
+    pub payment_mint: Address,
     pub paid_amount: u64,
     pub final_price: u64,
-    pub referrer: Pubkey,
+    pub referrer: Address,
     pub referral_bps_applied: u16,
     pub purchased_at: i64,
     pub bump: u8,
-}
-
-impl PurchaseReceipt {
-    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 32 + 2 + 8 + 1;
 }

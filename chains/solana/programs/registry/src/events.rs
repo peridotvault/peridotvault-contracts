@@ -1,71 +1,68 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
-#[event]
 pub struct RegistryInitialized {
-    pub authority: Pubkey,
-    pub treasury: Pubkey,
-    pub pgl1_program: Pubkey,
+    pub authority: Address,
+    pub treasury: Address,
+    pub pgl1_program: Address,
 }
-
-#[event]
 pub struct TreasuryUpdated {
-    pub old_treasury: Pubkey,
-    pub new_treasury: Pubkey,
+    pub old_treasury: Address,
+    pub new_treasury: Address,
 }
-
-#[event]
 pub struct PaymentTokenAdded {
-    pub mint: Pubkey,
+    pub mint: Address,
     pub fee_amount: u64,
 }
-
-#[event]
 pub struct PaymentTokenUpdated {
-    pub mint: Pubkey,
+    pub mint: Address,
     pub old_active: bool,
     pub new_active: bool,
     pub old_fee_amount: u64,
     pub new_fee_amount: u64,
 }
-
-#[event]
 pub struct PaymentTokenRemoved {
-    pub mint: Pubkey,
+    pub mint: Address,
 }
-
-#[event]
 pub struct PublishGrantCreated {
-    pub publisher: Pubkey,
+    pub publisher: Address,
     pub expired_at: Option<i64>,
 }
-
-#[event]
 pub struct PublishGrantUpdated {
-    pub publisher: Pubkey,
+    pub publisher: Address,
     pub old_expired_at: Option<i64>,
     pub new_expired_at: Option<i64>,
 }
-
-#[event]
-pub struct GameRegistered {
-    pub game: Pubkey,
-    pub game_id: String,
-    pub publisher: Pubkey,
+pub struct GameRegistered<'a> {
+    pub game: Address,
+    pub game_id: &'a str,
+    pub publisher: Address,
     pub status: u8,
     pub registered_at: i64,
 }
-
-#[event]
 pub struct GameStatusUpdated {
-    pub game: Pubkey,
+    pub game: Address,
     pub old_status: u8,
     pub new_status: u8,
-    pub authority: Pubkey,
+    pub authority: Address,
+}
+pub struct GameClosed<'a> {
+    pub game: Address,
+    pub game_id: &'a str,
+    pub closed_by: Address,
 }
 
-#[event]
-pub struct GameClosed {
-    pub game: Pubkey,
-    pub game_id: String,
-    pub closed_by: Pubkey,
+macro_rules! impl_noop_emit {
+    ($($name:ident $(<$lt:lifetime>)?),* $(,)?) => {$(impl$(<$lt>)? $name$(<$lt>)? { #[inline(always)] pub fn emit_log(self) -> Result<(), ProgramError> { Ok(()) } })*};
 }
+impl_noop_emit!(
+    RegistryInitialized,
+    TreasuryUpdated,
+    PaymentTokenAdded,
+    PaymentTokenUpdated,
+    PaymentTokenRemoved,
+    PublishGrantCreated,
+    PublishGrantUpdated,
+    GameRegistered<'a>,
+    GameStatusUpdated,
+    GameClosed<'a>
+);

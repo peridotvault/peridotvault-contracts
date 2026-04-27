@@ -1,42 +1,35 @@
-use anchor_lang::prelude::*;
-
 use crate::{
     errors::RegistryError,
     events::RegistryInitialized,
-    state::RegistryConfig,
+    external::PGL1_ID,
+    state::{RegistryConfig, REGISTRY_CONFIG_SEED},
 };
-
+use quasar_lang::prelude::*;
 #[derive(Accounts)]
 pub struct InitializeRegistry<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
-    #[account(
-        init,
-        payer = authority,
-        space = RegistryConfig::SPACE,
-        seeds = [b"registry_config"],
-        bump
-    )]
-    pub config: Account<'info, RegistryConfig>,
-
-    pub system_program: Program<'info, System>,
+    pub authority: &'info mut Signer,
+    #[account(init, payer=authority, space=<RegistryConfig as Space>::SPACE, seeds=[REGISTRY_CONFIG_SEED], bump)]
+    pub config: &'info mut Account<RegistryConfig>,
+    pub system_program: &'info Program<System>,
 }
-
-pub(crate) fn handler(ctx: Context<InitializeRegistry>, treasury: Pubkey) -> Result<()> {
-    require!(treasury != Pubkey::default(), RegistryError::InvalidTreasury);
-
-    let config = &mut ctx.accounts.config;
-    config.authority = ctx.accounts.authority.key();
-    config.treasury = treasury;
-    config.pgl1_program = pgl1::ID;
-    config.bump = ctx.bumps.config;
-
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, InitializeRegistry<'info>>,
+    treasury: Address,
+) -> Result<(), ProgramError> {
+    require!(
+        treasury != Address::default(),
+        RegistryError::InvalidTreasury
+    );
+    ctx.accounts.config.set_inner(
+        *ctx.accounts.authority.address(),
+        treasury,
+        PGL1_ID,
+        ctx.bumps.config,
+    );
     emit!(RegistryInitialized {
-        authority: config.authority,
-        treasury: config.treasury,
-        pgl1_program: config.pgl1_program,
-    });
-
+        authority: *ctx.accounts.authority.address(),
+        treasury,
+        pgl1_program: PGL1_ID
+    })?;
     Ok(())
 }

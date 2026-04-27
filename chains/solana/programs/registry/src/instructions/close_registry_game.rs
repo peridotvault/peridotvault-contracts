@@ -1,59 +1,52 @@
-use anchor_lang::prelude::*;
-
 use crate::{
     errors::RegistryError,
     events::GameClosed,
-    state::{GameStatus, RegistryConfig, RegistryGame},
+    external::PglGame,
+    state::{GameStatus, RegistryConfig, RegistryGame, REGISTRY_CONFIG_SEED},
 };
-
+use quasar_lang::prelude::*;
 #[derive(Accounts)]
 pub struct CloseRegistryGame<'info> {
+    pub publisher: &'info mut Signer,
+    #[account(seeds=[REGISTRY_CONFIG_SEED], bump=config.bump)]
+    pub config: &'info Account<RegistryConfig>,
+    pub game: &'info Account<PglGame>,
     #[account(mut)]
-    pub publisher: Signer<'info>,
-
-    #[account(
-        seeds = [b"registry_config"],
-        bump = config.bump
-    )]
-    pub config: Account<'info, RegistryConfig>,
-
-    #[account(
-        constraint = game.publisher == publisher.key() @ RegistryError::Unauthorized
-    )]
-    pub game: Account<'info, pgl1::state::Game>,
-
-    #[account(
-        mut,
-        seeds = [b"registry_game", registry_game.game.as_ref()],
-        bump = registry_game.bump,
-        close = treasury,
-        constraint = registry_game.game == game.key() @ RegistryError::GameMismatch
-    )]
-    pub registry_game: Account<'info, RegistryGame>,
-
-    /// CHECK: receives rent SOL from closed registry game (treasury address from config)
+    pub registry_game: Account<RegistryGame<'info>>,
     #[account(mut)]
-    pub treasury: UncheckedAccount<'info>,
+    pub treasury: &'info UncheckedAccount,
 }
-
-pub(crate) fn handler(ctx: Context<CloseRegistryGame>) -> Result<()> {
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, CloseRegistryGame<'info>>,
+) -> Result<(), ProgramError> {
+    require_keys_eq!(
+        ctx.accounts.game.publisher()?,
+        *ctx.accounts.publisher.address(),
+        RegistryError::Unauthorized
+    );
+    let status = ctx.accounts.registry_game.status.get();
     require!(
-        ctx.accounts.registry_game.status == GameStatus::Suspended
-            || ctx.accounts.registry_game.status == GameStatus::Banned,
+        status == GameStatus::Suspended || status == GameStatus::Banned,
         RegistryError::GameNotClosable
     );
-
     require_keys_eq!(
-        ctx.accounts.treasury.key(),
+        *ctx.accounts.treasury.address(),
         ctx.accounts.config.treasury,
         RegistryError::InvalidTreasury
     );
-
+    require_keys_eq!(
+        ctx.accounts.registry_game.game,
+        *ctx.accounts.game.address(),
+        RegistryError::GameMismatch
+    );
+    let game_id = ctx.accounts.registry_game.game_id();
     emit!(GameClosed {
         game: ctx.accounts.registry_game.game,
-        game_id: ctx.accounts.registry_game.game_id.clone(),
-        closed_by: ctx.accounts.publisher.key(),
-    });
-
+        game_id,
+        closed_by: *ctx.accounts.publisher.address()
+    })?;
+    ctx.accounts
+        .registry_game
+        .close(ctx.accounts.treasury.to_account_view())?;
     Ok(())
 }

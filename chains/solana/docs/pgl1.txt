@@ -2,7 +2,7 @@ PGL-1 (Peridot Game License v1)
 
 Program Identity
 - Program ID: DzDbFZXZsmFFv1mMFimLaBjAQi7Z5gUaQ61qcDuR6Kor
-- Anchor module: pgl1
+- Quasar module: pgl1
 - Crate: pgl1
 
 Overview
@@ -221,8 +221,8 @@ Flow Per Instruction
 - Emit LicenseRenewed dengan old_expires_at dan new_expires_at.
 
 Validation Flow (Execution Pipeline)
-1. Account constraint validation (Anchor layer)
-- PDA seeds + bump checks dijalankan dulu oleh Anchor.
+1. Account constraint validation (Quasar account validation layer)
+- PDA seeds + bump checks dijalankan dulu oleh Quasar.
 - Ownership/has_one/address constraint diverifikasi sebelum masuk handler.
 
 2. Role & authority validation (handler)
@@ -251,7 +251,7 @@ Validation Helpers (Current Patterns)
 - Macro guards:
   - `require!` untuk boolean invariant.
   - `require_keys_eq!` untuk equality pubkey yang kritikal.
-- Anchor account constraints:
+- Quasar account constraints:
   - `seeds`, `bump`, `address`, `constraint`, `init`, `init_if_needed`.
 - Canonical constants:
   - `MAX_GAME_ID_LEN`, `MAX_METADATA_URI_LEN`.

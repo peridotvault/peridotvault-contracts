@@ -59,7 +59,7 @@
 | `publish_grant` | `["publish_grant", publisher]` | One per publisher |
 
 ### 3.2 Account Ownership
-- All Anchor `Account<'info, T>` types automatically verify ownership by the current program.
+- All Quasar account wrappers verify ownership and account data according to their account type.
 - `UncheckedAccount` types are used for:
   - `game` — validated by PGL-1 CPI
   - `pgl_creator_state` — forwarded to PGL-1 CPI
@@ -231,7 +231,7 @@ Active ──→ Suspended ──→ Active    (reversible)
 - PDA seed uniqueness (duplicate prevention)
 - State machine invariants (Banned is terminal)
 - Input bounds (max lengths, min values)
-- Account ownership (Anchor-enforced)
+- Account ownership (Quasar-enforced)
 - CPI program ID validation (hardcoded checks)
 
 ---

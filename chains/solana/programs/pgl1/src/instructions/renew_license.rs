@@ -1,65 +1,70 @@
-use anchor_lang::prelude::*;
+use quasar_lang::{prelude::*, sysvars::Sysvar};
 
 use crate::{
     errors::PglError,
     events::LicenseRenewed,
-    state::{
-        AuthorizedActor, Game, License, AUTHORIZED_ACTOR_SEED, GAME_SEED, LICENSE_SEED,
-    },
+    state::{AuthorizedActor, Game, License, AUTHORIZED_ACTOR_SEED, GAME_SEED, LICENSE_SEED},
 };
-
-pub(crate) fn handler(ctx: Context<RenewLicense>, expires_at: i64) -> Result<()> {
-    let authorized_actor = &ctx.accounts.authorized_actor;
-    require!(authorized_actor.active, PglError::AuthorizedActorInactive);
-
-    let now = Clock::get()?.unix_timestamp;
-    require!(expires_at > now, PglError::InvalidExpiry);
-
-    let license = &mut ctx.accounts.license;
-    if let Some(current_exp) = license.expires_at {
-        require!(expires_at > current_exp, PglError::InvalidExpiry);
-    }
-
-    let old_expires_at = license.expires_at;
-    license.expires_at = Some(expires_at);
-
-    emit!(LicenseRenewed {
-        license: license.key(),
-        holder: license.holder,
-        game: license.game,
-        old_expires_at,
-        new_expires_at: expires_at,
-    });
-
-    Ok(())
-}
 
 #[derive(Accounts)]
 pub struct RenewLicense<'info> {
-    pub actor: Signer<'info>,
+    pub actor: &'info Signer,
+    pub holder: &'info UncheckedAccount,
+    #[account(seeds = [AUTHORIZED_ACTOR_SEED, actor], bump = authorized_actor.bump)]
+    pub authorized_actor: &'info Account<AuthorizedActor>,
+    pub game: Account<Game<'info>>,
+    #[account(mut, seeds = [LICENSE_SEED, holder, game], bump = license.bump)]
+    pub license: &'info mut Account<License>,
+}
 
-    /// CHECK: target holder of the license.
-    pub holder: UncheckedAccount<'info>,
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, RenewLicense<'info>>,
+    expires_at: i64,
+) -> Result<(), ProgramError> {
+    require!(
+        ctx.accounts.authorized_actor.active.get(),
+        PglError::AuthorizedActorInactive
+    );
+    require_keys_eq!(
+        ctx.accounts.authorized_actor.actor,
+        *ctx.accounts.actor.address(),
+        PglError::Unauthorized
+    );
 
-    #[account(
-        seeds = [AUTHORIZED_ACTOR_SEED, actor.key().as_ref()],
-        bump = authorized_actor.bump,
-        constraint = authorized_actor.actor == actor.key() @ PglError::Unauthorized,
-    )]
-    pub authorized_actor: Account<'info, AuthorizedActor>,
+    let nonce_bytes = ctx.accounts.game.nonce.get().to_le_bytes();
+    quasar_lang::pda::verify_program_address(
+        &[GAME_SEED, ctx.accounts.game.creator.as_ref(), &nonce_bytes],
+        &crate::ID,
+        ctx.accounts.game.address(),
+    )?;
+    require_keys_eq!(
+        ctx.accounts.license.holder,
+        *ctx.accounts.holder.address(),
+        PglError::Unauthorized
+    );
+    require_keys_eq!(
+        ctx.accounts.license.game,
+        *ctx.accounts.game.address(),
+        PglError::Unauthorized
+    );
 
-    #[account(
-        seeds = [GAME_SEED, game.creator.as_ref(), &game.nonce.to_le_bytes()],
-        bump = game.bump,
-    )]
-    pub game: Account<'info, Game>,
+    let now = Clock::get()?.unix_timestamp.get();
+    require!(expires_at > now, PglError::InvalidExpiry);
 
-    #[account(
-        mut,
-        seeds = [LICENSE_SEED, holder.key().as_ref(), game.key().as_ref()],
-        bump = license.bump,
-        constraint = license.holder == holder.key() @ PglError::Unauthorized,
-        constraint = license.game == game.key() @ PglError::Unauthorized,
-    )]
-    pub license: Account<'info, License>,
+    let old_expires_at = ctx.accounts.license.expires_at.get();
+    if let Some(current_exp) = old_expires_at {
+        require!(expires_at > current_exp, PglError::InvalidExpiry);
+    }
+
+    ctx.accounts.license.expires_at = Some(expires_at).into();
+
+    emit!(LicenseRenewed {
+        license: *ctx.accounts.license.address(),
+        holder: ctx.accounts.license.holder,
+        game: ctx.accounts.license.game,
+        old_expires_at,
+        new_expires_at: expires_at,
+    })?;
+
+    Ok(())
 }

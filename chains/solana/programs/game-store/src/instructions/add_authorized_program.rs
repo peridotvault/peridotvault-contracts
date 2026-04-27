@@ -1,46 +1,48 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
 use crate::{
     errors::StoreError,
     events::AuthorizedProgramAdded,
-    state::{AuthorizedProgram, ROLE_REGISTRY, StoreConfig},
+    state::{AuthorizedProgram, StoreConfig, ROLE_REGISTRY},
 };
 
 #[derive(Accounts)]
 pub struct AddAuthorizedProgram<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
+    pub authority: &'info mut Signer,
     #[account(
         seeds = [b"store_config"],
         bump = store_config.bump,
         has_one = authority
     )]
-    pub store_config: Account<'info, StoreConfig>,
-    /// CHECK: program id to authorize
-    pub program_id: UncheckedAccount<'info>,
+    pub store_config: &'info Account<StoreConfig>,
+    pub program_id: &'info UncheckedAccount,
     #[account(
         init,
         payer = authority,
-        space = AuthorizedProgram::SPACE,
-        seeds = [b"authorized_program", program_id.key().as_ref()],
+        space = <AuthorizedProgram as Space>::SPACE,
+        seeds = [b"authorized_program", program_id],
         bump
     )]
-    pub authorized_program: Account<'info, AuthorizedProgram>,
-    pub system_program: Program<'info, System>,
+    pub authorized_program: &'info mut Account<AuthorizedProgram>,
+    pub system_program: &'info Program<System>,
 }
 
-pub(crate) fn handler(ctx: Context<AddAuthorizedProgram>, role: u8) -> Result<()> {
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, AddAuthorizedProgram<'info>>,
+    role: u8,
+) -> Result<(), ProgramError> {
     require!(role <= ROLE_REGISTRY, StoreError::InvalidRole);
 
-    let account = &mut ctx.accounts.authorized_program;
-    account.program_id = ctx.accounts.program_id.key();
-    account.active = true;
-    account.role = role;
-    account.bump = ctx.bumps.authorized_program;
+    ctx.accounts.authorized_program.set_inner(
+        *ctx.accounts.program_id.address(),
+        true,
+        role,
+        ctx.bumps.authorized_program,
+    );
 
     emit!(AuthorizedProgramAdded {
-        program_id: account.program_id,
+        program_id: *ctx.accounts.program_id.address(),
         role,
-    });
+    })?;
     Ok(())
 }

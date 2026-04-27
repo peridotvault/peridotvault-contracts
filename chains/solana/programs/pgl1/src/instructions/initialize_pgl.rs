@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
 use crate::{
     errors::PglError,
@@ -6,41 +6,39 @@ use crate::{
     state::{PglConfig, PGL_CONFIG_SEED},
 };
 
-pub(crate) fn handler(
-    ctx: Context<InitializePgl>,
-    treasury: Pubkey,
-    create_game_fee_lamports: u64,
-) -> Result<()> {
-    require!(treasury != Pubkey::default(), PglError::Unauthorized);
-
-    let config = &mut ctx.accounts.pgl_config;
-    config.authority = ctx.accounts.authority.key();
-    config.treasury = treasury;
-    config.create_game_fee_lamports = create_game_fee_lamports;
-    config.bump = ctx.bumps.pgl_config;
-
-    emit!(PglInitialized {
-        authority: config.authority,
-        treasury: config.treasury,
-        create_game_fee_lamports: config.create_game_fee_lamports,
-    });
-
-    Ok(())
-}
-
 #[derive(Accounts)]
 pub struct InitializePgl<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-
+    pub authority: &'info mut Signer,
     #[account(
         init,
         payer = authority,
-        space = PglConfig::SPACE,
+        space = <PglConfig as Space>::SPACE,
         seeds = [PGL_CONFIG_SEED],
-        bump,
+        bump
     )]
-    pub pgl_config: Account<'info, PglConfig>,
+    pub pgl_config: &'info mut Account<PglConfig>,
+    pub system_program: &'info Program<System>,
+}
 
-    pub system_program: Program<'info, System>,
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, InitializePgl<'info>>,
+    treasury: Address,
+    create_game_fee_lamports: u64,
+) -> Result<(), ProgramError> {
+    require!(treasury != Address::default(), PglError::Unauthorized);
+
+    ctx.accounts.pgl_config.set_inner(
+        *ctx.accounts.authority.address(),
+        treasury,
+        create_game_fee_lamports,
+        ctx.bumps.pgl_config,
+    );
+
+    emit!(PglInitialized {
+        authority: *ctx.accounts.authority.address(),
+        treasury,
+        create_game_fee_lamports,
+    })?;
+
+    Ok(())
 }

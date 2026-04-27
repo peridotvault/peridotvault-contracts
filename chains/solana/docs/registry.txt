@@ -2,7 +2,7 @@ Registry (PeridotVault Registry v1)
 
 Program Identity
 - Program ID: DCYPxPtnVeBgy56SYMT6GPBMJp8NJNLmE46QfHYqCgGL
-- Anchor module: registry
+- Quasar module: registry
 - Crate/lib: registry
 
 Overview
@@ -31,7 +31,7 @@ Authority Model
   - full kontrol config registry, payment token, publish grant, dan status game
 - Publisher (signer saat `create_game_and_register`)
   - membuat game baru via CPI ke PGL-1 dan mendaftarkan game tersebut
-- Trust anchor ke PGL-1:
+- Trust boundary ke PGL-1:
   - `registry_config.pgl1_program` menjadi root of trust untuk CPI create game
 
 Program-Level Access Control

@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
 use crate::{
     errors::PglError,
@@ -6,28 +6,33 @@ use crate::{
     state::{CreatorState, CREATOR_STATE_SEED},
 };
 
-pub(crate) fn handler(ctx: Context<CloseCreatorState>) -> Result<()> {
-    let creator_state = &ctx.accounts.creator_state;
-    require!(creator_state.next_nonce == 0, PglError::CreatorStateNotEmpty);
-
-    emit!(CreatorStateClosed {
-        creator: creator_state.creator,
-    });
-
-    Ok(())
-}
-
 #[derive(Accounts)]
 pub struct CloseCreatorState<'info> {
-    #[account(mut)]
-    pub creator: Signer<'info>,
+    pub creator: &'info mut Signer,
+    #[account(mut, seeds = [CREATOR_STATE_SEED, creator], bump = creator_state.bump)]
+    pub creator_state: &'info mut Account<CreatorState>,
+}
 
-    #[account(
-        mut,
-        close = creator,
-        seeds = [CREATOR_STATE_SEED, creator.key().as_ref()],
-        bump = creator_state.bump,
-        constraint = creator_state.creator == creator.key() @ PglError::Unauthorized,
-    )]
-    pub creator_state: Account<'info, CreatorState>,
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, CloseCreatorState<'info>>,
+) -> Result<(), ProgramError> {
+    require_keys_eq!(
+        ctx.accounts.creator_state.creator,
+        *ctx.accounts.creator.address(),
+        PglError::Unauthorized
+    );
+    require!(
+        ctx.accounts.creator_state.next_nonce.get() == 0,
+        PglError::CreatorStateNotEmpty
+    );
+
+    emit!(CreatorStateClosed {
+        creator: ctx.accounts.creator_state.creator,
+    })?;
+
+    ctx.accounts
+        .creator_state
+        .close(ctx.accounts.creator.to_account_view())?;
+
+    Ok(())
 }

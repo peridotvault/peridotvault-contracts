@@ -1,11 +1,21 @@
-use anchor_lang::prelude::*;
+#![no_std]
+#[cfg(not(any(target_os = "solana", target_arch = "bpf")))]
+extern crate std;
+
+use quasar_lang::prelude::*;
 
 pub mod errors;
 pub mod events;
+pub mod external;
 pub mod instructions;
 pub mod state;
 
-use instructions::*;
+use instructions::{
+    AddAuthorizedProgram, AddPaymentToken, BuyGame, ClearDiscount, InitGameStoreConfig,
+    InitializeStore, RemoveGamePaymentOption, SetDefaultReferral, SetDiscount,
+    SetGamePaymentOption, SetGameStoreActive, SetMaxReferral, SetPlatformFee, SetReferralBps,
+    SetStoreActor, SetTreasury, UpdateAuthorizedProgram, UpdatePaymentToken,
+};
 
 declare_id!("8xi62uARkmBcKKwG3M8uvFnaayZL4MFvkQ91WG16eBCj");
 
@@ -13,16 +23,17 @@ declare_id!("8xi62uARkmBcKKwG3M8uvFnaayZL4MFvkQ91WG16eBCj");
 pub mod game_store {
     use super::*;
 
+    #[instruction(discriminator = [109, 149, 210, 214, 188, 126, 220, 140])]
     pub fn initialize_store(
-        ctx: Context<InitializeStore>,
-        treasury: Pubkey,
+        ctx: Ctx<InitializeStore>,
+        treasury: Address,
         platform_fee_bps: u16,
         default_referral_bps: u16,
         max_referral_bps: u16,
-        store_actor: Pubkey,
-    ) -> Result<()> {
-        initialize_store::handler(
-            ctx,
+        store_actor: Address,
+    ) -> Result<(), ProgramError> {
+        instructions::initialize_store::handler(
+            &mut ctx,
             treasury,
             platform_fee_bps,
             default_referral_bps,
@@ -31,91 +42,120 @@ pub mod game_store {
         )
     }
 
-    pub fn set_treasury(ctx: Context<SetTreasury>, treasury: Pubkey) -> Result<()> {
-        set_treasury::handler(ctx, treasury)
+    #[instruction(discriminator = [57, 97, 196, 95, 195, 206, 106, 136])]
+    pub fn set_treasury(ctx: Ctx<SetTreasury>, treasury: Address) -> Result<(), ProgramError> {
+        instructions::set_treasury::handler(&mut ctx, treasury)
     }
 
-    pub fn set_platform_fee(ctx: Context<SetPlatformFee>, platform_fee_bps: u16) -> Result<()> {
-        set_platform_fee::handler(ctx, platform_fee_bps)
+    #[instruction(discriminator = [19, 70, 111, 182, 156, 58, 208, 203])]
+    pub fn set_platform_fee(
+        ctx: Ctx<SetPlatformFee>,
+        platform_fee_bps: u16,
+    ) -> Result<(), ProgramError> {
+        instructions::set_platform_fee::handler(&mut ctx, platform_fee_bps)
     }
 
+    #[instruction(discriminator = [17, 210, 30, 108, 163, 67, 215, 80])]
     pub fn set_default_referral(
-        ctx: Context<SetDefaultReferral>,
+        ctx: Ctx<SetDefaultReferral>,
         default_referral_bps: u16,
-    ) -> Result<()> {
-        set_default_referral::handler(ctx, default_referral_bps)
+    ) -> Result<(), ProgramError> {
+        instructions::set_default_referral::handler(&mut ctx, default_referral_bps)
     }
 
-    pub fn set_max_referral(ctx: Context<SetMaxReferral>, max_referral_bps: u16) -> Result<()> {
-        set_max_referral::handler(ctx, max_referral_bps)
+    #[instruction(discriminator = [136, 204, 233, 199, 249, 248, 137, 144])]
+    pub fn set_max_referral(
+        ctx: Ctx<SetMaxReferral>,
+        max_referral_bps: u16,
+    ) -> Result<(), ProgramError> {
+        instructions::set_max_referral::handler(&mut ctx, max_referral_bps)
     }
 
-    pub fn add_authorized_program(ctx: Context<AddAuthorizedProgram>, role: u8) -> Result<()> {
-        add_authorized_program::handler(ctx, role)
+    #[instruction(discriminator = [80, 106, 127, 205, 217, 53, 202, 202])]
+    pub fn add_authorized_program(
+        ctx: Ctx<AddAuthorizedProgram>,
+        role: u8,
+    ) -> Result<(), ProgramError> {
+        instructions::add_authorized_program::handler(&mut ctx, role)
     }
 
+    #[instruction(discriminator = [70, 84, 196, 221, 239, 138, 173, 238])]
     pub fn update_authorized_program(
-        ctx: Context<UpdateAuthorizedProgram>,
+        ctx: Ctx<UpdateAuthorizedProgram>,
+    ) -> Result<(), ProgramError> {
+        instructions::update_authorized_program::handler(&mut ctx)
+    }
+
+    #[instruction(discriminator = [19, 203, 48, 148, 80, 1, 179, 140])]
+    pub fn add_payment_token(ctx: Ctx<AddPaymentToken>) -> Result<(), ProgramError> {
+        instructions::add_payment_token::handler(&mut ctx)
+    }
+
+    #[instruction(discriminator = [240, 107, 161, 243, 84, 148, 183, 126])]
+    pub fn update_payment_token(
+        ctx: Ctx<UpdatePaymentToken>,
         active: bool,
-        role: Option<u8>,
-    ) -> Result<()> {
-        update_authorized_program::handler(ctx, active, role)
+    ) -> Result<(), ProgramError> {
+        instructions::update_payment_token::handler(&mut ctx, active)
     }
 
-    pub fn add_payment_token(ctx: Context<AddPaymentToken>) -> Result<()> {
-        add_payment_token::handler(ctx)
+    #[instruction(discriminator = [85, 106, 133, 8, 211, 20, 78, 108])]
+    pub fn init_game_store_config(
+        ctx: Ctx<InitGameStoreConfig>,
+        active: bool,
+    ) -> Result<(), ProgramError> {
+        instructions::init_game_store_config::handler(&mut ctx, active)
     }
 
-    pub fn update_payment_token(ctx: Context<UpdatePaymentToken>, active: bool) -> Result<()> {
-        update_payment_token::handler(ctx, active)
+    #[instruction(discriminator = [89, 147, 76, 11, 9, 108, 85, 219])]
+    pub fn set_game_store_active(
+        ctx: Ctx<SetGameStoreActive>,
+        active: bool,
+    ) -> Result<(), ProgramError> {
+        instructions::set_game_store_active::handler(&mut ctx, active)
     }
 
-    pub fn init_game_store_config(ctx: Context<InitGameStoreConfig>, active: bool) -> Result<()> {
-        init_game_store_config::handler(ctx, active)
-    }
-
-    pub fn set_game_store_active(ctx: Context<SetGameStoreActive>, active: bool) -> Result<()> {
-        set_game_store_active::handler(ctx, active)
-    }
-
+    #[instruction(discriminator = [122, 86, 158, 12, 148, 161, 8, 46])]
     pub fn set_game_payment_option(
-        ctx: Context<SetGamePaymentOption>,
+        ctx: Ctx<SetGamePaymentOption>,
         base_price: u64,
         active: bool,
-    ) -> Result<()> {
-        set_game_payment_option::handler(ctx, base_price, active)
+    ) -> Result<(), ProgramError> {
+        instructions::set_game_payment_option::handler(&mut ctx, base_price, active)
     }
 
-    pub fn remove_game_payment_option(ctx: Context<RemoveGamePaymentOption>) -> Result<()> {
-        remove_game_payment_option::handler(ctx)
+    #[instruction(discriminator = [25, 2, 53, 66, 23, 57, 219, 154])]
+    pub fn remove_game_payment_option(
+        ctx: Ctx<RemoveGamePaymentOption>,
+    ) -> Result<(), ProgramError> {
+        instructions::remove_game_payment_option::handler(&mut ctx)
     }
 
-    pub fn set_discount(
-        ctx: Context<SetDiscount>,
-        discount_bps: Option<u16>,
-        discount_starts_at: Option<i64>,
-        discount_expires_at: Option<i64>,
-    ) -> Result<()> {
-        set_discount::handler(ctx, discount_bps, discount_starts_at, discount_expires_at)
+    #[instruction(discriminator = [185, 99, 11, 85, 175, 2, 42, 198])]
+    pub fn set_discount(ctx: Ctx<SetDiscount>) -> Result<(), ProgramError> {
+        instructions::set_discount::handler(&mut ctx)
     }
 
-    pub fn clear_discount(ctx: Context<ClearDiscount>) -> Result<()> {
-        clear_discount::handler(ctx)
+    #[instruction(discriminator = [131, 52, 86, 51, 205, 130, 233, 36])]
+    pub fn clear_discount(ctx: Ctx<ClearDiscount>) -> Result<(), ProgramError> {
+        instructions::clear_discount::handler(&mut ctx)
     }
 
-    pub fn set_referral_bps(ctx: Context<SetReferralBps>, referral_bps: Option<u16>) -> Result<()> {
-        set_referral_bps::handler(ctx, referral_bps)
+    #[instruction(discriminator = [28, 213, 164, 214, 151, 184, 143, 136])]
+    pub fn set_referral_bps(ctx: Ctx<SetReferralBps>) -> Result<(), ProgramError> {
+        instructions::set_referral_bps::handler(&mut ctx)
     }
 
-    pub fn set_store_actor(ctx: Context<SetStoreActor>, new_store_actor: Pubkey) -> Result<()> {
-        set_store_actor::handler(ctx, new_store_actor)
+    #[instruction(discriminator = [52, 118, 95, 161, 244, 179, 250, 38])]
+    pub fn set_store_actor(
+        ctx: Ctx<SetStoreActor>,
+        new_store_actor: Address,
+    ) -> Result<(), ProgramError> {
+        instructions::set_store_actor::handler(&mut ctx, new_store_actor)
     }
 
-    pub fn buy_game(
-        ctx: Context<BuyGame>,
-        paid_amount: u64,
-        referrer: Option<Pubkey>,
-    ) -> Result<()> {
-        buy_game::handler(ctx, paid_amount, referrer)
+    #[instruction(discriminator = [230, 118, 208, 28, 185, 30, 230, 155])]
+    pub fn buy_game(ctx: Ctx<BuyGame>) -> Result<(), ProgramError> {
+        instructions::buy_game::handler(&mut ctx)
     }
 }

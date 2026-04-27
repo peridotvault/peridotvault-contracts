@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
 use crate::{
     errors::PglError,
@@ -8,28 +8,29 @@ use crate::{
 
 #[derive(Accounts)]
 pub struct SetAuthority<'info> {
-    pub authority: Signer<'info>,
-
+    pub authority: &'info Signer,
     #[account(
         mut,
         seeds = [PGL_CONFIG_SEED],
         bump = pgl_config.bump,
-        has_one = authority @ PglError::Unauthorized
+        has_one = authority
     )]
-    pub pgl_config: Account<'info, PglConfig>,
+    pub pgl_config: &'info mut Account<PglConfig>,
 }
 
-pub(crate) fn handler(ctx: Context<SetAuthority>, new_authority: Pubkey) -> Result<()> {
-    require!(new_authority != Pubkey::default(), PglError::Unauthorized);
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, SetAuthority<'info>>,
+    new_authority: Address,
+) -> Result<(), ProgramError> {
+    require!(new_authority != Address::default(), PglError::Unauthorized);
 
-    let config = &mut ctx.accounts.pgl_config;
-    let old_authority = config.authority;
-    config.authority = new_authority;
+    let old_authority = ctx.accounts.pgl_config.authority;
+    ctx.accounts.pgl_config.authority = new_authority;
 
     emit!(AuthorityUpdated {
         old_authority,
         new_authority,
-    });
+    })?;
 
     Ok(())
 }

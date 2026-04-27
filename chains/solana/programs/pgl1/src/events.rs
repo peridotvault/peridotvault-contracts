@@ -1,91 +1,105 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
-#[event]
 pub struct PglInitialized {
-    pub authority: Pubkey,
-    pub treasury: Pubkey,
+    pub authority: Address,
+    pub treasury: Address,
     pub create_game_fee_lamports: u64,
 }
 
-#[event]
 pub struct CreateGameFeeUpdated {
     pub old_fee: u64,
     pub new_fee: u64,
 }
 
-#[event]
 pub struct TreasuryUpdated {
-    pub authority: Pubkey,
-    pub old_treasury: Pubkey,
-    pub new_treasury: Pubkey,
+    pub authority: Address,
+    pub old_treasury: Address,
+    pub new_treasury: Address,
 }
 
-#[event]
 pub struct AuthorityUpdated {
-    pub old_authority: Pubkey,
-    pub new_authority: Pubkey,
+    pub old_authority: Address,
+    pub new_authority: Address,
 }
 
-#[event]
 pub struct AuthorizedActorAdded {
-    pub actor: Pubkey,
+    pub actor: Address,
 }
 
-#[event]
 pub struct AuthorizedActorDeactivated {
-    pub actor: Pubkey,
+    pub actor: Address,
 }
 
-#[event]
 pub struct AuthorizedActorClosed {
-    pub actor: Pubkey,
+    pub actor: Address,
 }
 
-#[event]
 pub struct CreatorStateClosed {
-    pub creator: Pubkey,
+    pub creator: Address,
 }
 
-#[event]
-pub struct GameCreated {
-    pub game: Pubkey,
-    pub creator: Pubkey,
-    pub publisher: Pubkey,
+pub struct GameCreated<'a> {
+    pub game: Address,
+    pub creator: Address,
+    pub publisher: Address,
     pub nonce: u64,
-    pub game_id: String,
-    pub metadata_uri: String,
+    pub game_id: &'a str,
+    pub metadata_uri: &'a str,
     pub created_at: i64,
 }
 
-#[event]
 pub struct PublisherUpdated {
-    pub game: Pubkey,
-    pub old_publisher: Pubkey,
-    pub new_publisher: Pubkey,
+    pub game: Address,
+    pub old_publisher: Address,
+    pub new_publisher: Address,
 }
 
-#[event]
-pub struct MetadataUriUpdated {
-    pub game: Pubkey,
-    pub publisher: Pubkey,
-    pub old_uri: String,
-    pub new_uri: String,
+pub struct MetadataUriUpdated<'a> {
+    pub game: Address,
+    pub publisher: Address,
+    pub old_uri: &'a str,
+    pub new_uri: &'a str,
 }
 
-#[event]
 pub struct LicenseMinted {
-    pub license: Pubkey,
-    pub holder: Pubkey,
-    pub game: Pubkey,
+    pub license: Address,
+    pub holder: Address,
+    pub game: Address,
     pub issued_at: i64,
     pub expires_at: Option<i64>,
 }
 
-#[event]
 pub struct LicenseRenewed {
-    pub license: Pubkey,
-    pub holder: Pubkey,
-    pub game: Pubkey,
+    pub license: Address,
+    pub holder: Address,
+    pub game: Address,
     pub old_expires_at: Option<i64>,
     pub new_expires_at: i64,
 }
+
+macro_rules! impl_noop_emit {
+    ($($name:ident $(<$lt:lifetime>)?),* $(,)?) => {
+        $(impl$(<$lt>)? $name$(<$lt>)? {
+            #[inline(always)]
+            pub fn emit_log(self) -> Result<(), ProgramError> {
+                Ok(())
+            }
+        })*
+    };
+}
+
+impl_noop_emit!(
+    PglInitialized,
+    CreateGameFeeUpdated,
+    TreasuryUpdated,
+    AuthorityUpdated,
+    AuthorizedActorAdded,
+    AuthorizedActorDeactivated,
+    AuthorizedActorClosed,
+    CreatorStateClosed,
+    GameCreated<'a>,
+    PublisherUpdated,
+    MetadataUriUpdated<'a>,
+    LicenseMinted,
+    LicenseRenewed,
+);

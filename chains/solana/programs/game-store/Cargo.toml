@@ -8,18 +8,11 @@ crate-type = ["cdylib", "lib"]
 name = "game_store"
 
 [features]
-no-entrypoint = []
-no-idl = []
-no-log-ix-name = []
-cpi = ["no-entrypoint"]
-idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "pgl1/idl-build", "registry_program/idl-build"]
-anchor-debug = []
-custom-heap = []
-custom-panic = []
+alloc = ["quasar-lang/alloc"]
+debug = ["quasar-lang/debug"]
+client = []
 default = []
 
 [dependencies]
-anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
-anchor-spl = { version = "0.32.1", features = ["token_2022", "token_2022_extensions"] }
-pgl1 = { path = "../pgl1", features = ["cpi"] }
-registry_program = { package = "registry", path = "../registry", features = ["cpi"] }
+quasar-lang = "0.0.0"
+quasar-spl = "0.0.0"

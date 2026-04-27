@@ -1,37 +1,44 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
 use crate::{
     errors::StoreError,
     events::DiscountCleared,
+    external::{Pgl1Program, PglGame},
     state::{AuthorizedProgram, GameStoreConfig},
 };
 
 #[derive(Accounts)]
 pub struct ClearDiscount<'info> {
-    pub publisher: Signer<'info>,
+    pub publisher: &'info Signer,
     #[account(
-        constraint = authorized_source_program.active @ StoreError::SourceProgramNotAuthorized,
-        seeds = [b"authorized_program", source_program.key().as_ref()],
+        constraint = authorized_source_program.active.get() @ StoreError::SourceProgramNotAuthorized,
+        seeds = [b"authorized_program", source_program],
         bump = authorized_source_program.bump,
     )]
-    pub authorized_source_program: Account<'info, AuthorizedProgram>,
-    pub source_program: Program<'info, pgl1::program::Pgl1>,
-    pub game: Account<'info, pgl1::state::Game>,
+    pub authorized_source_program: &'info Account<AuthorizedProgram>,
+    pub source_program: &'info Program<Pgl1Program>,
+    pub game: &'info Account<PglGame>,
     #[account(
         mut,
-        seeds = [b"game_store_config", game.key().as_ref()],
+        seeds = [b"game_store_config", game],
         bump = game_store_config.bump,
         has_one = game
     )]
-    pub game_store_config: Account<'info, GameStoreConfig>,
+    pub game_store_config: &'info mut Account<GameStoreConfig>,
 }
 
-pub(crate) fn handler(ctx: Context<ClearDiscount>) -> Result<()> {
-    require_keys_eq!(ctx.accounts.game.publisher, ctx.accounts.publisher.key(), StoreError::Unauthorized);
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, ClearDiscount<'info>>,
+) -> Result<(), ProgramError> {
+    require_keys_eq!(
+        ctx.accounts.game.publisher()?,
+        *ctx.accounts.publisher.address(),
+        StoreError::Unauthorized
+    );
     let cfg = &mut ctx.accounts.game_store_config;
-    cfg.discount_bps = None;
-    cfg.discount_starts_at = None;
-    cfg.discount_expires_at = None;
-    emit!(DiscountCleared { game: cfg.game });
+    cfg.discount_bps.set(None);
+    cfg.discount_starts_at.set(None);
+    cfg.discount_expires_at.set(None);
+    emit!(DiscountCleared { game: cfg.game })?;
     Ok(())
 }

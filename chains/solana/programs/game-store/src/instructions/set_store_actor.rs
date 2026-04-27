@@ -1,10 +1,10 @@
-use anchor_lang::prelude::*;
+use quasar_lang::prelude::*;
 
 use crate::{errors::StoreError, events::StoreActorUpdated, state::StoreConfig};
 
 #[derive(Accounts)]
 pub struct SetStoreActor<'info> {
-    pub authority: Signer<'info>,
+    pub authority: &'info Signer,
 
     #[account(
         mut,
@@ -12,11 +12,17 @@ pub struct SetStoreActor<'info> {
         bump = store_config.bump,
         has_one = authority @ StoreError::Unauthorized
     )]
-    pub store_config: Account<'info, StoreConfig>,
+    pub store_config: &'info mut Account<StoreConfig>,
 }
 
-pub(crate) fn handler(ctx: Context<SetStoreActor>, new_store_actor: Pubkey) -> Result<()> {
-    require!(new_store_actor != Pubkey::default(), StoreError::InvalidStoreActor);
+pub(crate) fn handler<'info>(
+    ctx: &mut Ctx<'info, SetStoreActor<'info>>,
+    new_store_actor: Address,
+) -> Result<(), ProgramError> {
+    require!(
+        new_store_actor != Address::default(),
+        StoreError::InvalidStoreActor
+    );
 
     let config = &mut ctx.accounts.store_config;
     let old_store_actor = config.store_actor;
@@ -25,7 +31,7 @@ pub(crate) fn handler(ctx: Context<SetStoreActor>, new_store_actor: Pubkey) -> R
     emit!(StoreActorUpdated {
         old_store_actor,
         new_store_actor,
-    });
+    })?;
 
     Ok(())
 }
