@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Program ID** | `FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC` |
-| **Anchor module** | `peridotvault_store` |
-| **Crate/lib** | `peridotvault-store` / `peridotvault_store` |
+| **Anchor module** | `game_store` |
+| **Crate/lib** | `game-store` / `game_store` |
 
 ## Current Integration Status
 

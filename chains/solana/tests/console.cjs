@@ -13,7 +13,7 @@ const path = require("path");
 
 const pglIdl = require("../target/idl/pgl1.json");
 const registryIdl = require("../target/idl/registry.json");
-const storeIdl = require("../target/idl/peridotvault_store.json");
+const storeIdl = require("../target/idl/game_store.json");
 
 const CONSOLE_STATE_PATH = path.join(__dirname, "../.console-state.json");
 const INPUT_EOF = "__EOF__";

@@ -10,7 +10,7 @@ use instructions::*;
 declare_id!("8xi62uARkmBcKKwG3M8uvFnaayZL4MFvkQ91WG16eBCj");
 
 #[program]
-pub mod peridotvault_store {
+pub mod game_store {
     use super::*;
 
     pub fn initialize_store(

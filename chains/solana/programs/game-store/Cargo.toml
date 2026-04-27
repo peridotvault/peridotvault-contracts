@@ -1,11 +1,11 @@
 [package]
-name = "peridotvault-store"
+name = "game-store"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "peridotvault_store"
+name = "game_store"
 
 [features]
 no-entrypoint = []

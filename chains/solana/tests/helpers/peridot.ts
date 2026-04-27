@@ -125,7 +125,7 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
 
   const pglIdl = require("../../target/idl/pgl1.json");
   const registryIdl = require("../../target/idl/registry.json");
-  const storeIdl = require("../../target/idl/peridotvault_store.json");
+  const storeIdl = require("../../target/idl/game_store.json");
 
   const pglProgram = new Program(pglIdl, provider);
   const registryProgram = new Program(registryIdl, provider);

@@ -177,7 +177,7 @@ anchor build
 ### 3. Ambil Program ID yang di-generate
 
 ```bash
-solana-keygen pubkey target/deploy/peridotvault_store-keypair.json
+solana-keygen pubkey target/deploy/game_store-keypair.json
 solana-keygen pubkey target/deploy/pgl1-keypair.json
 solana-keygen pubkey target/deploy/registry-keypair.json
 ```
@@ -221,7 +221,7 @@ rm -f target/deploy/*.json
 anchor build
 
 # 3. Ambil Program ID baru
-solana-keygen pubkey target/deploy/peridotvault_store-keypair.json
+solana-keygen pubkey target/deploy/game_store-keypair.json
 
 # 4. Update declare_id! di lib.rs sesuai output di atas
 # 5. Update Anchor.toml, tests/helpers/peridot.ts, docs
