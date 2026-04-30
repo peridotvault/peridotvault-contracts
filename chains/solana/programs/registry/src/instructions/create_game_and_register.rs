@@ -11,7 +11,7 @@ use crate::{
     },
 };
 
-pub const GAME_STORE_PROGRAM_ID: Pubkey = pubkey!("6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd");
+pub const GAME_STORE_PROGRAM_ID: Pubkey = pubkey!("G9roe9Dm2Rr261z3xKNcNKcFeQ5wovr8VwEwRDQ8YJVs");
 
 // CPI discriminators for game-store program.
 // These are computed from Anchor's instruction name hashing:
@@ -89,7 +89,8 @@ pub struct CreateGameAndRegister<'info> {
     /// the account data when it processes the CPI. Registry does not
     /// deserialize or trust data from this account.
     #[account(
-        seeds = [b"authorized_source_program", pgl1_program.key().as_ref()],
+        seeds = [b"authorized_program", pgl1_program.key().as_ref()],
+        seeds::program = store_program.key(),
         bump,
     )]
     pub store_authorized_source_program: UncheckedAccount<'info>,
@@ -99,7 +100,8 @@ pub struct CreateGameAndRegister<'info> {
     /// the account data when it processes the CPI. Registry does not
     /// deserialize or trust data from this account.
     #[account(
-        seeds = [b"authorized_registry_program", store_program.key().as_ref()],
+        seeds = [b"authorized_program", crate::ID.as_ref()],
+        seeds::program = store_program.key(),
         bump,
     )]
     pub store_authorized_registry_program: UncheckedAccount<'info>,

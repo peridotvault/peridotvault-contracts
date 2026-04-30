@@ -32,7 +32,7 @@
 - **Mitigation:** `pgl1_program` is hardcoded to `pgl1::ID` at initialization, not settable by authority.
 
 ### 2.2 Game Store Program Trust
-- **Assumption:** `store_program` is the legitimate Game Store program (`6gTd8TQ9NiC7yxBfGWBzH1aWdk77fg779nUJhYTrEsPd`).
+- **Assumption:** `store_program` is the legitimate Game Store program (`G9roe9Dm2Rr261z3xKNcNKcFeQ5wovr8VwEwRDQ8YJVs`).
 - **Guarantee:**
   - `store_program` key is validated against hardcoded `GAME_STORE_PROGRAM_ID`.
   - `store_authorized_source_program` and `store_authorized_registry_program` PDAs are validated via seeds.
