@@ -11,17 +11,11 @@ use crate::{
     },
 };
 
-pub const GAME_STORE_PROGRAM_ID: Pubkey = pubkey!("G9roe9Dm2Rr261z3xKNcNKcFeQ5wovr8VwEwRDQ8YJVs");
+pub const GAME_STORE_PROGRAM_ID: Pubkey = pubkey!("5fcEaw6eMUeCLzhEqzqqL5HczQm1yj9GZjQQeqL66h5g");
 
-// CPI discriminators for game-store program.
-// These are computed from Anchor's instruction name hashing:
-//   sha256("anchor:init_game_store_config")[:8]
-//   sha256("anchor:set_game_payment_option")[:8]
-// SECURITY: If the game-store program is upgraded and instruction layout changes,
-// these discriminators must be updated. Consider migrating to a proper CPI crate
-// import when the circular dependency (registry <-> game-store) is resolved.
-const INIT_GAME_STORE_CONFIG_DISC: [u8; 8] = [0x7e, 0xd2, 0xfe, 0x0b, 0x7c, 0x57, 0xe4, 0xa3];
-const SET_GAME_PAYMENT_OPTION_DISC: [u8; 8] = [0x23, 0x98, 0x38, 0xe4, 0x80, 0xa1, 0xa2, 0xae];
+// CPI discriminators for game-store program - from IDL
+const INIT_GAME_STORE_CONFIG_DISC: [u8; 8] = [0x55, 0x6a, 0x85, 0x08, 0xd3, 0x14, 0x4e, 0x6c];
+const SET_GAME_PAYMENT_OPTION_DISC: [u8; 8] = [0x7a, 0x56, 0x9e, 0x0c, 0x94, 0xa1, 0x08, 0x2e];
 
 #[derive(Accounts)]
 pub struct CreateGameAndRegister<'info> {
@@ -109,6 +103,9 @@ pub struct CreateGameAndRegister<'info> {
     /// CHECK: game-store config PDA, init by game-store CPI.
     #[account(mut)]
     pub store_game_store_config: UncheckedAccount<'info>,
+
+    /// CHECK: Registry program account for CPI to game-store.
+    pub registry_program: UncheckedAccount<'info>,
 
     pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
@@ -215,33 +212,36 @@ pub(crate) fn handler<'info>(
     ctx.accounts.registry_game.status = GameStatus::Active;
     ctx.accounts.registry_game.bump = ctx.bumps.registry_game;
 
+    // Always init game_store_config (free + paid games)
     invoke_init_game_store_config(
         &ctx.accounts.publisher.to_account_info(),
-        &ctx.accounts.store_authorized_source_program,
+        &ctx.accounts.store_authorized_source_program.to_account_info(),
         &ctx.accounts.pgl1_program.to_account_info(),
-        &ctx.accounts.store_authorized_registry_program,
-        &ctx.accounts.game,
+        &ctx.accounts.store_authorized_registry_program.to_account_info(),
+        &ctx.accounts.registry_program.to_account_info(),
+        &ctx.accounts.game.to_account_info(),
         &ctx.accounts.registry_game.to_account_info(),
-        &ctx.accounts.store_game_store_config,
+        &ctx.accounts.store_game_store_config.to_account_info(),
         &ctx.accounts.system_program.to_account_info(),
     )?;
 
     if let (Some(price), Some(mint)) = (base_price, mint_token) {
         require!(price > 0, RegistryError::InvalidPrice);
-
         let store_offset = if has_grant_remaining { 1 } else { 0 };
         let store_accepted_payment_token = ctx.remaining_accounts.get(store_offset).ok_or(error!(RegistryError::MissingStoreAccounts))?;
         let store_game_payment_option = ctx.remaining_accounts.get(store_offset + 1).ok_or(error!(RegistryError::MissingStoreAccounts))?;
 
         invoke_set_game_payment_option(
             &ctx.accounts.publisher.to_account_info(),
-            &ctx.accounts.store_authorized_source_program,
+            &ctx.accounts.publisher.to_account_info(),
+            &ctx.accounts.store_authorized_source_program.to_account_info(),
             &ctx.accounts.pgl1_program.to_account_info(),
-            &ctx.accounts.store_authorized_registry_program,
-            &ctx.accounts.game,
+            &ctx.accounts.registry_program.to_account_info(),
+            &ctx.accounts.store_authorized_registry_program.to_account_info(),
+            &ctx.accounts.game.to_account_info(),
             &ctx.accounts.registry_game.to_account_info(),
-            &ctx.accounts.store_game_store_config,
-            &mint,
+            &ctx.accounts.store_game_store_config.to_account_info(),
+            &ctx.accounts.payment_mint.to_account_info(),
             store_accepted_payment_token,
             store_game_payment_option,
             &ctx.accounts.system_program.to_account_info(),
@@ -261,10 +261,11 @@ pub(crate) fn handler<'info>(
 }
 
 fn invoke_init_game_store_config<'info>(
-    publisher: &AccountInfo<'info>,
+    payer: &AccountInfo<'info>,
     authorized_source_program: &AccountInfo<'info>,
     source_program: &AccountInfo<'info>,
     authorized_registry_program: &AccountInfo<'info>,
+    registry_program: &AccountInfo<'info>,
     game: &AccountInfo<'info>,
     registry_game: &AccountInfo<'info>,
     game_store_config: &AccountInfo<'info>,
@@ -272,14 +273,15 @@ fn invoke_init_game_store_config<'info>(
 ) -> Result<()> {
     let mut data = Vec::with_capacity(9);
     data.extend_from_slice(&INIT_GAME_STORE_CONFIG_DISC);
-    data.push(1u8);
+    data.push(1u8); // active = true
 
     let accounts = vec![
-        AccountMeta::new(publisher.key(), true),
-        AccountMeta::new_readonly(authorized_source_program.key(), false),
+        AccountMeta::new(payer.key(), true), // payer
+        AccountMeta::new_readonly(payer.key(), true), // publisher (Option<Signer>)
         AccountMeta::new_readonly(source_program.key(), false),
+        AccountMeta::new_readonly(authorized_source_program.key(), false),
+        AccountMeta::new_readonly(registry_program.key(), false),
         AccountMeta::new_readonly(authorized_registry_program.key(), false),
-        AccountMeta::new_readonly(crate::ID, false),
         AccountMeta::new_readonly(game.key(), false),
         AccountMeta::new_readonly(registry_game.key(), false),
         AccountMeta::new(game_store_config.key(), false),
@@ -295,9 +297,11 @@ fn invoke_init_game_store_config<'info>(
     program::invoke(
         &instruction,
         &[
-            publisher.clone(),
-            authorized_source_program.clone(),
+            payer.clone(),
+            payer.clone(),
             source_program.clone(),
+            authorized_source_program.clone(),
+            registry_program.clone(),
             authorized_registry_program.clone(),
             game.clone(),
             registry_game.clone(),
@@ -310,14 +314,16 @@ fn invoke_init_game_store_config<'info>(
 }
 
 fn invoke_set_game_payment_option<'info>(
+    payer: &AccountInfo<'info>,
     publisher: &AccountInfo<'info>,
     authorized_source_program: &AccountInfo<'info>,
     source_program: &AccountInfo<'info>,
+    registry_program: &AccountInfo<'info>,
     authorized_registry_program: &AccountInfo<'info>,
     game: &AccountInfo<'info>,
     registry_game: &AccountInfo<'info>,
     game_store_config: &AccountInfo<'info>,
-    mint: &Pubkey,
+    mint: &AccountInfo<'info>,
     accepted_payment_token: &AccountInfo<'info>,
     game_payment_option: &AccountInfo<'info>,
     system_program: &AccountInfo<'info>,
@@ -326,18 +332,19 @@ fn invoke_set_game_payment_option<'info>(
     let mut data = Vec::with_capacity(17);
     data.extend_from_slice(&SET_GAME_PAYMENT_OPTION_DISC);
     data.extend_from_slice(&base_price.to_le_bytes());
-    data.push(1u8);
+    data.push(1u8); // active = true
 
     let accounts = vec![
-        AccountMeta::new(publisher.key(), true),
-        AccountMeta::new_readonly(authorized_source_program.key(), false),
+        AccountMeta::new(payer.key(), true),
+        AccountMeta::new_readonly(publisher.key(), true),
         AccountMeta::new_readonly(source_program.key(), false),
+        AccountMeta::new_readonly(authorized_source_program.key(), false),
+        AccountMeta::new_readonly(registry_program.key(), false),
         AccountMeta::new_readonly(authorized_registry_program.key(), false),
-        AccountMeta::new_readonly(crate::ID, false),
         AccountMeta::new_readonly(game.key(), false),
         AccountMeta::new_readonly(registry_game.key(), false),
         AccountMeta::new_readonly(game_store_config.key(), false),
-        AccountMeta::new_readonly(*mint, false),
+        AccountMeta::new_readonly(mint.key(), false),
         AccountMeta::new_readonly(accepted_payment_token.key(), false),
         AccountMeta::new(game_payment_option.key(), false),
         AccountMeta::new_readonly(system_program.key(), false),
@@ -352,13 +359,16 @@ fn invoke_set_game_payment_option<'info>(
     program::invoke(
         &instruction,
         &[
+            payer.clone(),
             publisher.clone(),
-            authorized_source_program.clone(),
             source_program.clone(),
+            authorized_source_program.clone(),
+            registry_program.clone(),
             authorized_registry_program.clone(),
             game.clone(),
             registry_game.clone(),
             game_store_config.clone(),
+            mint.clone(),
             accepted_payment_token.clone(),
             game_payment_option.clone(),
             system_program.clone(),
@@ -397,7 +407,7 @@ fn load_optional_publish_grant(
     );
 
     let data = account_info.try_borrow_data()?;
-    let publish_grant_disc: [u8; 8] = [0x74, 0xbe, 0x9e, 0xc9, 0x0c, 0xd1, 0xb6, 0xf3];
+    let publish_grant_disc: [u8; 8] = [0x60, 0x54, 0x7a, 0x32, 0x00, 0xc1, 0xab, 0xc2];
     require!(
         data.len() >= 8 && data[..8] == publish_grant_disc,
         RegistryError::InvalidPublishGrantAccount

@@ -1,5 +1,15 @@
 # PeridotVault Solana — How to Deploy
 
+## Program IDs (Current Devnet)
+
+| Program        | ID                                             |
+| -------------- | ---------------------------------------------- |
+| **pgl1**       | `GAt9373oMr9Ykc1Auudy4wNR9PL7tRPaXMwSKiYpyQpP` |
+| **registry**   | `G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE` |
+| **game-store** | `5fcEaw6eMUeCLzhEqzqqL5HczQm1yj9GZjQQeqL66h5g` |
+
+> **IMPORTANT:** Keypair files are saved in `keys/` directory. NEVER run `cargo clean` without backing up `target/deploy/*.json` first. If keypairs are lost, programs cannot be upgraded at the same address.
+
 ## Prerequisites
 
 ```bash
@@ -14,65 +24,6 @@ cd chains/solana
 pnpm install
 ```
 
-## Program IDs
-
-| Program        | ID                                             |
-| -------------- | ---------------------------------------------- |
-| **game-store** | `FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC` |
-| **pgl1**       | `AHpAEMxUEk4Um3E6PgXxFQiiTBhSQP9Ej2Sy77Y7WU6H` |
-| **registry**   | `2H2RfFxMYxh6njAJNekPacK671DL9q2W89YjiQhAM4ut` |
-
-> **IMPORTANT:** Jika perlu generate Program ID baru, ikuti langkah di bagian [Generate New Program IDs](#generate-new-program-ids).
-
----
-
-## Deploy ke Localnet
-
-### 1. Clean & Build
-
-```bash
-cd chains/solana
-
-# Hapus build artifact lama (penting!)
-rm -rf target/deploy/*.json
-
-# Build semua program
-anchor build
-```
-
-### 2. Start Local Validator
-
-```bash
-# Stop validator lama jika ada
-pkill -f solana-test-validator
-
-# Hapus ledger lama
-rm -rf test-ledger
-
-# Start validator baru
-solana-test-validator
-```
-
-### 3. Deploy
-
-```bash
-# Di terminal baru
-cd chains/solana
-anchor deploy --provider.cluster localnet
-```
-
-### 4. Verify
-
-```bash
-# Cek semua program on-chain
-solana account FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC --url http://127.0.0.1:8899
-solana account AHpAEMxUEk4Um3E6PgXxFQiiTBhSQP9Ej2Sy77Y7WU6H --url http://127.0.0.1:8899
-solana account 2H2RfFxMYxh6njAJNekPacK671DL9q2W89YjiQhAM4ut --url http://127.0.0.1:8899
-
-# Cek IDL accounts
-anchor idl fetch FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC --provider.cluster localnet
-```
-
 ---
 
 ## Deploy ke Devnet
@@ -80,127 +31,121 @@ anchor idl fetch FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC --provider.cluster
 ### 1. Setup Wallet & Network
 
 ```bash
-# Set cluster ke devnet
 solana config set --url https://api.devnet.solana.com
-
-# Cek wallet
 solana address
-
-# Cek balance
 solana balance
-
-# Airdrop jika balance < 2 SOL
-solana airdrop 2
+solana airdrop 2   # jika perlu
 ```
 
-### 2. Clean & Build
+### 2. Restore Keypairs (jika keypairs ada di keys/)
 
 ```bash
-cd chains/solana
-rm -rf target/deploy/*.json
-anchor keys sync
-anchor build
+cp keys/*.json target/deploy/
 ```
 
-### 3. Deploy
+### 3. Build & Deploy
 
 ```bash
-anchor deploy --provider.cluster devnet
+pnpm anchor build
+
+solana program deploy --url devnet target/deploy/pgl1.so
+solana program deploy --url devnet target/deploy/registry.so
+solana program deploy --url devnet target/deploy/game_store.so
 ```
 
-### 4. Verify
+### 4. Configure Programs
 
 ```bash
-solana account FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC --url devnet
-solana account AHpAEMxUEk4Um3E6PgXxFQiiTBhSQP9Ej2Sy77Y7WU6H --url devnet
-solana account 2H2RfFxMYxh6njAJNekPacK671DL9q2W89YjiQhAM4ut --url devnet
+ANCHOR_PROVIDER_URL=https://api.devnet.solana.com npx ts-node scripts/config.ts
+```
+
+### 5. Add Payment Tokens
+
+```bash
+# Registry accepted tokens (for registration fee)
+ANCHOR_PROVIDER_URL=https://api.devnet.solana.com npx ts-node scripts/set.ts registry-add <MINT> <FEE>
+
+# Store accepted tokens (for buying games)
+ANCHOR_PROVIDER_URL=https://api.devnet.solana.com npx ts-node scripts/set.ts store-add <MINT>
+```
+
+### 6. Verify
+
+```bash
+ANCHOR_PROVIDER_URL=https://api.devnet.solana.com npx ts-node scripts/get.ts
 ```
 
 ---
 
 ## Deploy ke Mainnet
 
-### 1. Setup Wallet & Network
+### 1. Setup Wallet
 
 ```bash
-# Set cluster ke mainnet
 solana config set --url https://api.mainnet-beta.solana.com
-
-# Pastikan wallet punya cukup SOL (estimasi 2-3 SOL untuk 3 program)
-solana balance
+solana balance   # perlu ~7 SOL untuk 3 program
 ```
 
-### 2. Clean & Build
+### 2. Build
 
 ```bash
-cd chains/solana
-rm -rf target/deploy/*.json
-anchor keys sync
-anchor build
+pnpm anchor build
 ```
 
 ### 3. Deploy
 
 ```bash
-anchor deploy --provider.cluster mainnet
+solana program deploy --url mainnet-beta target/deploy/pgl1.so
+solana program deploy --url mainnet-beta target/deploy/registry.so
+solana program deploy --url mainnet-beta target/deploy/game_store.so
 ```
 
-> **Note:** Upgrade authority adalah wallet di `~/.config/solana/id.json`. Simpan keypair ini dengan aman — tanpa ini tidak bisa upgrade program.
-
-### 4. Verify
+### 4. Configure
 
 ```bash
-solana account FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC --url mainnet
-solana account AHpAEMxUEk4Um3E6PgXxFQiiTBhSQP9Ej2Sy77Y7WU6H --url mainnet
-solana account 2H2RfFxMYxh6njAJNekPacK671DL9q2W89YjiQhAM4ut --url mainnet
+ANCHOR_PROVIDER_URL=https://api.mainnet-beta.solana.com npx ts-node scripts/config.ts
 ```
 
 ---
 
 ## Generate New Program IDs
 
-Jika perlu Program ID baru (misal untuk deployment berbeda):
-
-### 1. Hapus keypair lama
+Jika perlu Program ID baru untuk deployment terpisah:
 
 ```bash
-cd chains/solana
+# 1. Backup keypair lama
+cp -r keys/ keys-backup/
+
+# 2. Generate baru
 rm -f target/deploy/*.json
-```
-
-### 2. Build (akan generate keypair baru)
-
-```bash
 anchor build
-```
 
-### 3. Ambil Program ID yang di-generate
+# 3. Simpan keypair baru
+cp target/deploy/*.json keys/
 
-```bash
+# 4. Ambil Program ID baru
 solana-keygen pubkey target/deploy/game_store-keypair.json
 solana-keygen pubkey target/deploy/pgl1-keypair.json
 solana-keygen pubkey target/deploy/registry-keypair.json
+
+# 5. Update semua reference
+# - programs/*/src/lib.rs (declare_id!)
+# - Anchor.toml
+# - scripts/config.ts
+# - docs/
+
+# 6. Rebuild & deploy
+pnpm anchor build
+solana program deploy --url devnet target/deploy/*.so
 ```
 
-### 4. Update semua file yang reference Program ID
+---
 
-Update Program ID di file-file berikut:
-
-| File                             | Field                                                        |
-| -------------------------------- | ------------------------------------------------------------ |
-| `programs/game-store/src/lib.rs` | `declare_id!("...")`                                         |
-| `programs/pgl1/src/lib.rs`       | `declare_id!("...")`                                         |
-| `programs/registry/src/lib.rs`   | `declare_id!("...")`                                         |
-| `Anchor.toml`                    | `[programs.localnet]` dan `[programs.devnet]`                |
-| `tests/helpers/peridot.ts`       | `PGL1_PROGRAM_ID`, `REGISTRY_PROGRAM_ID`, `STORE_PROGRAM_ID` |
-| `docs/game-store.md`             | Program ID di header                                         |
-
-### 5. Rebuild & Deploy
+## Upgrade Program
 
 ```bash
-rm -rf target/deploy/*.json
-anchor build
-anchor deploy --provider.cluster localnet
+pnpm anchor build
+solana program deploy --url devnet target/deploy/<program>.so
 ```
 
 ---
@@ -209,66 +154,34 @@ anchor deploy --provider.cluster localnet
 
 ### Error: `DeclaredProgramIdMismatch`
 
-**Penyebab:** Program ID di `declare_id!` tidak match dengan keypair di `target/deploy/*.json`.
+Penyebab: declare_id! di lib.rs tidak match dengan keypair di target/deploy/.
 
-**Solusi:**
+Solusi: Update declare_id! di lib.rs sesuai dengan `solana-keygen pubkey target/deploy/<name>-keypair.json`.
+
+### Error: `insufficient funds`
+
+Solusi: Airdrop lebih banyak SOL atau close old programs:
 
 ```bash
-# 1. Hapus keypair lama
-rm -f target/deploy/*.json
-
-# 2. Build ulang (generate keypair baru)
-anchor build
-
-# 3. Ambil Program ID baru
-solana-keygen pubkey target/deploy/game_store-keypair.json
-
-# 4. Update declare_id! di lib.rs sesuai output di atas
-# 5. Update Anchor.toml, tests/helpers/peridot.ts, docs
-# 6. Deploy ulang
-anchor deploy --provider.cluster localnet
+solana program close --url devnet --bypass-warning <OLD_PROGRAM_ID>
 ```
 
-### Error: `AccountNotFound` saat IDL fetch
+### Keypairs hilang setelah cargo clean
 
-**Penyebab:** IDL account belum dibuat atau deploy gagal di step IDL.
-
-**Solusi:** Pastikan deploy berhasil sampai akhir (harus ada output `Idl account created: ...`).
-
-### Error: `Connection refused`
-
-**Penyebab:** Local validator tidak running.
-
-**Solusi:**
+Solusi: Restore dari backup:
 
 ```bash
-pkill -f solana-test-validator
-rm -rf test-ledger
-solana-test-validator
+cp keys/*.json target/deploy/
+anchor keys sync
 ```
 
 ---
 
-## Estimasi Biaya Deploy
+## Estimasi Biaya
 
-| Network  | Estimasi Biaya (3 program) |
-| -------- | -------------------------- |
-| Localnet | 0 SOL                      |
-| Devnet   | ~2-3 SOL                   |
-| Mainnet  | ~2-3.5 SOL                 |
+| Network  | Per Program | 3 Programs |
+| -------- | ----------- | ---------- |
+| Devnet   | ~1.5 SOL    | ~4.5 SOL   |
+| Mainnet  | ~1.5 SOL    | ~4.5 SOL   |
 
-Biaya = rent-exempt deposit untuk menyimpan program binary on-chain. Bukan gas fee — deposit ini bisa di-reclaim jika program di-close.
-
----
-
-## Upgrade Program
-
-```bash
-# Build terbaru
-anchor build
-
-# Upgrade ke cluster target
-anchor deploy --provider.cluster devnet   # atau mainnet
-```
-
-Upgrade authority harus sama dengan wallet yang deploy pertama kali.
+Biaya = rent-exempt deposit. Bisa di-reclaim via `solana program close`.

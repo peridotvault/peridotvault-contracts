@@ -15,9 +15,9 @@ import * as path from "path";
 //  Peridot Vault — Solana Program Configuration Script
 // ============================================================
 //  This script initializes and links the three core programs:
-//    1. pgl1     (game factory / license NFT)
-//    2. registry (publish grants & game registration)
-//    3. game-store (primary sales / buy-game)
+//    1. pgl1       — GAt9373oMr9Ykc1Auudy4wNR9PL7tRPaXMwSKiYpyQpP
+//    2. registry   — G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE
+//    3. game-store — 5fcEaw6eMUeCLzhEqzqqL5HczQm1yj9GZjQQeqL66h5g
 //
 //  Run:
 //    npx ts-node scripts/config.ts

@@ -7,7 +7,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("7ddrr9b2ReD17kk73LLnW88tVT4fEpzGEY4rPb8hbQtT");
+declare_id!("GAt9373oMr9Ykc1Auudy4wNR9PL7tRPaXMwSKiYpyQpP");
 
 #[program]
 pub mod pgl1 {

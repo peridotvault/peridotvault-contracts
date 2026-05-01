@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Program ID** | `FHxSLLvsy8z7rWmP3451EWKQd5QMxri9R8ug73wcWEJC` |
+| **Program ID** | `5fcEaw6eMUeCLzhEqzqqL5HczQm1yj9GZjQQeqL66h5g` |
 | **Anchor module** | `game_store` |
 | **Crate/lib** | `game-store` / `game_store` |
 

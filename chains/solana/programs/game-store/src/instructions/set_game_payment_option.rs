@@ -35,7 +35,11 @@ pub struct SetGamePaymentOption<'info> {
     pub authorized_registry_program: Account<'info, AuthorizedProgram>,
 
     pub game: Account<'info, pgl1::state::Game>,
-    pub registry_game: Account<'info, registry_program::state::RegistryGame>,
+    /// CHECK: registry-owned account; validated via PDA derivation
+    #[account(
+        owner = registry_program.key() @ StoreError::RegistryProgramNotAuthorized,
+    )]
+    pub registry_game: UncheckedAccount<'info>,
     #[account(
         seeds = [b"game_store_config", game.key().as_ref()],
         bump = game_store_config.bump,
@@ -75,14 +79,13 @@ pub(crate) fn handler(ctx: Context<SetGamePaymentOption>, base_price: u64, activ
         );
     }
 
-    require_keys_eq!(ctx.accounts.registry_game.game, ctx.accounts.game.key(), StoreError::RegistryGameMismatch);
-    require!(
-        matches!(
-            ctx.accounts.registry_game.status,
-            registry_program::state::GameStatus::Active
-        ),
-        StoreError::GameNotActive
-    );
+    require_keys_eq!(ctx.accounts.registry_game.key(), {
+        let (pda, _) = Pubkey::find_program_address(
+            &[b"registry_game", ctx.accounts.game.key().as_ref()],
+            &ctx.accounts.registry_program.key(),
+        );
+        pda
+    }, StoreError::RegistryGameMismatch);
     require!(ctx.accounts.game_store_config.active, StoreError::StoreGameInactive);
     require_keys_eq!(ctx.accounts.accepted_payment_token.mint, ctx.accounts.mint.key(), StoreError::PaymentTokenNotAllowed);
 

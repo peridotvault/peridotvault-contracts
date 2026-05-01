@@ -15,7 +15,6 @@ const pglIdl = require("../target/idl/pgl1.json");
 const registryIdl = require("../target/idl/registry.json");
 const storeIdl = require("../target/idl/game_store.json");
 
-const CONSOLE_STATE_PATH = path.join(__dirname, "../.console-state.json");
 const INPUT_EOF = "__EOF__";
 const DEFAULT_PLATFORM_FEE_BPS = 1000;
 const DEFAULT_REFERRAL_BPS = 200;
@@ -47,78 +46,12 @@ function statusLabel(status) {
   return Object.keys(status)[0] || "unknown";
 }
 
-function readStateFile() {
-  if (!fs.existsSync(CONSOLE_STATE_PATH)) {
-    return { profiles: {} };
-  }
-
-  try {
-    return JSON.parse(fs.readFileSync(CONSOLE_STATE_PATH, "utf-8"));
-  } catch {
-    return { profiles: {} };
-  }
-}
-
-function writeStateFile(data) {
-  fs.writeFileSync(CONSOLE_STATE_PATH, JSON.stringify(data, null, 2));
-}
-
-function keypairFromArray(secretArray) {
-  return Keypair.fromSecretKey(Uint8Array.from(secretArray));
-}
-
-function keypairToArray(keypair) {
-  return Array.from(keypair.secretKey);
-}
-
-function ensureProfile(state, name) {
-  if (!state.profiles[name]) {
-    const kp = Keypair.generate();
-    state.profiles[name] = {
-      publicKey: kp.publicKey.toBase58(),
-      secretKey: keypairToArray(kp),
-    };
-  }
-
-  const profile = state.profiles[name];
-  return {
-    name,
-    keypair: keypairFromArray(profile.secretKey),
-  };
-}
-
 function normalizeString(value) {
   return String(value ?? "").trim();
 }
 
 async function accountExists(connection, address) {
   return (await connection.getAccountInfo(address)) !== null;
-}
-
-async function fundIfNeeded(provider, recipient, minLamports = 1_000_000_000) {
-  const balance = await provider.connection.getBalance(recipient);
-  if (balance >= minLamports) {
-    return;
-  }
-
-  const tx = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: provider.publicKey,
-      toPubkey: recipient,
-      lamports: minLamports - balance,
-    }),
-  );
-  await provider.sendAndConfirm(tx);
-}
-
-function profileKeypairByPubkey(ctx, pubkey) {
-  const target = pubkey.toBase58();
-  for (const profile of Object.values(ctx.profiles)) {
-    if (profile.keypair.publicKey.toBase58() === target) {
-      return profile.keypair;
-    }
-  }
-  return null;
 }
 
 async function ask(rl, label, defaultValue = "") {
@@ -197,7 +130,6 @@ async function pickByNumber(rl, title, items, renderItem) {
 }
 
 async function buildContext() {
-  process.env.ANCHOR_PROVIDER_URL ||= "http://127.0.0.1:8899";
   process.env.ANCHOR_WALLET ||= path.join(os.homedir(), ".config/solana/id.json");
 
   const provider = anchor.AnchorProvider.env();
@@ -211,13 +143,6 @@ async function buildContext() {
   const registryConfigPda = derivePda([Buffer.from("registry_config")], registryProgram.programId);
   const storeConfigPda = derivePda([Buffer.from("store_config")], storeProgram.programId);
 
-  const state = readStateFile();
-  const profiles = {
-    publisher: ensureProfile(state, "publisher"),
-    gamer: ensureProfile(state, "gamer"),
-  };
-  writeStateFile(state);
-
   return {
     provider,
     pglProgram,
@@ -226,7 +151,6 @@ async function buildContext() {
     pglConfigPda,
     registryConfigPda,
     storeConfigPda,
-    profiles,
   };
 }
 
@@ -241,23 +165,13 @@ async function ensureRpcReady(ctx) {
 }
 
 async function showHeader(ctx) {
-  const [opBal, pubBal, gamerBal] = await Promise.all([
-    ctx.provider.connection.getBalance(ctx.provider.publicKey),
-    ctx.provider.connection.getBalance(ctx.profiles.publisher.keypair.publicKey),
-    ctx.provider.connection.getBalance(ctx.profiles.gamer.keypair.publicKey),
-  ]);
+  const balance = await ctx.provider.connection.getBalance(ctx.provider.publicKey);
+
+  const networkLabel = process.env.ANCHOR_PROVIDER_URL.includes("devnet") ? "Devnet" : "Localnet";
 
   console.log("\nPeridotVault Console App");
-  console.log("- RPC URL:", process.env.ANCHOR_PROVIDER_URL);
-  console.log(
-    `- Operator: ${ctx.provider.publicKey.toBase58()} | SOL ${lamportsToSol(opBal)}`,
-  );
-  console.log(
-    `- Publisher Profile: ${ctx.profiles.publisher.keypair.publicKey.toBase58()} | SOL ${lamportsToSol(pubBal)}`,
-  );
-  console.log(
-    `- Gamer Profile: ${ctx.profiles.gamer.keypair.publicKey.toBase58()} | SOL ${lamportsToSol(gamerBal)}`,
-  );
+  console.log(`- Network: ${networkLabel} (${process.env.ANCHOR_PROVIDER_URL})`);
+  console.log(`- Your Address: ${ctx.provider.publicKey.toBase58()} | SOL ${lamportsToSol(balance)}`);
   console.log("- PGL1 Program:", ctx.pglProgram.programId.toBase58());
   console.log("- Registry Program:", ctx.registryProgram.programId.toBase58());
   console.log("- Store Program:", ctx.storeProgram.programId.toBase58());
@@ -337,9 +251,9 @@ async function bootstrapCoreConfigsFlow(ctx) {
     await ctx.storeProgram.methods
       .initializeStore(
         ctx.provider.publicKey,
-        DEFAULT_PLATFORM_FEE_BPS,
-        DEFAULT_REFERRAL_BPS,
-        DEFAULT_MAX_REFERRAL_BPS,
+        new anchor.BN(DEFAULT_PLATFORM_FEE_BPS),
+        new anchor.BN(DEFAULT_REFERRAL_BPS),
+        new anchor.BN(DEFAULT_MAX_REFERRAL_BPS),
         ctx.provider.publicKey,
       )
       .accounts({
@@ -482,22 +396,60 @@ async function chooseRegistryAcceptedMint(ctx, rl) {
   return picked ? picked.account.mint : null;
 }
 
+async function chooseStoreAcceptedMint(ctx, rl) {
+  if (!(await accountExists(ctx.provider.connection, ctx.storeConfigPda))) {
+    throw new Error(
+      "store_config belum ada. Jalankan Main Menu -> Bootstrap Core Configs dulu.",
+    );
+  }
+
+  const tokens = await ctx.storeProgram.account.acceptedPaymentToken.all();
+  const active = tokens.filter((t) => t.account.active);
+
+  if (active.length === 0) {
+    throw new Error("Tidak ada accepted payment token aktif di store.");
+  }
+
+  const picked = await pickByNumber(
+    rl,
+    "Pilih payment mint (store accepted token)",
+    active,
+    (item) => item.account.mint.toBase58(),
+  );
+
+  return picked ? picked.account.mint : null;
+}
+
 async function ensurePublishGrant(ctx, publisherPk) {
   const publishGrantPda = derivePda(
     [Buffer.from("publish_grant"), publisherPk.toBuffer()],
     ctx.registryProgram.programId,
   );
 
-  await ctx.registryProgram.methods
-    .setPublishGrant(null)
-    .accounts({
-      authority: ctx.provider.publicKey,
-      config: ctx.registryConfigPda,
-      publisher: publisherPk,
-      publishGrant: publishGrantPda,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+  const grantExists = await accountExists(ctx.provider.connection, publishGrantPda);
+
+  if (!grantExists) {
+    await ctx.registryProgram.methods
+      .createPublishGrant(null)
+      .accounts({
+        authority: ctx.provider.publicKey,
+        config: ctx.registryConfigPda,
+        publisher: publisherPk,
+        publishGrant: publishGrantPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  } else {
+    await ctx.registryProgram.methods
+      .updatePublishGrant(null)
+      .accounts({
+        authority: ctx.provider.publicKey,
+        config: ctx.registryConfigPda,
+        publisher: publisherPk,
+        publishGrant: publishGrantPda,
+      })
+      .rpc();
+  }
 
   return publishGrantPda;
 }
@@ -512,6 +464,11 @@ async function createGameFlow(ctx, rl) {
     return;
   }
 
+  const paymentMint = await chooseRegistryAcceptedMint(ctx, rl);
+  if (!paymentMint) {
+    return;
+  }
+
   const gameId = await ask(rl, "Game ID", `game-${Date.now()}`);
   if (gameId === INPUT_EOF) {
     return;
@@ -522,27 +479,33 @@ async function createGameFlow(ctx, rl) {
     return;
   }
 
-  const publisher = ctx.profiles.publisher.keypair;
-  await fundIfNeeded(ctx.provider, publisher.publicKey);
-
-  const paymentMint = await chooseRegistryAcceptedMint(ctx, rl);
-  if (!paymentMint) {
-    return;
+  const isFree = await ask(rl, "Is this game free? (y/n)", "y");
+  let basePrice = null;
+  let mintToken = null;
+  if (isFree.toLowerCase() === "n") {
+    const storeMint = await chooseStoreAcceptedMint(ctx, rl);
+    if (!storeMint) return;
+    const price = await askNumber(rl, "Base price", 20_000_000);
+    if (price !== null) {
+      basePrice = new anchor.BN(price);
+      mintToken = storeMint;
+    }
   }
 
   const creatorStatePda = derivePda(
-    [Buffer.from("creator_state"), publisher.publicKey.toBuffer()],
+    [Buffer.from("creator_state"), ctx.provider.publicKey.toBuffer()],
     ctx.pglProgram.programId,
   );
 
   let nextNonce = 0n;
-  if (await accountExists(ctx.provider.connection, creatorStatePda)) {
+  const creatorStateExists = await accountExists(ctx.provider.connection, creatorStatePda);
+  if (creatorStateExists) {
     const creatorState = await ctx.pglProgram.account.creatorState.fetch(creatorStatePda);
     nextNonce = BigInt(creatorState.nextNonce.toString());
   }
 
   const gamePda = derivePda(
-    [Buffer.from("game"), publisher.publicKey.toBuffer(), u64LeBuffer(nextNonce)],
+    [Buffer.from("game"), ctx.provider.publicKey.toBuffer(), u64LeBuffer(nextNonce)],
     ctx.pglProgram.programId,
   );
 
@@ -551,18 +514,58 @@ async function createGameFlow(ctx, rl) {
     ctx.registryProgram.programId,
   );
 
-  const publishGrantPda = await ensurePublishGrant(ctx, publisher.publicKey);
-
   const registryConfig = await ctx.registryProgram.account.registryConfig.fetch(
     ctx.registryConfigPda,
   );
   const pglConfig = await ctx.pglProgram.account.pglConfig.fetch(ctx.pglConfigPda);
 
+  const storeProgramId = ctx.storeProgram.programId;
+  const storeAuthorizedSourceProgram = derivePda(
+    [Buffer.from("authorized_program"), ctx.pglProgram.programId.toBuffer()],
+    storeProgramId,
+  );
+  const storeAuthorizedRegistryProgram = derivePda(
+    [Buffer.from("authorized_program"), ctx.registryProgram.programId.toBuffer()],
+    storeProgramId,
+  );
+  const storeGameStoreConfig = derivePda(
+    [Buffer.from("game_store_config"), gamePda.toBuffer()],
+    storeProgramId,
+  );
+
+  // Always ensure publish grant exists (creates free publisher grant)
+  const publishGrantPda = derivePda(
+    [Buffer.from("publish_grant"), ctx.provider.publicKey.toBuffer()],
+    ctx.registryProgram.programId,
+  );
+
+  if (!(await accountExists(ctx.provider.connection, publishGrantPda))) {
+    await ctx.registryProgram.methods
+      .createPublishGrant(null)
+      .accounts({
+        authority: ctx.provider.publicKey,
+        config: ctx.registryConfigPda,
+        publisher: ctx.provider.publicKey,
+        publishGrant: publishGrantPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+    console.log("Publish grant created (free publisher).");
+  }
+
+  // Load payment info and check balance
+  const registryAcceptedPda = derivePda(
+    [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
+    ctx.registryProgram.programId,
+  );
+  const registryToken = await ctx.registryProgram.account.acceptedPaymentToken.fetch(registryAcceptedPda);
+  console.log("Registration fee:", registryToken.feeAmount.toString());
+
   const publisherPaymentAta = await getOrCreateAssociatedTokenAccount(
     ctx.provider.connection,
     ctx.provider.wallet.payer,
     paymentMint,
-    publisher.publicKey,
+    ctx.provider.publicKey,
   );
 
   const treasuryPaymentAta = await getOrCreateAssociatedTokenAccount(
@@ -572,41 +575,76 @@ async function createGameFlow(ctx, rl) {
     registryConfig.treasury,
   );
 
-  await ctx.registryProgram.methods
-    .createGameAndRegister(gameId, metadataUri)
-    .accounts({
-      publisher: publisher.publicKey,
-      config: ctx.registryConfigPda,
-      paymentMint,
-      acceptedPaymentToken: derivePda(
-        [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
-        ctx.registryProgram.programId,
+  // Build remaining accounts: [publishGrant] + store accounts
+  const remainingAccounts = [{
+    pubkey: publishGrantPda,
+    isWritable: false,
+    isSigner: false,
+  }];
+
+  if (basePrice) {
+    remainingAccounts.push({
+      pubkey: derivePda(
+        [Buffer.from("accepted_payment_token"), mintToken.toBuffer()],
+        ctx.storeProgram.programId,
       ),
-      publisherPaymentAccount: publisherPaymentAta.address,
-      treasuryPaymentAccount: treasuryPaymentAta.address,
-      registryGame: registryGamePda,
-      game: gamePda,
-      pglCreatorState: creatorStatePda,
-      pglConfig: ctx.pglConfigPda,
-      pglTreasury: pglConfig.treasury,
-      pgl1Program: ctx.pglProgram.programId,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-    })
-    .remainingAccounts([
-      {
-        pubkey: publishGrantPda,
-        isWritable: false,
-        isSigner: false,
-      },
-    ])
-    .signers([publisher])
-    .rpc();
+      isWritable: false,
+      isSigner: false,
+    });
+    remainingAccounts.push({
+      pubkey: derivePda(
+        [Buffer.from("game_payment_option"), gamePda.toBuffer(), mintToken.toBuffer()],
+        ctx.storeProgram.programId,
+      ),
+      isWritable: true,
+      isSigner: false,
+    });
+  }
+  console.log("Creating game and registering...");
+  console.log("- game PDA:", gamePda.toBase58());
+  console.log("- registry_game PDA:", registryGamePda.toBase58());
+  console.log("- creator_state PDA:", creatorStatePda.toBase58());
+  if (basePrice) {
+    console.log("- store mint:", mintToken.toBase58());
+    console.log("- base price:", basePrice.toString());
+  }
+  
+  await ctx.registryProgram.methods
+      .createGameAndRegister(gameId, metadataUri, basePrice, mintToken)
+      .accounts({
+        publisher: ctx.provider.publicKey,
+        config: ctx.registryConfigPda,
+        paymentMint,
+        acceptedPaymentToken: derivePda(
+          [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
+          ctx.registryProgram.programId,
+        ),
+        publisherPaymentAccount: publisherPaymentAta.address,
+        treasuryPaymentAccount: treasuryPaymentAta.address,
+        registryGame: registryGamePda,
+        game: gamePda,
+        pglCreatorState: creatorStatePda,
+        pglConfig: ctx.pglConfigPda,
+        pglTreasury: pglConfig.treasury,
+        pgl1Program: ctx.pglProgram.programId,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        storeProgram: storeProgramId,
+        storeAuthorizedSourceProgram,
+        storeAuthorizedRegistryProgram,
+        storeGameStoreConfig,
+        registryProgram: ctx.registryProgram.programId,
+      })
+      .remainingAccounts(remainingAccounts)
+      .rpc();
 
   console.log("Game berhasil dibuat dan diregister.");
   console.log("- game:", gamePda.toBase58());
   console.log("- registry_game:", registryGamePda.toBase58());
   console.log("- status registry default: active (otomatis saat create_game_and_register)");
+  if (basePrice) {
+    console.log("- store price:", basePrice.toString(), "mint:", mintToken.toBase58());
+  }
 }
 
 async function promptMintAddressOrCreate(ctx, rl) {
@@ -815,15 +853,6 @@ async function configureStoreFlow(ctx, rl) {
   const gamePk = selected.entry.account.game;
   const game = await ctx.pglProgram.account.game.fetch(gamePk);
 
-  const publisherSigner = profileKeypairByPubkey(ctx, game.publisher);
-  if (!publisherSigner) {
-    console.log("Publisher game ini tidak ada di profile lokal console.");
-    console.log("Publisher on-chain:", game.publisher.toBase58());
-    return;
-  }
-
-  await fundIfNeeded(ctx.provider, publisherSigner.publicKey);
-
   const storeTokens = await ctx.storeProgram.account.acceptedPaymentToken.all();
   const activeStoreTokens = storeTokens.filter((t) => t.account.active);
   if (activeStoreTokens.length === 0) {
@@ -847,11 +876,11 @@ async function configureStoreFlow(ctx, rl) {
   }
 
   const authorizedSourceProgram = derivePda(
-    [Buffer.from("authorized_source_program"), ctx.pglProgram.programId.toBuffer()],
+    [Buffer.from("authorized_program"), ctx.pglProgram.programId.toBuffer()],
     ctx.storeProgram.programId,
   );
   const authorizedRegistryProgram = derivePda(
-    [Buffer.from("authorized_registry_program"), ctx.registryProgram.programId.toBuffer()],
+    [Buffer.from("authorized_program"), ctx.registryProgram.programId.toBuffer()],
     ctx.storeProgram.programId,
   );
   const gameStoreConfig = derivePda(
@@ -867,28 +896,29 @@ async function configureStoreFlow(ctx, rl) {
     await ctx.storeProgram.methods
       .initGameStoreConfig(true)
       .accounts({
-        publisher: publisherSigner.publicKey,
-        authorizedSourceProgram,
+        payer: ctx.provider.publicKey,
+        publisher: ctx.provider.publicKey,
         sourceProgram: ctx.pglProgram.programId,
-        authorizedRegistryProgram,
+        authorizedSourceProgram,
         registryProgram: ctx.registryProgram.programId,
+        authorizedRegistryProgram,
         game: gamePk,
         registryGame: selected.entry.publicKey,
         gameStoreConfig,
         systemProgram: SystemProgram.programId,
       })
-      .signers([publisherSigner])
       .rpc();
   }
 
   await ctx.storeProgram.methods
     .setGamePaymentOption(new anchor.BN(basePrice), true)
     .accounts({
-      publisher: publisherSigner.publicKey,
-      authorizedSourceProgram,
+      payer: ctx.provider.publicKey,
+      publisher: ctx.provider.publicKey,
       sourceProgram: ctx.pglProgram.programId,
-      authorizedRegistryProgram,
+      authorizedSourceProgram,
       registryProgram: ctx.registryProgram.programId,
+      authorizedRegistryProgram,
       game: gamePk,
       registryGame: selected.entry.publicKey,
       gameStoreConfig,
@@ -897,7 +927,6 @@ async function configureStoreFlow(ctx, rl) {
       gamePaymentOption,
       systemProgram: SystemProgram.programId,
     })
-    .signers([publisherSigner])
     .rpc();
 
   console.log("Listing store berhasil di-set.");
@@ -958,15 +987,14 @@ async function buyGameFlow(ctx, rl) {
     return;
   }
 
-  const buyer = ctx.profiles.gamer.keypair;
-  await fundIfNeeded(ctx.provider, buyer.publicKey);
+  const buyer = ctx.provider.publicKey;
 
   const authorizedSourceProgram = derivePda(
-    [Buffer.from("authorized_source_program"), ctx.pglProgram.programId.toBuffer()],
+    [Buffer.from("authorized_program"), ctx.pglProgram.programId.toBuffer()],
     ctx.storeProgram.programId,
   );
   const authorizedRegistryProgram = derivePda(
-    [Buffer.from("authorized_registry_program"), ctx.registryProgram.programId.toBuffer()],
+    [Buffer.from("authorized_program"), ctx.registryProgram.programId.toBuffer()],
     ctx.storeProgram.programId,
   );
   const gameStoreConfig = derivePda(
@@ -982,20 +1010,60 @@ async function buyGameFlow(ctx, rl) {
     ctx.storeProgram.programId,
   );
   const purchaseReceipt = derivePda(
-    [Buffer.from("purchase_receipt"), buyer.publicKey.toBuffer(), option.account.game.toBuffer()],
+    [Buffer.from("purchase_receipt"), buyer.toBuffer(), option.account.game.toBuffer()],
     ctx.storeProgram.programId,
   );
+  const license = derivePda(
+    [Buffer.from("license"), buyer.toBuffer(), option.account.game.toBuffer()],
+    ctx.pglProgram.programId,
+  );
 
-  const defaultPrice = Number(option.account.basePrice.toString());
-  const paidAmount = await askNumber(rl, "Paid amount", defaultPrice);
-  if (paidAmount === null) {
-    return;
+  const game = await ctx.pglProgram.account.game.fetch(option.account.game);
+  const publisherPaymentAccount = await getOrCreateAssociatedTokenAccount(
+    ctx.provider.connection,
+    ctx.provider.wallet.payer,
+    option.account.mint,
+    game.publisher,
+  );
+
+  const storeConfig = await ctx.storeProgram.account.storeConfig.fetch(ctx.storeConfigPda);
+  const treasuryPaymentAccount = await getOrCreateAssociatedTokenAccount(
+    ctx.provider.connection,
+    ctx.provider.wallet.payer,
+    option.account.mint,
+    storeConfig.treasury,
+  );
+
+  const buyerPaymentAccount = await getOrCreateAssociatedTokenAccount(
+    ctx.provider.connection,
+    ctx.provider.wallet.payer,
+    option.account.mint,
+    buyer,
+  );
+
+  const price = option.account.basePrice;
+  const referrerInput = await ask(rl, "Referrer address (optional, enter to skip)", "");
+  let referrer = null;
+  let referrerPaymentAccount = null;
+  if (referrerInput) {
+    try {
+      referrer = new PublicKey(referrerInput);
+      referrerPaymentAccount = await getOrCreateAssociatedTokenAccount(
+        ctx.provider.connection,
+        ctx.provider.wallet.payer,
+        option.account.mint,
+        new PublicKey(referrerInput),
+      );
+      referrerPaymentAccount = referrerPaymentAccount.address;
+    } catch {
+      console.log("Invalid referrer address, skipping.");
+    }
   }
 
   await ctx.storeProgram.methods
-    .buyGame(new anchor.BN(paidAmount), null)
+    .buyGame(price, referrer)
     .accounts({
-      buyer: buyer.publicKey,
+      buyer,
       storeConfig: ctx.storeConfigPda,
       authorizedSourceProgram,
       sourceProgram: ctx.pglProgram.programId,
@@ -1007,10 +1075,22 @@ async function buyGameFlow(ctx, rl) {
       paymentMint: option.account.mint,
       acceptedPaymentToken,
       gamePaymentOption: option.publicKey,
+      buyerPaymentAccount: buyerPaymentAccount.address,
+      publisherPaymentAccount: publisherPaymentAccount.address,
+      treasuryPaymentAccount: treasuryPaymentAccount.address,
+      referrerPaymentAccount: referrerPaymentAccount,
+      storeActor: ctx.provider.publicKey,
+      authorizedActor: derivePda(
+        [Buffer.from("authorized_actor"), ctx.provider.publicKey.toBuffer()],
+        ctx.pglProgram.programId,
+      ),
+      pgl1Program: ctx.pglProgram.programId,
+      license,
       purchaseReceipt,
+      tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
-    .signers([buyer])
+    .signers([ctx.provider.wallet.payer])
     .rpc();
 
   console.log("Buy game berhasil.");
@@ -1038,28 +1118,6 @@ async function listPurchaseReceiptsFlow(ctx) {
   });
 }
 
-async function ensureAuthorizedActor(ctx, actor) {
-  const authorizedActor = derivePda(
-    [Buffer.from("authorized_actor"), actor.publicKey.toBuffer()],
-    ctx.pglProgram.programId,
-  );
-
-  if (!(await accountExists(ctx.provider.connection, authorizedActor))) {
-    await ctx.pglProgram.methods
-      .addAuthorizedActor()
-      .accounts({
-        authority: ctx.provider.publicKey,
-        actor: actor.publicKey,
-        pglConfig: ctx.pglConfigPda,
-        authorizedActor,
-        systemProgram: SystemProgram.programId,
-      })
-      .rpc();
-  }
-
-  return authorizedActor;
-}
-
 async function mintLicenseFlow(ctx, rl) {
   console.log("\n== License: Mint ==");
 
@@ -1069,21 +1127,24 @@ async function mintLicenseFlow(ctx, rl) {
   }
 
   const gamePk = selected.entry.account.game;
-  const holder = ctx.profiles.gamer.keypair;
-  const actor = ctx.provider.wallet.payer;
+  const holder = ctx.provider.publicKey;
+  const actor = ctx.provider.publicKey;
 
-  const authorizedActor = await ensureAuthorizedActor(ctx, actor);
+  const authorizedActor = derivePda(
+    [Buffer.from("authorized_actor"), actor.toBuffer()],
+    ctx.pglProgram.programId,
+  );
 
   const license = derivePda(
-    [Buffer.from("license"), holder.publicKey.toBuffer(), gamePk.toBuffer()],
+    [Buffer.from("license"), holder.toBuffer(), gamePk.toBuffer()],
     ctx.pglProgram.programId,
   );
 
   await ctx.pglProgram.methods
     .mintLicense(null)
     .accounts({
-      actor: actor.publicKey,
-      holder: holder.publicKey,
+      actor,
+      holder,
       authorizedActor,
       game: gamePk,
       license,
@@ -1092,14 +1153,14 @@ async function mintLicenseFlow(ctx, rl) {
     .rpc();
 
   console.log("License berhasil di-mint.");
-  console.log("- holder:", holder.publicKey.toBase58());
+  console.log("- holder:", holder.toBase58());
   console.log("- license:", license.toBase58());
 }
 
 async function myLibraryFlow(ctx) {
   console.log("\n== License: My Library ==");
 
-  const holder = ctx.profiles.gamer.keypair.publicKey;
+  const holder = ctx.provider.publicKey;
   const licenses = await ctx.pglProgram.account.license.all([
     {
       memcmp: {
@@ -1128,6 +1189,46 @@ async function myLibraryFlow(ctx) {
     console.log(
       `${i + 1}. gameId=${gameId} | game=${lic.account.game.toBase58()} | license=${lic.publicKey.toBase58()}`,
     );
+  }
+}
+
+async function closeCreatorStateFlow(ctx) {
+  console.log("\n== Cleanup: Close Creator State ==");
+
+  const creatorStatePda = derivePda(
+    [Buffer.from("creator_state"), ctx.provider.publicKey.toBuffer()],
+    ctx.pglProgram.programId,
+  );
+
+  if (!(await accountExists(ctx.provider.connection, creatorStatePda))) {
+    console.log("creator_state tidak ada.");
+    return;
+  }
+
+  const creatorState = await ctx.pglProgram.account.creatorState.fetch(creatorStatePda);
+  console.log("creator_state found:");
+  console.log("- creator:", creatorState.creator.toBase58());
+  console.log("- next_nonce:", creatorState.nextNonce.toString());
+
+  if (creatorState.nextNonce > 0n) {
+    console.log("\nWARNING: Creator has existing games. Closing will not remove them.");
+    console.log("You may need to close registry_game accounts manually.");
+  }
+
+  try {
+    await ctx.pglProgram.methods
+      .closeCreatorState()
+      .accounts({
+        creator: ctx.provider.publicKey,
+        creatorState: creatorStatePda,
+      })
+      .rpc();
+
+    console.log("creator_state berhasil ditutup.");
+    console.log("SOL refunded to:", ctx.provider.publicKey.toBase58());
+  } catch (error) {
+    console.log("Gagal menutup creator_state:");
+    console.log(String(error));
   }
 }
 
@@ -1166,6 +1267,7 @@ async function showLicenseMenu() {
   console.log("\n=== License Menu ===");
   console.log("1. Mint License");
   console.log("2. My Library");
+  console.log("3. Close Creator State (Cleanup)");
   console.log("0. Back");
 }
 
@@ -1245,6 +1347,8 @@ async function licenseMenu(ctx, rl) {
         await mintLicenseFlow(ctx, rl);
       } else if (choice === "2") {
         await myLibraryFlow(ctx);
+      } else if (choice === "3") {
+        await closeCreatorStateFlow(ctx);
       } else {
         console.log("Pilihan menu tidak valid.");
       }
@@ -1255,7 +1359,39 @@ async function licenseMenu(ctx, rl) {
   }
 }
 
+async function showNetworkSelection() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    console.log("\n=== Select Network ===");
+    console.log("1. Localnet (http://127.0.0.1:8899)");
+    console.log("2. Devnet (https://api.devnet.solana.com)");
+
+    const choice = await rl.question("Pilih network [default: 1]: ");
+    const normalized = String(choice ?? "").trim();
+
+    if (normalized === "2") {
+      process.env.ANCHOR_PROVIDER_URL = "https://api.devnet.solana.com";
+      console.log("\nUsing Devnet.");
+    } else {
+      process.env.ANCHOR_PROVIDER_URL = "http://127.0.0.1:8899";
+      console.log("\nUsing Localnet.");
+    }
+
+    return normalized === "2" ? "devnet" : "localnet";
+  } finally {
+    rl.close();
+  }
+}
+
 async function main() {
+  const network = await showNetworkSelection();
+
+  process.env.ANCHOR_WALLET ||= path.join(os.homedir(), ".config/solana/id.json");
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,

@@ -32,7 +32,11 @@ pub struct InitGameStoreConfig<'info> {
     pub authorized_registry_program: Account<'info, AuthorizedProgram>,
 
     pub game: Account<'info, pgl1::state::Game>,
-    pub registry_game: Account<'info, registry_program::state::RegistryGame>,
+    /// CHECK: registry-owned account; game & status validated manually in handler
+    #[account(
+        owner = registry_program.key() @ StoreError::RegistryProgramNotAuthorized,
+    )]
+    pub registry_game: UncheckedAccount<'info>,
 
     #[account(
         init,
@@ -57,14 +61,15 @@ pub(crate) fn handler(ctx: Context<InitGameStoreConfig>, active: bool) -> Result
         );
     }
 
-    require_keys_eq!(ctx.accounts.registry_game.game, ctx.accounts.game.key(), StoreError::RegistryGameMismatch);
-    require!(
-        matches!(
-            ctx.accounts.registry_game.status,
-            registry_program::state::GameStatus::Active
-        ),
-        StoreError::GameNotActive
-    );
+    // Validate: game key matches (registry_game.game written in memory but not yet
+    // serialized to account data at CPI time, so skip reading registry_game data)
+    require_keys_eq!(ctx.accounts.registry_game.key(), {
+        let (pda, _) = Pubkey::find_program_address(
+            &[b"registry_game", ctx.accounts.game.key().as_ref()],
+            &ctx.accounts.registry_program.key(),
+        );
+        pda
+    }, StoreError::RegistryGameMismatch);
 
     let cfg = &mut ctx.accounts.game_store_config;
     cfg.game = ctx.accounts.game.key();

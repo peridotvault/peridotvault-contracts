@@ -7,7 +7,7 @@ pub mod state;
 
 pub use instructions::*;
 
-declare_id!("CxQCfVWCBE6tLwmEi3z7gXpniR21UyjvVvE6VytVcnyf");
+declare_id!("G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE");
 
 #[program]
 pub mod registry {
