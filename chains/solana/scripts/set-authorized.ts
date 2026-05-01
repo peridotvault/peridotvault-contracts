@@ -11,8 +11,7 @@ import * as path from "path";
 //  that allow registry to CPI into game-store.
 //
 //  Run:
-//    ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
-//    npx ts-node scripts/set-authorized.ts
+//  ANCHOR_PROVIDER_URL=https://api.devnet.solana.com npx ts-node scripts/set-authorized.ts
 //
 //  Environment overrides:
 //    ANCHOR_PROVIDER_URL    default: http://127.0.0.1:8899
@@ -92,17 +91,17 @@ async function main() {
   // Add/Update PGL1 as ROLE_SOURCE
   console.log("\n--- PGL1 as ROLE_SOURCE ---");
   const sourceAuthExists = await accountExists(provider.connection, authorizedSourceProgramPda);
-  
+
   if (sourceAuthExists) {
     console.log("  Authorized program PDA already exists.");
     console.log("  Checking if role is correct...");
-    
+
     try {
       const authAccount = await (storeProgram.account.authorizedProgram as any).fetch(authorizedSourceProgramPda);
       console.log("  Current role:", authAccount.role, "(expected: 0 = ROLE_SOURCE)");
       console.log("  Current active:", authAccount.active);
       console.log("  Current program_id:", authAccount.programId.toBase58());
-      
+
       if (authAccount.role !== ROLE_SOURCE || !authAccount.active) {
         console.log("  Updating authorized program...");
         await storeProgram.methods
@@ -139,17 +138,17 @@ async function main() {
   // Add/Update Registry as ROLE_REGISTRY
   console.log("\n--- Registry as ROLE_REGISTRY ---");
   const registryAuthExists = await accountExists(provider.connection, authorizedRegistryProgramPda);
-  
+
   if (registryAuthExists) {
     console.log("  Authorized program PDA already exists.");
     console.log("  Checking if role is correct...");
-    
+
     try {
       const authAccount = await (storeProgram.account.authorizedProgram as any).fetch(authorizedRegistryProgramPda);
       console.log("  Current role:", authAccount.role, "(expected: 1 = ROLE_REGISTRY)");
       console.log("  Current active:", authAccount.active);
       console.log("  Current program_id:", authAccount.programId.toBase58());
-      
+
       if (authAccount.role !== ROLE_REGISTRY || !authAccount.active) {
         console.log("  Updating authorized program...");
         await storeProgram.methods

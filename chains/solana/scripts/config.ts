@@ -7,7 +7,7 @@ import * as path from "path";
 // ============================================================
 // HOW TO RUN 
 // ============================================================
-// ANCHOR_PROVIDER_URL=https://api.devnet.solana.com \
+// ANCHOR_PROVIDER_URL=https://api.devnet.solana.com npx ts-node scripts/config.ts
 // ANCHOR_WALLET=~/.config/solana/id.json \
 // npx ts-node scripts/config.ts
 
@@ -15,9 +15,9 @@ import * as path from "path";
 //  Peridot Vault — Solana Program Configuration Script
 // ============================================================
 //  This script initializes and links the three core programs:
-//    1. pgl1       — GAt9373oMr9Ykc1Auudy4wNR9PL7tRPaXMwSKiYpyQpP
-//    2. registry   — G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE
-//    3. game-store — 5fcEaw6eMUeCLzhEqzqqL5HczQm1yj9GZjQQeqL66h5g
+//    1. pgl1       — FoLXTWN4iJ9XrmJgfKJBBNmDeYZQt6CL56ftbMkPH4Ky
+//    2. registry   — 2HvbxbkJemgFEbdwTLHdQcXb2tRNWxMeCVZ42Gv1kmEA
+//    3. game-store — 5uvHYBATc5NURhckg5uL2BQiVzaSMjJQegkhdLMDRe7E
 //
 //  Run:
 //    npx ts-node scripts/config.ts
