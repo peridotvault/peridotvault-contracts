@@ -951,10 +951,47 @@ async function listStorePaymentOptionsFlow(ctx) {
   }
 
   options.forEach((item, idx) => {
+    let gameId = "(unknown)";
+    try {
+      // - can't easily get game_id here, just show pubkey
+    } catch {}
     console.log(
       `${idx + 1}. game=${item.account.game.toBase58()} | mint=${item.account.mint.toBase58()} | price=${item.account.basePrice.toString()} | active=${item.account.active}`,
     );
   });
+}
+
+async function pickGameToBuy(ctx, rl) {
+  const storeConfigs = await ctx.storeProgram.account.gameStoreConfig.all();
+  const paymentOptions = await getStoreGamePaymentOptions(ctx);
+  const paidGames = new Set(paymentOptions.map((o) => o.account.game.toBase58()));
+
+  if (storeConfigs.length === 0) {
+    console.log("Belum ada game di store.");
+    return null;
+  }
+
+  const items = storeConfigs.map((cfg) => {
+    const gameAddress = cfg.account.game.toBase58();
+    const isPaid = paidGames.has(gameAddress);
+    const option = paymentOptions.find((o) => o.account.game.toBase58() === gameAddress);
+    return { gamePk: cfg.account.game, isPaid, option };
+  });
+
+  const picked = await pickByNumber(
+    rl,
+    "Pilih game to buy (free/paid)",
+    items,
+    (item) => {
+      const short = pubkeyShort(item.gamePk);
+      if (item.isPaid && item.option) {
+        return `${short} | PAID | price=${item.option.account.basePrice.toString()} | mint=${pubkeyShort(item.option.account.mint)}`;
+      }
+      return `${short} | FREE`;
+    },
+  );
+
+  return picked;
 }
 
 async function pickGamePaymentOption(ctx, rl) {
@@ -982,12 +1019,64 @@ async function buyGameFlow(ctx, rl) {
     return;
   }
 
-  const option = await pickGamePaymentOption(ctx, rl);
-  if (!option) {
+  const picked = await pickGameToBuy(ctx, rl);
+  if (!picked) {
     return;
   }
 
+  const gamePk = picked.gamePk;
+  const game = await ctx.pglProgram.account.game.fetch(gamePk);
   const buyer = ctx.provider.publicKey;
+  const license = derivePda(
+    [Buffer.from("license"), buyer.toBuffer(), gamePk.toBuffer()],
+    ctx.pglProgram.programId,
+  );
+
+  if (await accountExists(ctx.provider.connection, license)) {
+    console.log("You already own a license for this game.");
+    return;
+  }
+
+  if (!picked.isPaid) {
+    // Free game - mint license directly
+    console.log("\nFree game — minting license...");
+    const authorizedActor = derivePda(
+      [Buffer.from("authorized_actor"), buyer.toBuffer()],
+      ctx.pglProgram.programId,
+    );
+
+    if (!(await accountExists(ctx.provider.connection, authorizedActor))) {
+      await ctx.pglProgram.methods
+        .addAuthorizedActor()
+        .accounts({
+          authority: ctx.provider.publicKey,
+          actor: buyer,
+          pglConfig: ctx.pglConfigPda,
+          authorizedActor,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+    }
+
+    await ctx.pglProgram.methods
+      .mintLicense(null)
+      .accounts({
+        actor: buyer,
+        holder: buyer,
+        authorizedActor,
+        game: gamePk,
+        license,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    console.log("License minted!");
+    console.log("- license:", license.toBase58());
+    return;
+  }
+
+  // Paid game
+  const option = picked.option;
 
   const authorizedSourceProgram = derivePda(
     [Buffer.from("authorized_program"), ctx.pglProgram.programId.toBuffer()],
@@ -998,11 +1087,11 @@ async function buyGameFlow(ctx, rl) {
     ctx.storeProgram.programId,
   );
   const gameStoreConfig = derivePda(
-    [Buffer.from("game_store_config"), option.account.game.toBuffer()],
+    [Buffer.from("game_store_config"), gamePk.toBuffer()],
     ctx.storeProgram.programId,
   );
   const registryGame = derivePda(
-    [Buffer.from("registry_game"), option.account.game.toBuffer()],
+    [Buffer.from("registry_game"), gamePk.toBuffer()],
     ctx.registryProgram.programId,
   );
   const acceptedPaymentToken = derivePda(
@@ -1010,15 +1099,10 @@ async function buyGameFlow(ctx, rl) {
     ctx.storeProgram.programId,
   );
   const purchaseReceipt = derivePda(
-    [Buffer.from("purchase_receipt"), buyer.toBuffer(), option.account.game.toBuffer()],
+    [Buffer.from("purchase_receipt"), buyer.toBuffer(), gamePk.toBuffer()],
     ctx.storeProgram.programId,
   );
-  const license = derivePda(
-    [Buffer.from("license"), buyer.toBuffer(), option.account.game.toBuffer()],
-    ctx.pglProgram.programId,
-  );
 
-  const game = await ctx.pglProgram.account.game.fetch(option.account.game);
   const publisherPaymentAccount = await getOrCreateAssociatedTokenAccount(
     ctx.provider.connection,
     ctx.provider.wallet.payer,
@@ -1048,13 +1132,13 @@ async function buyGameFlow(ctx, rl) {
   if (referrerInput) {
     try {
       referrer = new PublicKey(referrerInput);
-      referrerPaymentAccount = await getOrCreateAssociatedTokenAccount(
+      const rAta = await getOrCreateAssociatedTokenAccount(
         ctx.provider.connection,
         ctx.provider.wallet.payer,
         option.account.mint,
-        new PublicKey(referrerInput),
+        referrer,
       );
-      referrerPaymentAccount = referrerPaymentAccount.address;
+      referrerPaymentAccount = rAta.address;
     } catch {
       console.log("Invalid referrer address, skipping.");
     }
@@ -1069,7 +1153,7 @@ async function buyGameFlow(ctx, rl) {
       sourceProgram: ctx.pglProgram.programId,
       authorizedRegistryProgram,
       registryProgram: ctx.registryProgram.programId,
-      game: option.account.game,
+      game: gamePk,
       registryGame,
       gameStoreConfig,
       paymentMint: option.account.mint,
@@ -1078,7 +1162,7 @@ async function buyGameFlow(ctx, rl) {
       buyerPaymentAccount: buyerPaymentAccount.address,
       publisherPaymentAccount: publisherPaymentAccount.address,
       treasuryPaymentAccount: treasuryPaymentAccount.address,
-      referrerPaymentAccount: referrerPaymentAccount,
+      referrerPaymentAccount,
       storeActor: ctx.provider.publicKey,
       authorizedActor: derivePda(
         [Buffer.from("authorized_actor"), ctx.provider.publicKey.toBuffer()],
@@ -1090,10 +1174,8 @@ async function buyGameFlow(ctx, rl) {
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
-    .signers([ctx.provider.wallet.payer])
     .rpc();
 
-  console.log("Buy game berhasil.");
   console.log("- purchase_receipt:", purchaseReceipt.toBase58());
 }
 
