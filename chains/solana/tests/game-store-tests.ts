@@ -846,7 +846,7 @@ describe("game-store program", () => {
       const game = await createRegisteredGame(base);
       await configureStoreForGame(base, game);
 
-      const { buyer, purchaseReceiptPda } = await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE);
+      const { buyer, purchaseReceiptPda } = await buyGameForBuyer(base, game, base.paymentMint);
 
       const receipt = (await base.storeProgram.account.purchaseReceipt.fetch(purchaseReceiptPda)) as any;
       expect(receipt.buyer.toBase58()).to.eq(buyer.publicKey.toBase58());
@@ -863,28 +863,13 @@ describe("game-store program", () => {
       const game = await createRegisteredGame(base);
       await configureStoreForGame(base, game);
 
-      await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE);
+      await buyGameForBuyer(base, game, base.paymentMint);
 
       let failed = false;
       try {
-        await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE);
+        await buyGameForBuyer(base, game, base.paymentMint);
       } catch (error: any) {
         failed = true;
-      }
-      expect(failed).to.eq(true);
-    });
-
-    it("rejects wrong payment amount", async () => {
-      const base = await setupPeridotFixture();
-      const game = await createRegisteredGame(base);
-      await configureStoreForGame(base, game);
-
-      let failed = false;
-      try {
-        await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE + 1000);
-      } catch (error: any) {
-        failed = true;
-        expect(String(error)).to.include("Invalid payment amount");
       }
       expect(failed).to.eq(true);
     });
@@ -896,7 +881,7 @@ describe("game-store program", () => {
 
       let failed = false;
       try {
-        await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE);
+        await buyGameForBuyer(base, game, base.paymentMint);
       } catch (error: any) {
         failed = true;
         expect(String(error)).to.include("Game not active in store");
@@ -938,7 +923,7 @@ describe("game-store program", () => {
 
       let failed = false;
       try {
-        await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE);
+        await buyGameForBuyer(base, game, base.paymentMint);
       } catch (error: any) {
         failed = true;
         expect(String(error)).to.include("Price not found");
@@ -965,7 +950,7 @@ describe("game-store program", () => {
         referrerAta.address,
       );
 
-      await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE, { referrer: referrer.publicKey });
+      await buyGameForBuyer(base, game, base.paymentMint, { referrer: referrer.publicKey });
 
       const buyerAtaAfter = await base.provider.connection.getTokenAccountBalance(
         referrerAta.address,
@@ -982,7 +967,7 @@ describe("game-store program", () => {
       await configureStoreForGame(base, game);
 
       const referrer = Keypair.generate();
-      const { purchaseReceiptPda } = await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE, {
+      const { purchaseReceiptPda } = await buyGameForBuyer(base, game, base.paymentMint, {
         referrer: referrer.publicKey,
       });
 
@@ -1024,7 +1009,7 @@ describe("game-store program", () => {
 
       const expectedFinalPrice = DEFAULT_GAME_PRICE - Math.floor(DEFAULT_GAME_PRICE * discountBps / 10_000);
 
-      const { purchaseReceiptPda } = await buyGameForBuyer(base, game, expectedFinalPrice);
+      const { purchaseReceiptPda } = await buyGameForBuyer(base, game, base.paymentMint);
 
       const receipt = (await base.storeProgram.account.purchaseReceipt.fetch(purchaseReceiptPda)) as any;
       expect(receipt.finalPrice.toString()).to.eq(expectedFinalPrice.toString());
@@ -1069,7 +1054,7 @@ describe("game-store program", () => {
         referrerAta.address,
       );
 
-      await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE, { referrer: referrer.publicKey });
+      await buyGameForBuyer(base, game, base.paymentMint, { referrer: referrer.publicKey });
 
       const buyerAtaAfter = await base.provider.connection.getTokenAccountBalance(
         referrerAta.address,

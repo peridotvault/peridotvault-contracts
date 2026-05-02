@@ -16,7 +16,7 @@ describe("gamer purchase flow", () => {
       active: true,
     });
 
-    const result = await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE, {
+    const result = await buyGameForBuyer(base, game, base.paymentMint, {
       buyer: base.gamer,
     });
 
@@ -58,13 +58,13 @@ describe("gamer purchase flow", () => {
       active: true,
     });
 
-    const first = await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE, {
+    const first = await buyGameForBuyer(base, game, base.paymentMint, {
       buyer: base.gamer,
     });
 
     let failed = false;
     try {
-      await buyGameForBuyer(base, game, DEFAULT_GAME_PRICE, {
+      await buyGameForBuyer(base, game, base.paymentMint, {
         buyer: base.gamer,
       });
     } catch (error: any) {

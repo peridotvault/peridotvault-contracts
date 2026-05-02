@@ -94,7 +94,11 @@ pub struct BuyGame<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub(crate) fn handler(ctx: Context<BuyGame>, paid_amount: u64, referrer: Option<Pubkey>) -> Result<()> {
+pub(crate) fn handler(
+    ctx: Context<BuyGame>,
+    mint_token: Option<Pubkey>,
+    referrer: Option<Pubkey>,
+) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
 
     require_keys_eq!(
@@ -111,193 +115,199 @@ pub(crate) fn handler(ctx: Context<BuyGame>, paid_amount: u64, referrer: Option<
     );
     require!(ctx.accounts.game_store_config.active, StoreError::StoreGameInactive);
 
-    let (final_price, payment_mint_key, effective_referral_bps) = if paid_amount > 0 {
-        // ── Paid game path ──────────────────────────────────────────────
-        let payment_mint = ctx
-            .accounts
-            .payment_mint
-            .as_ref()
-            .ok_or(error!(StoreError::PaymentTokenNotAllowed))?;
-        let accepted_payment_token = ctx
-            .accounts
-            .accepted_payment_token
-            .as_ref()
-            .ok_or(error!(StoreError::PaymentTokenNotAllowed))?;
-        let game_payment_option = ctx
-            .accounts
-            .game_payment_option
-            .as_ref()
-            .ok_or(error!(StoreError::PriceNotFound))?;
-
-        // manual PDA checks (can't use #[account(seeds = …)] on Option<T>)
-        let (expected_apt, _) = Pubkey::find_program_address(
-            &[b"accepted_payment_token", payment_mint.key().as_ref()],
-            ctx.program_id,
-        );
-        require_keys_eq!(
-            accepted_payment_token.key(),
-            expected_apt,
-            StoreError::PaymentTokenNotAllowed
-        );
-        require!(
-            accepted_payment_token.active,
-            StoreError::PaymentTokenDisabled
-        );
-        require_keys_eq!(
-            accepted_payment_token.mint,
-            payment_mint.key(),
-            StoreError::PaymentTokenNotAllowed
-        );
-
-        let (expected_gpo, _) = Pubkey::find_program_address(
-            &[
-                b"game_payment_option",
-                ctx.accounts.game.key().as_ref(),
-                payment_mint.key().as_ref(),
-            ],
-            ctx.program_id,
-        );
-        require_keys_eq!(
-            game_payment_option.key(),
-            expected_gpo,
-            StoreError::PriceNotFound
-        );
-        require!(game_payment_option.active, StoreError::PriceNotFound);
-        require_keys_eq!(
-            game_payment_option.game,
-            ctx.accounts.game.key(),
-            StoreError::GamePaymentOptionMismatch
-        );
-        require_keys_eq!(
-            game_payment_option.mint,
-            payment_mint.key(),
-            StoreError::PaymentTokenNotAllowed
-        );
-
-        let base_price = game_payment_option.base_price;
-        let fp = compute_final_price(base_price, &ctx.accounts.game_store_config, now)?;
-        require!(paid_amount == fp, StoreError::InvalidPaymentAmount);
-
-        // token accounts (must all be present for paid flow)
-        let buyer_payment_account = ctx
-            .accounts
-            .buyer_payment_account
-            .as_ref()
-            .ok_or(error!(StoreError::Unauthorized))?;
-        let publisher_payment_account = ctx
-            .accounts
-            .publisher_payment_account
-            .as_ref()
-            .ok_or(error!(StoreError::Unauthorized))?;
-        let treasury_payment_account = ctx
-            .accounts
-            .treasury_payment_account
-            .as_ref()
-            .ok_or(error!(StoreError::InvalidTreasury))?;
-
-        require_keys_eq!(
-            buyer_payment_account.owner,
-            ctx.accounts.buyer.key(),
-            StoreError::Unauthorized
-        );
-        require_keys_eq!(
-            buyer_payment_account.mint,
-            payment_mint.key(),
-            StoreError::PaymentTokenNotAllowed
-        );
-        require_keys_eq!(
-            publisher_payment_account.owner,
-            ctx.accounts.game.publisher,
-            StoreError::Unauthorized
-        );
-        require_keys_eq!(
-            publisher_payment_account.mint,
-            payment_mint.key(),
-            StoreError::PaymentTokenNotAllowed
-        );
-        require_keys_eq!(
-            treasury_payment_account.owner,
-            ctx.accounts.store_config.treasury,
-            StoreError::InvalidTreasury
-        );
-        require_keys_eq!(
-            treasury_payment_account.mint,
-            payment_mint.key(),
-            StoreError::PaymentTokenNotAllowed
-        );
-
-        let referral = compute_effective_referral_bps(
-            &ctx.accounts.store_config,
-            &ctx.accounts.game_store_config,
-            referrer.is_some(),
-        )?;
-
-        let platform_fee_amount =
-            bps_amount(fp, ctx.accounts.store_config.platform_fee_bps)?;
-        let referral_amount = if referrer.is_some() {
-            bps_amount(fp, referral)?
-        } else {
-            0
-        };
-        let publisher_amount = fp
-            .checked_sub(platform_fee_amount)
-            .ok_or(StoreError::MathOverflow)?
-            .checked_sub(referral_amount)
-            .ok_or(StoreError::MathOverflow)?;
-
-        transfer_payment(
-            &ctx.accounts.token_program,
-            buyer_payment_account,
-            payment_mint,
-            treasury_payment_account,
-            &ctx.accounts.buyer,
-            platform_fee_amount,
-        )?;
-
-        transfer_payment(
-            &ctx.accounts.token_program,
-            buyer_payment_account,
-            payment_mint,
-            publisher_payment_account,
-            &ctx.accounts.buyer,
-            publisher_amount,
-        )?;
-
-        if referral_amount > 0 {
-            let referrer_key =
-                referrer.ok_or(StoreError::MissingReferrerTokenAccount)?;
-            let referrer_payment_account = ctx
+    let (final_price, payment_mint_key, effective_referral_bps) =
+        if let Some(chosen_mint) = mint_token {
+            // ── Paid game path ──────────────────────────────────────────
+            let payment_mint = ctx
                 .accounts
-                .referrer_payment_account
+                .payment_mint
                 .as_ref()
-                .ok_or(StoreError::MissingReferrerTokenAccount)?;
+                .ok_or(error!(StoreError::PaymentTokenNotAllowed))?;
+            require_keys_eq!(
+                payment_mint.key(),
+                chosen_mint,
+                StoreError::PaymentTokenNotAllowed
+            );
+
+            let accepted_payment_token = ctx
+                .accounts
+                .accepted_payment_token
+                .as_ref()
+                .ok_or(error!(StoreError::PaymentTokenNotAllowed))?;
+            let game_payment_option = ctx
+                .accounts
+                .game_payment_option
+                .as_ref()
+                .ok_or(error!(StoreError::PriceNotFound))?;
+
+            // manual PDA checks (can't use #[account(seeds = …)] on Option<T>)
+            let (expected_apt, _) = Pubkey::find_program_address(
+                &[b"accepted_payment_token", payment_mint.key().as_ref()],
+                ctx.program_id,
+            );
+            require_keys_eq!(
+                accepted_payment_token.key(),
+                expected_apt,
+                StoreError::PaymentTokenNotAllowed
+            );
+            require!(
+                accepted_payment_token.active,
+                StoreError::PaymentTokenDisabled
+            );
+            require_keys_eq!(
+                accepted_payment_token.mint,
+                payment_mint.key(),
+                StoreError::PaymentTokenNotAllowed
+            );
+
+            let (expected_gpo, _) = Pubkey::find_program_address(
+                &[
+                    b"game_payment_option",
+                    ctx.accounts.game.key().as_ref(),
+                    payment_mint.key().as_ref(),
+                ],
+                ctx.program_id,
+            );
+            require_keys_eq!(
+                game_payment_option.key(),
+                expected_gpo,
+                StoreError::PriceNotFound
+            );
+            require!(game_payment_option.active, StoreError::PriceNotFound);
+            require_keys_eq!(
+                game_payment_option.game,
+                ctx.accounts.game.key(),
+                StoreError::GamePaymentOptionMismatch
+            );
+            require_keys_eq!(
+                game_payment_option.mint,
+                payment_mint.key(),
+                StoreError::PaymentTokenNotAllowed
+            );
+
+            let base_price = game_payment_option.base_price;
+            let fp = compute_final_price(base_price, &ctx.accounts.game_store_config, now)?;
+
+            // token accounts (must all be present for paid flow)
+            let buyer_payment_account = ctx
+                .accounts
+                .buyer_payment_account
+                .as_ref()
+                .ok_or(error!(StoreError::Unauthorized))?;
+            let publisher_payment_account = ctx
+                .accounts
+                .publisher_payment_account
+                .as_ref()
+                .ok_or(error!(StoreError::Unauthorized))?;
+            let treasury_payment_account = ctx
+                .accounts
+                .treasury_payment_account
+                .as_ref()
+                .ok_or(error!(StoreError::InvalidTreasury))?;
 
             require_keys_eq!(
-                referrer_payment_account.owner,
-                referrer_key,
-                StoreError::InvalidReferrerTokenAccount
+                buyer_payment_account.owner,
+                ctx.accounts.buyer.key(),
+                StoreError::Unauthorized
             );
             require_keys_eq!(
-                referrer_payment_account.mint,
+                buyer_payment_account.mint,
                 payment_mint.key(),
-                StoreError::InvalidReferrerTokenAccount
+                StoreError::PaymentTokenNotAllowed
             );
+            require_keys_eq!(
+                publisher_payment_account.owner,
+                ctx.accounts.game.publisher,
+                StoreError::Unauthorized
+            );
+            require_keys_eq!(
+                publisher_payment_account.mint,
+                payment_mint.key(),
+                StoreError::PaymentTokenNotAllowed
+            );
+            require_keys_eq!(
+                treasury_payment_account.owner,
+                ctx.accounts.store_config.treasury,
+                StoreError::InvalidTreasury
+            );
+            require_keys_eq!(
+                treasury_payment_account.mint,
+                payment_mint.key(),
+                StoreError::PaymentTokenNotAllowed
+            );
+
+            let referral = compute_effective_referral_bps(
+                &ctx.accounts.store_config,
+                &ctx.accounts.game_store_config,
+                referrer.is_some(),
+            )?;
+
+            let platform_fee_amount =
+                bps_amount(fp, ctx.accounts.store_config.platform_fee_bps)?;
+            let referral_amount = if referrer.is_some() {
+                bps_amount(fp, referral)?
+            } else {
+                0
+            };
+            let publisher_amount = fp
+                .checked_sub(platform_fee_amount)
+                .ok_or(StoreError::MathOverflow)?
+                .checked_sub(referral_amount)
+                .ok_or(StoreError::MathOverflow)?;
 
             transfer_payment(
                 &ctx.accounts.token_program,
                 buyer_payment_account,
                 payment_mint,
-                referrer_payment_account,
+                treasury_payment_account,
                 &ctx.accounts.buyer,
-                referral_amount,
+                platform_fee_amount,
             )?;
-        }
 
-        (fp, payment_mint.key(), referral)
-    } else {
-        // ── Free game path ──────────────────────────────────────────────
-        (0u64, Pubkey::default(), 0u16)
-    };
+            transfer_payment(
+                &ctx.accounts.token_program,
+                buyer_payment_account,
+                payment_mint,
+                publisher_payment_account,
+                &ctx.accounts.buyer,
+                publisher_amount,
+            )?;
+
+            if referral_amount > 0 {
+                let referrer_key =
+                    referrer.ok_or(StoreError::MissingReferrerTokenAccount)?;
+                let referrer_payment_account = ctx
+                    .accounts
+                    .referrer_payment_account
+                    .as_ref()
+                    .ok_or(StoreError::MissingReferrerTokenAccount)?;
+
+                require_keys_eq!(
+                    referrer_payment_account.owner,
+                    referrer_key,
+                    StoreError::InvalidReferrerTokenAccount
+                );
+                require_keys_eq!(
+                    referrer_payment_account.mint,
+                    payment_mint.key(),
+                    StoreError::InvalidReferrerTokenAccount
+                );
+
+                transfer_payment(
+                    &ctx.accounts.token_program,
+                    buyer_payment_account,
+                    payment_mint,
+                    referrer_payment_account,
+                    &ctx.accounts.buyer,
+                    referral_amount,
+                )?;
+            }
+
+            (fp, payment_mint.key(), referral)
+        } else {
+            // ── Free game path ──────────────────────────────────────────
+            (0u64, Pubkey::default(), 0u16)
+        };
 
     // ── License minting (common to both paths) ─────────────────────────
     let (expected_license, _) = Pubkey::find_program_address(
@@ -338,7 +348,7 @@ pub(crate) fn handler(ctx: Context<BuyGame>, paid_amount: u64, referrer: Option<
     receipt.buyer = ctx.accounts.buyer.key();
     receipt.game = ctx.accounts.game.key();
     receipt.payment_mint = payment_mint_key;
-    receipt.paid_amount = paid_amount;
+    receipt.paid_amount = final_price;
     receipt.final_price = final_price;
     receipt.referrer = referrer_key;
     receipt.referral_bps_applied = effective_referral_bps;

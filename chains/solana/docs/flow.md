@@ -87,7 +87,7 @@
 - When `base_price = Some(price)` → paid game, payment option created
 - When `base_price = None` → free game, only store config created
 - A game can have **0, 1, or many** `GamePaymentOption` PDAs (one per accepted mint)
-- Free game (0 payment options): buyers call `buy_game(paid_amount=0)` — payment accounts are optional, license is minted directly
+- Free game (0 payment options): buyers call `buy_game(mint_token = None)` — payment accounts are optional, license is minted directly
 
 ## PDAs
 
@@ -120,8 +120,8 @@
 ```
 ┌─────────────────────────────────────────┐
 │               BUY GAME                  │
-│     buyer calls buy_game(paid_amount,   │
-│           referrer?)                    │
+│  buyer calls buy_game(mint_token,       │
+│        referrer?)                       │
 └─────────────────────────────────────────┘
                     │
                     ▼
@@ -133,7 +133,7 @@
     └───────────────────────────────┘
                     │
                     ▼
-            paid_amount > 0 ?
+            mint_token.is_some()?
                     │
          ┌──────────┴──────────┐
          │ yes (PAID)          │ no (FREE)
@@ -155,11 +155,7 @@
  │  final_price         │             │
  │  (apply discount)    │             │
  │                      │             │
- │ 2d. Require          │             │
- │  paid_amount ==      │             │
- │  final_price         │             │
- │                      │             │
- │ 2e. Validate token   │             │
+ │ 2d. Validate token   │             │
  │  accounts (buyer,    │             │
  │  publisher, treasury)│             │
  │                      │             │
@@ -218,7 +214,7 @@
 
 ## Payment Accounts (per path)
 
-| Account | Paid (`> 0`) | Free (`== 0`) | Notes |
+| Account | Paid (`mint_token = Some`) | Free (`mint_token = None`) | Notes |
 |---------|:-----------:|:------------:|-------|
 | `payment_mint` | Must be `Some` | Must be `None` | SPL mint chosen by buyer |
 | `accepted_payment_token` | Must be `Some`, active | Must be `None` | Manual PDA validation |

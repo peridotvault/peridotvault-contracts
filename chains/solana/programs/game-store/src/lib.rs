@@ -113,9 +113,9 @@ pub mod game_store {
 
     pub fn buy_game(
         ctx: Context<BuyGame>,
-        paid_amount: u64,
+        mint_token: Option<Pubkey>,
         referrer: Option<Pubkey>,
     ) -> Result<()> {
-        buy_game::handler(ctx, paid_amount, referrer)
+        buy_game::handler(ctx, mint_token, referrer)
     }
 }

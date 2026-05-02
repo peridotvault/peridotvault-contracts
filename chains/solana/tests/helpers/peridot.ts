@@ -561,19 +561,108 @@ export async function configureStoreForGame(
 export async function buyGameForBuyer(
   base: BaseFixture,
   game: GameFixture,
-  paidAmount: number,
+  mintToken: PublicKey | null,
   opts?: {
     buyer?: Keypair;
-    paymentMint?: PublicKey;
     referrer?: PublicKey | null;
   },
 ): Promise<{ buyer: Keypair; purchaseReceiptPda: PublicKey }> {
   const buyer = opts?.buyer ?? base.gamer;
-  const paymentMint = opts?.paymentMint ?? base.paymentMint;
   const referrer = opts?.referrer ?? null;
 
   await maybeFundSigner(base.provider, buyer);
 
+  const gameStoreConfigPda = derivePda(
+    [Buffer.from("game_store_config"), game.gamePda.toBuffer()],
+    base.storeProgram.programId,
+  );
+  const purchaseReceiptPda = derivePda(
+    [
+      Buffer.from("purchase_receipt"),
+      buyer.publicKey.toBuffer(),
+      game.gamePda.toBuffer(),
+    ],
+    base.storeProgram.programId,
+  );
+  const licensePda = derivePda(
+    [Buffer.from("license"), buyer.publicKey.toBuffer(), game.gamePda.toBuffer()],
+    base.pglProgram.programId,
+  );
+
+  if (mintToken === null) {
+    // ── Free game path ──────────────────────────────────────────────
+    return base.storeProgram.methods
+      .buyGame(null, referrer)
+      .accounts({
+        buyer: buyer.publicKey,
+        storeConfig: base.storeConfigPda,
+        authorizedSourceProgram: base.authorizedSourceProgramPda,
+        sourceProgram: base.pglProgram.programId,
+        authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+        registryProgram: base.registryProgram.programId,
+        game: game.gamePda,
+        registryGame: game.registryGamePda,
+        gameStoreConfig: gameStoreConfigPda,
+        paymentMint: null,
+        acceptedPaymentToken: null,
+        gamePaymentOption: null,
+        buyerPaymentAccount: null,
+        publisherPaymentAccount: null,
+        treasuryPaymentAccount: null,
+        referrerPaymentAccount: null,
+        storeActor: base.authority.publicKey,
+        authorizedActor: base.storeActorAuthorizedPda,
+        pgl1Program: base.pglProgram.programId,
+        license: licensePda,
+        purchaseReceipt: purchaseReceiptPda,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([buyer])
+      .rpc()
+      .then(() => ({ buyer, purchaseReceiptPda }));
+  }
+
+  // ── Paid game path ────────────────────────────────────────────────
+  const paymentMint = mintToken;
+
+  const storeAcceptedPaymentTokenPda = derivePda(
+    [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
+    base.storeProgram.programId,
+  );
+  const gamePaymentOptionPda = derivePda(
+    [
+      Buffer.from("game_payment_option"),
+      game.gamePda.toBuffer(),
+      paymentMint.toBuffer(),
+    ],
+    base.storeProgram.programId,
+  );
+
+  // Fetch on-chain price and discount config
+  const [gpoAccount, storeCfgAccount] = await Promise.all([
+    base.storeProgram.account.gamePaymentOption.fetch(gamePaymentOptionPda) as any,
+    base.storeProgram.account.gameStoreConfig.fetch(gameStoreConfigPda) as any,
+  ]);
+
+  const basePrice = gpoAccount.basePrice.toNumber();
+  let finalPrice = basePrice;
+
+  if (storeCfgAccount.discountBps !== null && storeCfgAccount.discountBps !== undefined) {
+    const bps = storeCfgAccount.discountBps;
+    const now = Math.floor(Date.now() / 1000);
+    const startsAt = storeCfgAccount.discountStartsAt?.toNumber?.() ?? null;
+    const expiresAt = storeCfgAccount.discountExpiresAt?.toNumber?.() ?? null;
+
+    if (
+      (startsAt === null || now >= startsAt) &&
+      (expiresAt === null || now <= expiresAt)
+    ) {
+      finalPrice = basePrice - Math.floor(basePrice * bps / 10_000);
+    }
+  }
+
+  // Token accounts
   const buyerPaymentAta = await getOrCreateAssociatedTokenAccount(
     base.provider.connection,
     base.authority,
@@ -613,40 +702,11 @@ export async function buyGameForBuyer(
     paymentMint,
     buyerPaymentAta.address,
     base.authority,
-    paidAmount,
+    finalPrice,
   );
 
-  const gameStoreConfigPda = derivePda(
-    [Buffer.from("game_store_config"), game.gamePda.toBuffer()],
-    base.storeProgram.programId,
-  );
-  const storeAcceptedPaymentTokenPda = derivePda(
-    [Buffer.from("accepted_payment_token"), paymentMint.toBuffer()],
-    base.storeProgram.programId,
-  );
-  const gamePaymentOptionPda = derivePda(
-    [
-      Buffer.from("game_payment_option"),
-      game.gamePda.toBuffer(),
-      paymentMint.toBuffer(),
-    ],
-    base.storeProgram.programId,
-  );
-  const purchaseReceiptPda = derivePda(
-    [
-      Buffer.from("purchase_receipt"),
-      buyer.publicKey.toBuffer(),
-      game.gamePda.toBuffer(),
-    ],
-    base.storeProgram.programId,
-  );
-  const licensePda = derivePda(
-    [Buffer.from("license"), buyer.publicKey.toBuffer(), game.gamePda.toBuffer()],
-    base.pglProgram.programId,
-  );
-
-  let builder = base.storeProgram.methods
-    .buyGame(new anchor.BN(paidAmount), referrer)
+  await base.storeProgram.methods
+    .buyGame(mintToken, referrer)
     .accounts({
       buyer: buyer.publicKey,
       storeConfig: base.storeConfigPda,
@@ -672,9 +732,8 @@ export async function buyGameForBuyer(
       tokenProgram: TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
     })
-    .signers([buyer]);
-
-  await builder.rpc();
+    .signers([buyer])
+    .rpc();
 
   return { buyer, purchaseReceiptPda };
 }
