@@ -11,11 +11,9 @@
 ## Current Integration Status
 
 - **Status:** Active integration (settlement + license mint sudah hidup)
-- `buy_game` saat ini sudah menjalankan:
-  - Validasi source/registry/token/listing
-  - SPL token settlement (treasury, publisher, optional referrer)
-  - CPI mint license ke PGL-1
-  - Pembuatan purchase receipt + event
+- `buy_game` supports both **paid** and **free** games:
+  - **Paid** (`paid_amount > 0`): validasi payment option, accepted token, listing; SPL token settlement (treasury, publisher, optional referrer); CPI mint license ke PGL-1; pembuatan purchase receipt + event
+  - **Free** (`paid_amount == 0`): semua payment accounts optional; langsung CPI mint license ke PGL-1; pembuatan purchase receipt + event
 
 ## Overview
 
@@ -126,6 +124,8 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 
 ### 5. GamePaymentOption
 
+Per-game per-mint pricing. A game can have **0, 1, or many** `GamePaymentOption` accounts — one per accepted mint. Games with 0 payment options are **free games** (no payment required; `buy_game(paid_amount=0)` skips settlement and just mints the license).
+
 | Field | Type |
 |-------|------|
 | game | `Pubkey` |
@@ -188,7 +188,7 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 | `clear_discount` | Publisher | Publisher owner, source (role=0) authorized active, reset discount fields ke None |
 | `set_referral_bps` | Publisher | Publisher owner, source (role=0) authorized active, `value <= max_referral_bps`, normalisasi `Some(0) -> None` |
 | `set_store_actor` | Admin Store | `has_one authority`, `new_store_actor != default` |
-| `buy_game` | Buyer (+ store_actor sebagai signer terpisah) | Registry Active, listing aktif, `paid_amount == final_price`, token accounts konsisten, store_actor authorized di PGL-1, **license PDA harus kosong**, mint license via CPI + receipt write (simpan `referrer` jika ada) |
+| `buy_game` | Buyer (+ store_actor sebagai signer terpisah) | Registry Active, store config active. **Paid path** (`paid_amount > 0`): payment option must exist & active, `paid_amount == final_price`, token accounts must be consistent, settlement occurs. **Free path** (`paid_amount == 0`): payment accounts optional — skips all settlement, mints license directly. Both paths: store_actor authorized di PGL-1, **license PDA harus kosong**, mint license via CPI + receipt write (simpan `referrer` jika ada, `payment_mint=Pubkey::default()` untuk free). |
 
 ## Flow Per Instruction
 
@@ -285,22 +285,32 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 - Update store_actor
 
 ### 18. `buy_game(paid_amount, referrer)`
-- Validasi registry status, listing status, payment mint, dan final price
-- **Validasi ownership:** license PDA wajib kosong (belum pernah beli ATAU license sudah expired/burned/closed)
-- Hitung split nominal:
-  - `platform_fee_amount`
-  - `publisher_amount`
-  - `referral_amount` (jika `referrer` provided)
-- Transfer SPL token buyer -> treasury
-- Transfer SPL token buyer -> publisher
-- Jika `referral_amount > 0`, transfer buyer -> referrer (dengan validasi token account referrer)
-- CPI `pgl1::mint_license` menggunakan `store_actor` yang authorized
-- Simpan/update purchase_receipt (termasuk `referrer` pubkey) dan emit event
+- Validasi registry status active, store config active
+- **PAID PATH** (`paid_amount > 0`):
+  - Validasi payment option exists & active (manual PDA check: `["game_payment_option", game, payment_mint]`)
+  - Validasi accepted payment token exists & active (manual PDA check: `["accepted_payment_token", payment_mint]`)
+  - Validasi `paid_amount == final_price` (termasuk discount jika ada)
+  - Validasi token account ownership/mint consistency (buyer, publisher, treasury)
+  - Hitung split:
+    - `platform_fee_amount` = `final_price * platform_fee_bps / 10_000`
+    - `referral_amount` = `final_price * effective_referral_bps / 10_000` (jika referrer provided)
+    - `publisher_amount` = `final_price - platform_fee - referral`
+  - Transfer SPL: buyer → treasury, buyer → publisher, buyer → referrer (jika referral > 0)
+- **FREE PATH** (`paid_amount == 0`):
+  - Payment accounts (`payment_mint`, `accepted_payment_token`, `game_payment_option`, `buyer_payment_account`, `publisher_payment_account`, `treasury_payment_account`, `referrer_payment_account`) are **optional** — pass `None`/not provided
+  - No settlement transfers
+  - `payment_mint` recorded as `Pubkey::default()` in receipt
+- **Both paths:**
+  - **Validasi ownership:** license PDA wajib kosong (belum pernah beli / license sudah expired/burned/closed)
+  - CPI `pgl1::mint_license` menggunakan `store_actor` yang authorized
+  - Simpan/update purchase_receipt (termasuk `referrer` pubkey) dan emit event
 
 ## Buy Flow (Current vs Target)
 
 ### Current
-- Settlement SPL token + mint license + receipt sudah aktif
+- **Paid games:** SPL token settlement + mint license + receipt sudah aktif
+- **Free games:** `buy_game(paid_amount=0)` — skip payment directly mint license, semua payment accounts optional
+- **Multi-token pricing:** satu game bisa punya multiple `GamePaymentOption` (USDC, SOL, dll), buyer pilih dengan passing `payment_mint` yang diinginkan
 
 ### Target lanjutan (belum ada)
 - Refund/cancel flow
@@ -311,10 +321,11 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 
 1. `initialize_store` sudah dijalankan
 2. `authorized_program` sudah aktif (source role=0 + registry role=1)
-3. `accepted_payment_token` store sudah aktif
+3. `accepted_payment_token` store sudah aktif (hanya diperlukan untuk **paid** game)
 4. Game sudah terdaftar di Registry dengan status `Active`
-5. `init_game_store_config` + `set_game_payment_option` sudah dilakukan publisher
-6. `store_actor` ada di PGL-1 `authorized_actor` dan status active
+5. `init_game_store_config` sudah dilakukan publisher/registry
+6. `set_game_payment_option` sudah dilakukan publisher/registry (**hanya untuk paid** game; free games skip this)
+7. `store_actor` ada di PGL-1 `authorized_actor` dan status active
 
 ## Events
 
@@ -354,7 +365,7 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 | `PaymentTokenNotAllowed` | Payment mint tidak ada di allowlist |
 | `PaymentTokenDisabled` | Payment token ada tapi status tidak active |
 | `InvalidPrice` | Base price tidak valid (<= 0) |
-| `PriceNotFound` | Payment option tidak aktif |
+| `PriceNotFound` | `GamePaymentOption` PDA tidak ditemukan atau tidak aktif (free game: lewati dengan `paid_amount=0`) |
 | `StoreGameInactive` | Game store config tidak active |
 | `GameNotActive` | Game tidak active di registry |
 | `GameNotRegistered` | Game tidak terdaftar |
@@ -363,7 +374,7 @@ Game Store adalah commerce layer untuk game canonical dari PGL-1 + Registry.
 | `InvalidDiscountWindow` | Discount start >= end |
 | `InvalidReferralBps` | Referral BPS + platform fee melebihi 10_000 |
 | `MathOverflow` | Operasi aritmatika overflow |
-| `InvalidPaymentAmount` | Paid amount tidak match final price atau <= 0 |
+| `InvalidPaymentAmount` | Paid amount tidak match final price, atau paid_amount <= 0 untuk paid game, atau paid_amount != 0 untuk free game |
 | `UnsupportedSourceGameOwner` | Owner game dari source program tidak didukung |
 | `RegistryGameMismatch` | Game PDA tidak match dengan registry_game.game |
 | `PaymentFailed` | Transfer SPL token gagal |
