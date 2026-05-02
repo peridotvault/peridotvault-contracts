@@ -31,6 +31,7 @@ pub(crate) fn handler(ctx: Context<MintLicense>, expires_at: Option<i64>) -> Res
 
     emit!(LicenseMinted {
         license: license.key(),
+        actor: ctx.accounts.actor.key(),
         holder: license.holder,
         game: license.game,
         issued_at: now,

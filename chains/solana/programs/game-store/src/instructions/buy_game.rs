@@ -50,8 +50,10 @@ pub struct BuyGame<'info> {
     pub game_store_config: Box<Account<'info, GameStoreConfig>>,
 
     pub payment_mint: Option<Box<InterfaceAccount<'info, Mint>>>,
-    pub accepted_payment_token: Option<Box<Account<'info, AcceptedPaymentToken>>>,
-    pub game_payment_option: Option<Box<Account<'info, GamePaymentOption>>>,
+    /// CHECK: validated manually in handler via PDA derivation for paid path.
+    pub accepted_payment_token: Option<UncheckedAccount<'info>>,
+    /// CHECK: validated manually in handler via PDA derivation for paid path.
+    pub game_payment_option: Option<UncheckedAccount<'info>>,
     #[account(mut)]
     pub buyer_payment_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
     #[account(mut)]
@@ -129,16 +131,22 @@ pub(crate) fn handler(
                 StoreError::PaymentTokenNotAllowed
             );
 
-            let accepted_payment_token = ctx
+            let apt_unchecked = ctx
                 .accounts
                 .accepted_payment_token
                 .as_ref()
                 .ok_or(error!(StoreError::PaymentTokenNotAllowed))?;
-            let game_payment_option = ctx
+            let apt_data = apt_unchecked.try_borrow_data()?;
+            let mut apt_slice = apt_data.as_ref();
+            let accepted_payment_token = AcceptedPaymentToken::try_deserialize(&mut apt_slice)?;
+            let gpo_unchecked = ctx
                 .accounts
                 .game_payment_option
                 .as_ref()
                 .ok_or(error!(StoreError::PriceNotFound))?;
+            let gpo_data = gpo_unchecked.try_borrow_data()?;
+            let mut gpo_slice = gpo_data.as_ref();
+            let game_payment_option = GamePaymentOption::try_deserialize(&mut gpo_slice)?;
 
             // manual PDA checks (can't use #[account(seeds = …)] on Option<T>)
             let (expected_apt, _) = Pubkey::find_program_address(
@@ -146,7 +154,7 @@ pub(crate) fn handler(
                 ctx.program_id,
             );
             require_keys_eq!(
-                accepted_payment_token.key(),
+                apt_unchecked.key(),
                 expected_apt,
                 StoreError::PaymentTokenNotAllowed
             );
@@ -169,7 +177,7 @@ pub(crate) fn handler(
                 ctx.program_id,
             );
             require_keys_eq!(
-                game_payment_option.key(),
+                gpo_unchecked.key(),
                 expected_gpo,
                 StoreError::PriceNotFound
             );

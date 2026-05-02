@@ -43,7 +43,7 @@ export type GameFixture = {
 export type StoreGameFixture = {
   gameStoreConfigPda: PublicKey;
   gamePaymentOptionPda: PublicKey;
-  paymentMint: PublicKey;
+  payment_mint: PublicKey;
   basePrice: number;
 };
 
@@ -55,9 +55,9 @@ export type BaseFixture = {
   publisher: Keypair;
   gamer: Keypair;
   pglProgram: any;
-  registryProgram: any;
+  registry_program: any;
   storeProgram: any;
-  paymentMint: PublicKey;
+  payment_mint: PublicKey;
   pglConfigPda: PublicKey;
   registryConfigPda: PublicKey;
   storeConfigPda: PublicKey;
@@ -148,7 +148,7 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
       .accounts({
         authority: authority.publicKey,
         pglConfig: pglConfigPda,
-        systemProgram: SystemProgram.programId,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -159,7 +159,7 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
       .accounts({
         authority: authority.publicKey,
         config: registryConfigPda,
-        systemProgram: SystemProgram.programId,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -175,8 +175,8 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
       )
       .accounts({
         authority: authority.publicKey,
-        storeConfig: storeConfigPda,
-        systemProgram: SystemProgram.programId,
+        store_config: storeConfigPda,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -205,8 +205,8 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
         authority: authority.publicKey,
         config: registryConfigPda,
         mint: paymentMint,
-        acceptedPaymentToken: registryAcceptedPaymentTokenPda,
-        systemProgram: SystemProgram.programId,
+        accepted_payment_token: registryAcceptedPaymentTokenPda,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -216,10 +216,10 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
       .addPaymentToken()
       .accounts({
         authority: authority.publicKey,
-        storeConfig: storeConfigPda,
+        store_config: storeConfigPda,
         mint: paymentMint,
-        acceptedPaymentToken: storeAcceptedPaymentTokenPda,
-        systemProgram: SystemProgram.programId,
+        accepted_payment_token: storeAcceptedPaymentTokenPda,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -238,10 +238,10 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
       .addAuthorizedProgram(ROLE_SOURCE)
       .accounts({
         authority: authority.publicKey,
-        storeConfig: storeConfigPda,
+        store_config: storeConfigPda,
         programId: pglProgram.programId,
         authorizedProgram: authorizedSourceProgramPda,
-        systemProgram: SystemProgram.programId,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -251,10 +251,10 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
       .addAuthorizedProgram(ROLE_REGISTRY)
       .accounts({
         authority: authority.publicKey,
-        storeConfig: storeConfigPda,
+        store_config: storeConfigPda,
         programId: registryProgram.programId,
         authorizedProgram: authorizedRegistryProgramPda,
-        systemProgram: SystemProgram.programId,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -270,8 +270,8 @@ async function initializeBaseFixture(): Promise<BaseFixture> {
         authority: authority.publicKey,
         actor: authority.publicKey,
         pglConfig: pglConfigPda,
-        authorizedActor: storeActorAuthorizedPda,
-        systemProgram: SystemProgram.programId,
+        authorized_actor: storeActorAuthorizedPda,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -404,17 +404,19 @@ export async function createRegisteredGame(
     base.registryProgram.programId,
   );
 
-  await base.registryProgram.methods
-    .createPublishGrant(null)
-    .accounts({
-      authority: base.authority.publicKey,
-      config: base.registryConfigPda,
-      publisher: publisher.publicKey,
-      publishGrant: publishGrantPda,
-      systemProgram: SystemProgram.programId,
-    })
-    .signers([publisher])
-    .rpc();
+  if (!(await accountExists(base.provider.connection, publishGrantPda))) {
+    await base.registryProgram.methods
+      .createPublishGrant(null)
+      .accounts({
+        authority: base.authority.publicKey,
+        config: base.registryConfigPda,
+        publisher: publisher.publicKey,
+        publishGrant: publishGrantPda,
+        system_program: SystemProgram.programId,
+      })
+      .signers([publisher])
+      .rpc();
+  }
 
   const pglConfig = (await base.pglProgram.account.pglConfig.fetch(
     base.pglConfigPda,
@@ -430,23 +432,23 @@ export async function createRegisteredGame(
     .accounts({
       publisher: publisher.publicKey,
       config: base.registryConfigPda,
-      paymentMint: base.paymentMint,
-      acceptedPaymentToken: base.registryAcceptedPaymentTokenPda,
-      publisherPaymentAccount: publisherPaymentAta.address,
-      treasuryPaymentAccount: treasuryPaymentAta.address,
-      registryGame: registryGamePda,
+      payment_mint: base.paymentMint,
+      accepted_payment_token: base.registryAcceptedPaymentTokenPda,
+      publisher_payment_account: publisherPaymentAta.address,
+      treasury_payment_account: treasuryPaymentAta.address,
+      registry_game: registryGamePda,
       game: gamePda,
       pglCreatorState: creatorStatePda,
       pglConfig: base.pglConfigPda,
       pglTreasury: pglConfig.treasury,
-      pgl1Program: base.pglProgram.programId,
+      pgl1_program: base.pglProgram.programId,
       storeProgram: base.storeProgram.programId,
       storeAuthorizedSourceProgram: base.authorizedSourceProgramPda,
       storeAuthorizedRegistryProgram: base.authorizedRegistryProgramPda,
       storeGameStoreConfig: storeGameStoreConfigPda,
-      selfProgram: base.registryProgram.programId,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
+      self_program: base.registryProgram.programId,
+      token_program: TOKEN_PROGRAM_ID,
+      system_program: SystemProgram.programId,
     })
     .remainingAccounts([
       {
@@ -491,10 +493,10 @@ export async function configureStoreForGame(
       .addPaymentToken()
       .accounts({
         authority: base.authority.publicKey,
-        storeConfig: base.storeConfigPda,
+        store_config: base.storeConfigPda,
         mint: paymentMint,
-        acceptedPaymentToken: storeAcceptedPaymentTokenPda,
-        systemProgram: SystemProgram.programId,
+        accepted_payment_token: storeAcceptedPaymentTokenPda,
+        system_program: SystemProgram.programId,
       })
       .rpc();
   }
@@ -509,14 +511,14 @@ export async function configureStoreForGame(
       .initGameStoreConfig(active)
       .accounts({
         publisher: game.publisher.publicKey,
-        authorizedSourceProgram: base.authorizedSourceProgramPda,
-        sourceProgram: base.pglProgram.programId,
-        authorizedRegistryProgram: base.authorizedRegistryProgramPda,
-        registryProgram: base.registryProgram.programId,
+        authorized_source_program: base.authorizedSourceProgramPda,
+        source_program: base.pglProgram.programId,
+        authorized_registry_program: base.authorizedRegistryProgramPda,
+        registry_program: base.registryProgram.programId,
         game: game.gamePda,
-        registryGame: game.registryGamePda,
-        gameStoreConfig: gameStoreConfigPda,
-        systemProgram: SystemProgram.programId,
+        registry_game: game.registryGamePda,
+        game_store_config: gameStoreConfigPda,
+        system_program: SystemProgram.programId,
       })
       .signers([game.publisher])
       .rpc();
@@ -535,17 +537,17 @@ export async function configureStoreForGame(
     .setGamePaymentOption(new anchor.BN(basePrice), active)
     .accounts({
       publisher: game.publisher.publicKey,
-      authorizedSourceProgram: base.authorizedSourceProgramPda,
-      sourceProgram: base.pglProgram.programId,
-      authorizedRegistryProgram: base.authorizedRegistryProgramPda,
-      registryProgram: base.registryProgram.programId,
+      authorized_source_program: base.authorizedSourceProgramPda,
+      source_program: base.pglProgram.programId,
+      authorized_registry_program: base.authorizedRegistryProgramPda,
+      registry_program: base.registryProgram.programId,
       game: game.gamePda,
-      registryGame: game.registryGamePda,
-      gameStoreConfig: gameStoreConfigPda,
+      registry_game: game.registryGamePda,
+      game_store_config: gameStoreConfigPda,
       mint: paymentMint,
-      acceptedPaymentToken: storeAcceptedPaymentTokenPda,
-      gamePaymentOption: gamePaymentOptionPda,
-      systemProgram: SystemProgram.programId,
+      accepted_payment_token: storeAcceptedPaymentTokenPda,
+      game_payment_option: gamePaymentOptionPda,
+      system_program: SystemProgram.programId,
     })
     .signers([game.publisher])
     .rpc();
@@ -595,28 +597,28 @@ export async function buyGameForBuyer(
       .buyGame(null, referrer)
       .accounts({
         buyer: buyer.publicKey,
-        storeConfig: base.storeConfigPda,
-        authorizedSourceProgram: base.authorizedSourceProgramPda,
-        sourceProgram: base.pglProgram.programId,
-        authorizedRegistryProgram: base.authorizedRegistryProgramPda,
-        registryProgram: base.registryProgram.programId,
+        store_config: base.storeConfigPda,
+        authorized_source_program: base.authorizedSourceProgramPda,
+        source_program: base.pglProgram.programId,
+        authorized_registry_program: base.authorizedRegistryProgramPda,
+        registry_program: base.registryProgram.programId,
         game: game.gamePda,
-        registryGame: game.registryGamePda,
-        gameStoreConfig: gameStoreConfigPda,
-        paymentMint: null,
-        acceptedPaymentToken: null,
-        gamePaymentOption: null,
-        buyerPaymentAccount: null,
-        publisherPaymentAccount: null,
-        treasuryPaymentAccount: null,
-        referrerPaymentAccount: null,
-        storeActor: base.authority.publicKey,
-        authorizedActor: base.storeActorAuthorizedPda,
-        pgl1Program: base.pglProgram.programId,
+        registry_game: game.registryGamePda,
+        game_store_config: gameStoreConfigPda,
+        payment_mint: null,
+        accepted_payment_token: null,
+        game_payment_option: null,
+        buyer_payment_account: null,
+        publisher_payment_account: null,
+        treasury_payment_account: null,
+        referrer_payment_account: null,
+        store_actor: base.authority.publicKey,
+        authorized_actor: base.storeActorAuthorizedPda,
+        pgl1_program: base.pglProgram.programId,
         license: licensePda,
-        purchaseReceipt: purchaseReceiptPda,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        systemProgram: SystemProgram.programId,
+        purchase_receipt: purchaseReceiptPda,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: SystemProgram.programId,
       })
       .signers([buyer])
       .rpc()
@@ -709,28 +711,28 @@ export async function buyGameForBuyer(
     .buyGame(mintToken, referrer)
     .accounts({
       buyer: buyer.publicKey,
-      storeConfig: base.storeConfigPda,
-      authorizedSourceProgram: base.authorizedSourceProgramPda,
-      sourceProgram: base.pglProgram.programId,
-      authorizedRegistryProgram: base.authorizedRegistryProgramPda,
-      registryProgram: base.registryProgram.programId,
+      store_config: base.storeConfigPda,
+      authorized_source_program: base.authorizedSourceProgramPda,
+      source_program: base.pglProgram.programId,
+      authorized_registry_program: base.authorizedRegistryProgramPda,
+      registry_program: base.registryProgram.programId,
       game: game.gamePda,
-      registryGame: game.registryGamePda,
-      gameStoreConfig: gameStoreConfigPda,
+      registry_game: game.registryGamePda,
+      game_store_config: gameStoreConfigPda,
       paymentMint,
-      acceptedPaymentToken: storeAcceptedPaymentTokenPda,
-      gamePaymentOption: gamePaymentOptionPda,
-      buyerPaymentAccount: buyerPaymentAta.address,
-      publisherPaymentAccount: publisherPaymentAta.address,
-      treasuryPaymentAccount: treasuryPaymentAta.address,
-      referrerPaymentAccount: referrerPaymentAta?.address ?? null,
-      storeActor: base.authority.publicKey,
-      authorizedActor: base.storeActorAuthorizedPda,
-      pgl1Program: base.pglProgram.programId,
+      accepted_payment_token: storeAcceptedPaymentTokenPda,
+      game_payment_option: gamePaymentOptionPda,
+      buyer_payment_account: buyerPaymentAta.address,
+      publisher_payment_account: publisherPaymentAta.address,
+      treasury_payment_account: treasuryPaymentAta.address,
+      referrer_payment_account: referrerPaymentAta?.address ?? null,
+      store_actor: base.authority.publicKey,
+      authorized_actor: base.storeActorAuthorizedPda,
+      pgl1_program: base.pglProgram.programId,
       license: licensePda,
-      purchaseReceipt: purchaseReceiptPda,
-      tokenProgram: TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
+      purchase_receipt: purchaseReceiptPda,
+      token_program: TOKEN_PROGRAM_ID,
+      system_program: SystemProgram.programId,
     })
     .signers([buyer])
     .rpc();

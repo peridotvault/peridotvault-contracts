@@ -25,6 +25,7 @@ pub(crate) fn handler(ctx: Context<RenewLicense>, expires_at: i64) -> Result<()>
 
     emit!(LicenseRenewed {
         license: license.key(),
+        actor: ctx.accounts.actor.key(),
         holder: license.holder,
         game: license.game,
         old_expires_at,

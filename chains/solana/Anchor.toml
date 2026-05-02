@@ -12,9 +12,9 @@ pgl1 = "GAt9373oMr9Ykc1Auudy4wNR9PL7tRPaXMwSKiYpyQpP"
 registry = "G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE"
 
 [programs.localnet]
-game_store = "G9roe9Dm2Rr261z3xKNcNKcFeQ5wovr8VwEwRDQ8YJVs"
-pgl1 = "7ddrr9b2ReD17kk73LLnW88tVT4fEpzGEY4rPb8hbQtT"
-registry = "CxQCfVWCBE6tLwmEi3z7gXpniR21UyjvVvE6VytVcnyf"
+game_store = "5fcEaw6eMUeCLzhEqzqqL5HczQm1yj9GZjQQeqL66h5g"
+pgl1 = "GAt9373oMr9Ykc1Auudy4wNR9PL7tRPaXMwSKiYpyQpP"
+registry = "G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE"
 
 [registry]
 url = "https://api.apr.dev"

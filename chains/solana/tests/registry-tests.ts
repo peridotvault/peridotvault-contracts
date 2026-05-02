@@ -79,8 +79,8 @@ describe("registry program", () => {
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
           mint: newMint.publicKey,
-          acceptedPaymentToken: acceptedTokenPda,
-          systemProgram: SystemProgram.programId,
+          accepted_payment_token: acceptedTokenPda,
+          system_program: SystemProgram.programId,
         })
         .rpc();
 
@@ -106,8 +106,8 @@ describe("registry program", () => {
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
           mint: newMint.publicKey,
-          acceptedPaymentToken: acceptedTokenPda,
-          systemProgram: SystemProgram.programId,
+          accepted_payment_token: acceptedTokenPda,
+          system_program: SystemProgram.programId,
         })
         .rpc();
 
@@ -117,7 +117,7 @@ describe("registry program", () => {
         .accounts({
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
-          acceptedPaymentToken: acceptedTokenPda,
+          accepted_payment_token: acceptedTokenPda,
         })
         .rpc();
 
@@ -142,8 +142,8 @@ describe("registry program", () => {
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
           mint: newMint.publicKey,
-          acceptedPaymentToken: acceptedTokenPda,
-          systemProgram: SystemProgram.programId,
+          accepted_payment_token: acceptedTokenPda,
+          system_program: SystemProgram.programId,
         })
         .rpc();
 
@@ -154,7 +154,7 @@ describe("registry program", () => {
         .accounts({
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
-          acceptedPaymentToken: acceptedTokenPda,
+          accepted_payment_token: acceptedTokenPda,
         })
         .rpc();
 
@@ -181,8 +181,8 @@ describe("registry program", () => {
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
           publisher: publisher.publicKey,
-          publishGrant: grantPda,
-          systemProgram: SystemProgram.programId,
+          publish_grant: grantPda,
+          system_program: SystemProgram.programId,
         })
         .signers([publisher])
         .rpc();
@@ -206,8 +206,8 @@ describe("registry program", () => {
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
           publisher: publisher.publicKey,
-          publishGrant: grantPda,
-          systemProgram: SystemProgram.programId,
+          publish_grant: grantPda,
+          system_program: SystemProgram.programId,
         })
         .signers([publisher])
         .rpc();
@@ -230,8 +230,8 @@ describe("registry program", () => {
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
           publisher: publisher.publicKey,
-          publishGrant: grantPda,
-          systemProgram: SystemProgram.programId,
+          publish_grant: grantPda,
+          system_program: SystemProgram.programId,
         })
         .signers([publisher])
         .rpc();
@@ -243,8 +243,8 @@ describe("registry program", () => {
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
           publisher: publisher.publicKey,
-          publishGrant: grantPda,
-          systemProgram: SystemProgram.programId,
+          publish_grant: grantPda,
+          system_program: SystemProgram.programId,
         })
         .signers([publisher])
         .rpc();
@@ -293,7 +293,7 @@ describe("registry program", () => {
         .accounts({
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
-          registryGame: game.registryGamePda,
+          registry_game: game.registryGamePda,
         })
         .rpc();
 
@@ -310,7 +310,7 @@ describe("registry program", () => {
         .accounts({
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
-          registryGame: game.registryGamePda,
+          registry_game: game.registryGamePda,
         })
         .rpc();
 
@@ -330,7 +330,7 @@ describe("registry program", () => {
           .accounts({
             authority: nonAuthority.publicKey,
             config: base.registryConfigPda,
-            registryGame: game.registryGamePda,
+            registry_game: game.registryGamePda,
           })
           .signers([nonAuthority])
           .rpc();
@@ -353,7 +353,7 @@ describe("registry program", () => {
         .accounts({
           authority: base.authority.publicKey,
           config: base.registryConfigPda,
-          registryGame: game.registryGamePda,
+          registry_game: game.registryGamePda,
         })
         .rpc();
 

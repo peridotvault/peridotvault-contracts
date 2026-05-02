@@ -75,6 +75,7 @@ pub struct MetadataUriUpdated {
 #[event]
 pub struct LicenseMinted {
     pub license: Pubkey,
+    pub actor: Pubkey,
     pub holder: Pubkey,
     pub game: Pubkey,
     pub issued_at: i64,
@@ -84,6 +85,7 @@ pub struct LicenseMinted {
 #[event]
 pub struct LicenseRenewed {
     pub license: Pubkey,
+    pub actor: Pubkey,
     pub holder: Pubkey,
     pub game: Pubkey,
     pub old_expires_at: Option<i64>,
