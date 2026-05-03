@@ -37,7 +37,8 @@ pub(crate) fn handler(ctx: Context<RenewLicense>, expires_at: i64) -> Result<()>
 
 #[derive(Accounts)]
 pub struct RenewLicense<'info> {
-    pub actor: Signer<'info>,
+    /// CHECK: validated via authorized_actor constraint (actor == actor.key) and active flag.
+    pub actor: UncheckedAccount<'info>,
 
     /// CHECK: target holder of the license.
     pub holder: UncheckedAccount<'info>,

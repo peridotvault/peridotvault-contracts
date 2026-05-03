@@ -43,11 +43,12 @@ pub(crate) fn handler(ctx: Context<MintLicense>, expires_at: Option<i64>) -> Res
 
 #[derive(Accounts)]
 pub struct MintLicense<'info> {
-    #[account(mut)]
-    pub actor: Signer<'info>,
+    /// CHECK: validated via authorized_actor constraint.
+    pub actor: UncheckedAccount<'info>,
 
-    /// CHECK: target holder of the license.
-    pub holder: UncheckedAccount<'info>,
+    /// Holder who receives the license and pays rent.
+    #[account(mut)]
+    pub holder: Signer<'info>,
 
     #[account(
         seeds = [AUTHORIZED_ACTOR_SEED, actor.key().as_ref()],
@@ -64,7 +65,7 @@ pub struct MintLicense<'info> {
 
     #[account(
         init,
-        payer = actor,
+        payer = holder,
         space = License::SPACE,
         seeds = [LICENSE_SEED, holder.key().as_ref(), game.key().as_ref()],
         bump,

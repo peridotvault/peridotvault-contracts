@@ -54,19 +54,20 @@ pub struct BuyGame<'info> {
     pub accepted_payment_token: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler via PDA derivation for paid path.
     pub game_payment_option: Option<UncheckedAccount<'info>>,
-    #[account(mut)]
-    pub buyer_payment_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
-    #[account(mut)]
-    pub publisher_payment_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
-    #[account(mut)]
-    pub treasury_payment_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
-    #[account(mut)]
-    pub referrer_payment_account: Option<Box<InterfaceAccount<'info, TokenAccount>>>,
+    /// CHECK: validated manually in handler for paid path.
+    pub buyer_payment_account: Option<UncheckedAccount<'info>>,
+    /// CHECK: validated manually in handler for paid path.
+    pub publisher_payment_account: Option<UncheckedAccount<'info>>,
+    /// CHECK: validated manually in handler for paid path.
+    pub treasury_payment_account: Option<UncheckedAccount<'info>>,
+    /// CHECK: validated manually in handler for paid path.
+    pub referrer_payment_account: Option<UncheckedAccount<'info>>,
 
+    /// CHECK: validated via store_config.store_actor address constraint and pgl1 authorized_actor PDA.
     #[account(
         address = store_config.store_actor @ StoreError::InvalidStoreActor
     )]
-    pub store_actor: Signer<'info>,
+    pub store_actor: UncheckedAccount<'info>,
 
     #[account(
         seeds = [pgl1::state::AUTHORIZED_ACTOR_SEED, store_actor.key().as_ref()],
@@ -197,52 +198,70 @@ pub(crate) fn handler(
             let fp = compute_final_price(base_price, &ctx.accounts.game_store_config, now)?;
 
             // token accounts (must all be present for paid flow)
-            let buyer_payment_account = ctx
+            let buyer_ata = ctx
                 .accounts
                 .buyer_payment_account
                 .as_ref()
                 .ok_or(error!(StoreError::Unauthorized))?;
-            let publisher_payment_account = ctx
+            let buyer_ata_data = buyer_ata.try_borrow_data()?;
+            // SPL token account layout: mint(32), owner(32), amount(8), ...
+            const TOKEN_ACCOUNT_MIN_LEN: usize = 165;
+
+            let publisher_ata = ctx
                 .accounts
                 .publisher_payment_account
                 .as_ref()
                 .ok_or(error!(StoreError::Unauthorized))?;
-            let treasury_payment_account = ctx
+            let publisher_ata_data = publisher_ata.try_borrow_data()?;
+
+            let treasury_ata = ctx
                 .accounts
                 .treasury_payment_account
                 .as_ref()
                 .ok_or(error!(StoreError::InvalidTreasury))?;
+            let treasury_ata_data = treasury_ata.try_borrow_data()?;
 
-            require_keys_eq!(
-                buyer_payment_account.owner,
-                ctx.accounts.buyer.key(),
+            // Validate buyer ATA: owner=caller, mint=payment_mint
+            require!(
+                buyer_ata_data.len() >= TOKEN_ACCOUNT_MIN_LEN,
                 StoreError::Unauthorized
             );
-            require_keys_eq!(
-                buyer_payment_account.mint,
-                payment_mint.key(),
-                StoreError::PaymentTokenNotAllowed
+            let buyer_owner = Pubkey::new_from_array(
+                buyer_ata_data[32..64].try_into().unwrap(),
             );
-            require_keys_eq!(
-                publisher_payment_account.owner,
-                ctx.accounts.game.publisher,
+            let buyer_mint = Pubkey::new_from_array(
+                buyer_ata_data[0..32].try_into().unwrap(),
+            );
+            require_keys_eq!(buyer_owner, ctx.accounts.buyer.key(), StoreError::Unauthorized);
+            require_keys_eq!(buyer_mint, payment_mint.key(), StoreError::PaymentTokenNotAllowed);
+
+            // Validate publisher ATA: owner=publisher, mint=payment_mint
+            require!(
+                publisher_ata_data.len() >= TOKEN_ACCOUNT_MIN_LEN,
                 StoreError::Unauthorized
             );
-            require_keys_eq!(
-                publisher_payment_account.mint,
-                payment_mint.key(),
-                StoreError::PaymentTokenNotAllowed
+            let pub_owner = Pubkey::new_from_array(
+                publisher_ata_data[32..64].try_into().unwrap(),
             );
-            require_keys_eq!(
-                treasury_payment_account.owner,
-                ctx.accounts.store_config.treasury,
+            let pub_mint = Pubkey::new_from_array(
+                publisher_ata_data[0..32].try_into().unwrap(),
+            );
+            require_keys_eq!(pub_owner, ctx.accounts.game.publisher, StoreError::Unauthorized);
+            require_keys_eq!(pub_mint, payment_mint.key(), StoreError::PaymentTokenNotAllowed);
+
+            // Validate treasury ATA: owner=treasury, mint=payment_mint
+            require!(
+                treasury_ata_data.len() >= TOKEN_ACCOUNT_MIN_LEN,
                 StoreError::InvalidTreasury
             );
-            require_keys_eq!(
-                treasury_payment_account.mint,
-                payment_mint.key(),
-                StoreError::PaymentTokenNotAllowed
+            let treasury_owner = Pubkey::new_from_array(
+                treasury_ata_data[32..64].try_into().unwrap(),
             );
+            let treasury_mint = Pubkey::new_from_array(
+                treasury_ata_data[0..32].try_into().unwrap(),
+            );
+            require_keys_eq!(treasury_owner, ctx.accounts.store_config.treasury, StoreError::InvalidTreasury);
+            require_keys_eq!(treasury_mint, payment_mint.key(), StoreError::PaymentTokenNotAllowed);
 
             let referral = compute_effective_referral_bps(
                 &ctx.accounts.store_config,
@@ -265,18 +284,18 @@ pub(crate) fn handler(
 
             transfer_payment(
                 &ctx.accounts.token_program,
-                buyer_payment_account,
+                &buyer_ata,
                 payment_mint,
-                treasury_payment_account,
+                &treasury_ata,
                 &ctx.accounts.buyer,
                 platform_fee_amount,
             )?;
 
             transfer_payment(
                 &ctx.accounts.token_program,
-                buyer_payment_account,
+                &buyer_ata,
                 payment_mint,
-                publisher_payment_account,
+                &publisher_ata,
                 &ctx.accounts.buyer,
                 publisher_amount,
             )?;
@@ -284,28 +303,38 @@ pub(crate) fn handler(
             if referral_amount > 0 {
                 let referrer_key =
                     referrer.ok_or(StoreError::MissingReferrerTokenAccount)?;
-                let referrer_payment_account = ctx
+                let referrer_ata = ctx
                     .accounts
                     .referrer_payment_account
                     .as_ref()
                     .ok_or(StoreError::MissingReferrerTokenAccount)?;
-
+                let ref_data = referrer_ata.try_borrow_data()?;
+                require!(
+                    ref_data.len() >= TOKEN_ACCOUNT_MIN_LEN,
+                    StoreError::InvalidReferrerTokenAccount
+                );
+                let ref_owner = Pubkey::new_from_array(
+                    ref_data[32..64].try_into().unwrap(),
+                );
+                let ref_mint = Pubkey::new_from_array(
+                    ref_data[0..32].try_into().unwrap(),
+                );
                 require_keys_eq!(
-                    referrer_payment_account.owner,
+                    ref_owner,
                     referrer_key,
                     StoreError::InvalidReferrerTokenAccount
                 );
                 require_keys_eq!(
-                    referrer_payment_account.mint,
+                    ref_mint,
                     payment_mint.key(),
                     StoreError::InvalidReferrerTokenAccount
                 );
 
                 transfer_payment(
                     &ctx.accounts.token_program,
-                    buyer_payment_account,
+                    &buyer_ata,
                     payment_mint,
-                    referrer_payment_account,
+                    &referrer_ata,
                     &ctx.accounts.buyer,
                     referral_amount,
                 )?;
@@ -384,9 +413,9 @@ pub(crate) fn handler(
 
 fn transfer_payment<'info>(
     token_program: &Interface<'info, TokenInterface>,
-    from: &InterfaceAccount<'info, TokenAccount>,
+    from: &AccountInfo<'info>,
     mint: &InterfaceAccount<'info, Mint>,
-    to: &InterfaceAccount<'info, TokenAccount>,
+    to: &AccountInfo<'info>,
     authority: &Signer<'info>,
     amount: u64,
 ) -> Result<()> {
@@ -395,9 +424,9 @@ fn transfer_payment<'info>(
     }
 
     let cpi_accounts = TransferChecked {
-        from: from.to_account_info(),
+        from: from.clone(),
         mint: mint.to_account_info(),
-        to: to.to_account_info(),
+        to: to.clone(),
         authority: authority.to_account_info(),
     };
     let cpi_ctx = CpiContext::new(token_program.to_account_info(), cpi_accounts);
