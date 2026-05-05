@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
-    transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
+    transfer_checked, TokenInterface, TransferChecked,
 };
 
 use crate::{
@@ -49,19 +49,17 @@ pub struct BuyGame<'info> {
     )]
     pub game_store_config: Box<Account<'info, GameStoreConfig>>,
 
-    pub payment_mint: Option<Box<InterfaceAccount<'info, Mint>>>,
+    /// CHECK: validated manually in handler for paid path.
+    pub payment_mint: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler via PDA derivation for paid path.
     pub accepted_payment_token: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler via PDA derivation for paid path.
     pub game_payment_option: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
-    #[account(mut)]
     pub buyer_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
-    #[account(mut)]
     pub publisher_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
-    #[account(mut)]
     pub treasury_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
     pub referrer_payment_account: Option<UncheckedAccount<'info>>,
@@ -124,13 +122,14 @@ pub(crate) fn handler(
     let (final_price, payment_mint_key, effective_referral_bps) =
         if let Some(chosen_mint) = mint_token {
             // ── Paid game path ──────────────────────────────────────────
-            let payment_mint = ctx
-                .accounts
-                .payment_mint
-                .as_ref()
+            let payment_mint_info = ctx.accounts.payment_mint.as_ref()
                 .ok_or(error!(StoreError::PaymentTokenNotAllowed))?;
+
+            let mint_data = payment_mint_info.try_borrow_data()?;
+            // Both SPL Token and Token-2022 Mint have decimals at byte 44
+            let decimals = if mint_data.len() >= 45 { mint_data[44] } else { 0 };
             require_keys_eq!(
-                payment_mint.key(),
+                payment_mint_info.key(),
                 chosen_mint,
                 StoreError::PaymentTokenNotAllowed
             );
@@ -154,7 +153,7 @@ pub(crate) fn handler(
 
             // manual PDA checks (can't use #[account(seeds = …)] on Option<T>)
             let (expected_apt, _) = Pubkey::find_program_address(
-                &[b"accepted_payment_token", payment_mint.key().as_ref()],
+                &[b"accepted_payment_token", payment_mint_info.key().as_ref()],
                 ctx.program_id,
             );
             require_keys_eq!(
@@ -168,7 +167,7 @@ pub(crate) fn handler(
             );
             require_keys_eq!(
                 accepted_payment_token.mint,
-                payment_mint.key(),
+                payment_mint_info.key(),
                 StoreError::PaymentTokenNotAllowed
             );
 
@@ -176,7 +175,7 @@ pub(crate) fn handler(
                 &[
                     b"game_payment_option",
                     ctx.accounts.game.key().as_ref(),
-                    payment_mint.key().as_ref(),
+                    payment_mint_info.key().as_ref(),
                 ],
                 ctx.program_id,
             );
@@ -193,7 +192,7 @@ pub(crate) fn handler(
             );
             require_keys_eq!(
                 game_payment_option.mint,
-                payment_mint.key(),
+                payment_mint_info.key(),
                 StoreError::PaymentTokenNotAllowed
             );
 
@@ -236,7 +235,7 @@ pub(crate) fn handler(
                 buyer_ata_data[0..32].try_into().unwrap(),
             );
             require_keys_eq!(buyer_owner, ctx.accounts.buyer.key(), StoreError::Unauthorized);
-            require_keys_eq!(buyer_mint, payment_mint.key(), StoreError::PaymentTokenNotAllowed);
+            require_keys_eq!(buyer_mint, payment_mint_info.key(), StoreError::PaymentTokenNotAllowed);
 
             // Validate publisher ATA: owner=publisher, mint=payment_mint
             require!(
@@ -250,7 +249,7 @@ pub(crate) fn handler(
                 publisher_ata_data[0..32].try_into().unwrap(),
             );
             require_keys_eq!(pub_owner, ctx.accounts.game.publisher, StoreError::Unauthorized);
-            require_keys_eq!(pub_mint, payment_mint.key(), StoreError::PaymentTokenNotAllowed);
+            require_keys_eq!(pub_mint, payment_mint_info.key(), StoreError::PaymentTokenNotAllowed);
 
             // Validate treasury ATA: owner=treasury, mint=payment_mint
             require!(
@@ -264,12 +263,13 @@ pub(crate) fn handler(
                 treasury_ata_data[0..32].try_into().unwrap(),
             );
             require_keys_eq!(treasury_owner, ctx.accounts.store_config.treasury, StoreError::InvalidTreasury);
-            require_keys_eq!(treasury_mint, payment_mint.key(), StoreError::PaymentTokenNotAllowed);
+            require_keys_eq!(treasury_mint, payment_mint_info.key(), StoreError::PaymentTokenNotAllowed);
 
             // Drop account data borrows before CPIs.
             // The Solana runtime uses RefCell-based borrow tracking. CPIs that
             // need write access to these accounts will fail if any immutable
             // borrow (from try_borrow_data) is still active.
+            drop(mint_data);
             drop(buyer_ata_data);
             drop(publisher_ata_data);
             drop(treasury_ata_data);
@@ -296,7 +296,8 @@ pub(crate) fn handler(
             transfer_payment(
                 &ctx.accounts.token_program,
                 &buyer_ata,
-                payment_mint,
+                payment_mint_info,
+                decimals,
                 &treasury_ata,
                 &ctx.accounts.buyer,
                 platform_fee_amount,
@@ -305,7 +306,8 @@ pub(crate) fn handler(
             transfer_payment(
                 &ctx.accounts.token_program,
                 &buyer_ata,
-                payment_mint,
+                payment_mint_info,
+                decimals,
                 &publisher_ata,
                 &ctx.accounts.buyer,
                 publisher_amount,
@@ -337,21 +339,22 @@ pub(crate) fn handler(
                 );
                 require_keys_eq!(
                     ref_mint,
-                    payment_mint.key(),
+                    payment_mint_info.key(),
                     StoreError::InvalidReferrerTokenAccount
                 );
 
                 transfer_payment(
                     &ctx.accounts.token_program,
                     &buyer_ata,
-                    payment_mint,
+                    payment_mint_info,
+                    decimals,
                     &referrer_ata,
                     &ctx.accounts.buyer,
                     referral_amount,
                 )?;
             }
 
-            (fp, payment_mint.key(), referral)
+            (fp, payment_mint_info.key(), referral)
         } else {
             // ── Free game path ──────────────────────────────────────────
             (0u64, Pubkey::default(), 0u16)
@@ -425,7 +428,8 @@ pub(crate) fn handler(
 fn transfer_payment<'info>(
     token_program: &Interface<'info, TokenInterface>,
     from: &AccountInfo<'info>,
-    mint: &InterfaceAccount<'info, Mint>,
+    mint: &AccountInfo<'info>,
+    decimals: u8,
     to: &AccountInfo<'info>,
     authority: &Signer<'info>,
     amount: u64,
@@ -436,7 +440,7 @@ fn transfer_payment<'info>(
 
     let cpi_accounts = TransferChecked {
         from: from.clone(),
-        mint: mint.to_account_info(),
+        mint: mint.clone(),
         to: to.clone(),
         authority: authority.to_account_info(),
     };
@@ -445,9 +449,9 @@ fn transfer_payment<'info>(
     msg!("transfer_payment: from={} writable={}", from.key(), from.is_writable);
     msg!("transfer_payment: to={} writable={}", to.key(), to.is_writable);
     msg!("transfer_payment: authority={} signer={}", authority.key(), authority.is_signer);
-    msg!("transfer_payment: amount={} decimals={}", amount, mint.decimals);
+    msg!("transfer_payment: amount={} decimals={}", amount, decimals);
 
-    transfer_checked(cpi_ctx, amount, mint.decimals)
+    transfer_checked(cpi_ctx, amount, decimals)
         .map_err(|_| error!(StoreError::PaymentFailed))
 }
 
