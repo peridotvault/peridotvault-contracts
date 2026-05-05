@@ -55,10 +55,13 @@ pub struct BuyGame<'info> {
     /// CHECK: validated manually in handler via PDA derivation for paid path.
     pub game_payment_option: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
+    #[account(mut)]
     pub buyer_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
+    #[account(mut)]
     pub publisher_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
+    #[account(mut)]
     pub treasury_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
     pub referrer_payment_account: Option<UncheckedAccount<'info>>,
@@ -430,6 +433,11 @@ fn transfer_payment<'info>(
         authority: authority.to_account_info(),
     };
     let cpi_ctx = CpiContext::new(token_program.to_account_info(), cpi_accounts);
+
+    msg!("transfer_payment: from={} writable={}", from.key(), from.is_writable);
+    msg!("transfer_payment: to={} writable={}", to.key(), to.is_writable);
+    msg!("transfer_payment: authority={} signer={}", authority.key(), authority.is_signer);
+    msg!("transfer_payment: amount={} decimals={}", amount, mint.decimals);
 
     transfer_checked(cpi_ctx, amount, mint.decimals)
         .map_err(|_| error!(StoreError::PaymentFailed))
