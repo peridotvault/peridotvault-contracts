@@ -266,6 +266,14 @@ pub(crate) fn handler(
             require_keys_eq!(treasury_owner, ctx.accounts.store_config.treasury, StoreError::InvalidTreasury);
             require_keys_eq!(treasury_mint, payment_mint.key(), StoreError::PaymentTokenNotAllowed);
 
+            // Drop account data borrows before CPIs.
+            // The Solana runtime uses RefCell-based borrow tracking. CPIs that
+            // need write access to these accounts will fail if any immutable
+            // borrow (from try_borrow_data) is still active.
+            drop(buyer_ata_data);
+            drop(publisher_ata_data);
+            drop(treasury_ata_data);
+
             let referral = compute_effective_referral_bps(
                 &ctx.accounts.store_config,
                 &ctx.accounts.game_store_config,
