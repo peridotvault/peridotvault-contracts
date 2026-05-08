@@ -1,22 +1,37 @@
+node_modules
+dist
+.turbo
+.next
+docs/.vitepress/cache
+docs/.vitepress/dist
+docs/.vitepress/.temp
+docs/sdk/api
+
+# EVM / Hardhat
+chains/evm/artifacts
+chains/evm/cache
+chains/evm/typechain-types
+chains/evm/coverage
+
+# Solana / Anchor
+chains/solana/target
+chains/solana/.anchor
+chains/solana/test-ledger
+chains/solana/**/*.log
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS
 .DS_Store
-**/.DS_Store
 
-# EVM
-chains/evm/node_modules/
-chains/evm/artifacts/
-chains/evm/cache/
-chains/evm/coverage/
-chains/evm/types/
-chains/evm/dist/
-chains/evm/bundle/
-chains/evm/.env
-
-# Solana
-chains/solana/.anchor/
-chains/solana/target/
-chains/solana/test-ledger/
-chains/solana/node_modules/
-chains/solana/.yarn/
-
-# Local nested git backups
-.git-backups/
+# Existing chain workspaces and local backups
+chains/solana/node_modules
+chains/solana/.yarn
+chains/evm/node_modules
+chains/evm/dist
+chains/evm/bundle
+chains/evm/types
+.git-backups

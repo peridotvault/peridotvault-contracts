@@ -1,0 +1,9 @@
+{
+  "entryPoints": [
+    "src/index.ts",
+    "src/solana/index.ts"
+  ],
+  "out": "docs/sdk/api",
+  "excludePrivate": true,
+  "excludeInternal": true
+}
