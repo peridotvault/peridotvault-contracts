@@ -1,0 +1,22 @@
+{
+  "chainId": 11155111,
+  "resolved": false,
+  "contracts": {
+    "pgc1": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "version": "TODO"
+    },
+    "registry": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "version": "TODO"
+    },
+    "treasuryRouter": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "version": "TODO"
+    },
+    "pgc1Factory": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "version": "TODO"
+    }
+  }
+}

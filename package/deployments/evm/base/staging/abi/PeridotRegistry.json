@@ -1,0 +1,7 @@
+{
+  "contractName": "PeridotRegistry",
+  "abi": [],
+  "metadata": {
+    "todo": "Replace with generated ABI from chains/evm/contracts/registry/PeridotRegistry.sol."
+  }
+}

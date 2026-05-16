@@ -1,0 +1,7 @@
+{
+  "contractName": "PeridotTreasuryRouter",
+  "abi": [],
+  "metadata": {
+    "todo": "Replace with generated ABI from chains/evm/contracts/treasury/PeridotTreasuryRouter.sol."
+  }
+}

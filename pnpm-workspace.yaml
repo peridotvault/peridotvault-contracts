@@ -1,4 +1,4 @@
 packages:
-  - "."
+  - "package"
   - "chains/solana"
   - "chains/evm"

@@ -1,0 +1,22 @@
+{
+  "chainId": 84532,
+  "resolved": true,
+  "contracts": {
+    "pgc1": {
+      "address": "0xdacc68d4b4f26da689f63466bccdf935567839d0",
+      "version": "0.1.0"
+    },
+    "registry": {
+      "address": "0x2091278674cec58296f4e7b868c2c84f5942abad",
+      "version": "0.1.0"
+    },
+    "treasuryRouter": {
+      "address": "0xe55a693527d8CD166a9b814BfFdAA5Adb65DB5aB",
+      "version": "0.1.0"
+    },
+    "pgc1Factory": {
+      "address": "0x21c1deffc44dbe3d742caa704f94f2772ffb6567",
+      "version": "0.1.0"
+    }
+  }
+}

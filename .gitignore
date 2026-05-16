@@ -2,10 +2,10 @@ node_modules
 dist
 .turbo
 .next
-docs/.vitepress/cache
-docs/.vitepress/dist
-docs/.vitepress/.temp
-docs/sdk/api
+docs/frontend/.vitepress/cache
+docs/frontend/.vitepress/dist
+docs/frontend/.vitepress/.temp
+docs/frontend/sdk/api
 
 # EVM / Hardhat
 chains/evm/artifacts
