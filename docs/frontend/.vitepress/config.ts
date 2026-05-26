@@ -13,6 +13,15 @@ export default defineConfig({
   description:
     "Official contract interface SDK and Solana program documentation for PeridotVault",
 
+  vite: {
+    ssr: {
+      noExternal: ["@solana/web3.js", "@coral-xyz/anchor"],
+    },
+    optimizeDeps: {
+      include: ["@solana/web3.js", "@coral-xyz/anchor"],
+    },
+  },
+
   ignoreDeadLinks: [/^\/sdk\/api\//],
   lastUpdated: true,
   cleanUrls: true,
@@ -53,6 +62,7 @@ export default defineConfig({
           { text: "Overview", link: "/solana/overview" },
           { text: "PGL-1", link: "/solana/pgl1" },
           { text: "Registry", link: "/solana/registry" },
+          { text: "Registry Playground", link: "/solana/registry-playground" },
           { text: "Game Store", link: "/solana/game-store" },
           { text: "PDA Reference", link: "/solana/pda" },
           { text: "Instruction Builders", link: "/solana/instructions" },

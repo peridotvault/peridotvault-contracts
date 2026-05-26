@@ -10,6 +10,8 @@
     "docs": "pnpm docs:api && pnpm docs:build"
   },
   "devDependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/web3.js": "^1.98.4",
     "sandpack-vue3": "^3.1.12",
     "typedoc": "^0.28.15",
     "vitepress": "^1.6.4"

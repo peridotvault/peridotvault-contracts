@@ -43,8 +43,4 @@ Planned higher-level surfaces:
 
 Those higher-level helpers remain non-custodial and never sign or send transactions.
 
-## Sandbox vs Production
-
-All Sandbox examples above show the intended API. Until `@peridotvault/contracts` is published to the npm registry, the live editors display the contract surface. Once published, they will resolve real types and return live program IDs.
-
 You can also explore the full generated API at the [API Reference](/sdk/api-reference).

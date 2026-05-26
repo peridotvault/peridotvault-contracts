@@ -1,0 +1,10 @@
+{
+  "name": "@peridotvault/contracts",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": { "import": "./dist/index.js" },
+    "./solana": { "import": "./dist/solana/index.js" },
+    "./deployments": { "import": "./dist/deployments/index.js" }
+  }
+}
