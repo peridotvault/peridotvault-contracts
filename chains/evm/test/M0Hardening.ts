@@ -177,4 +177,59 @@ describe("M0 hardening (EVM)", async function () {
     const fetched = (await registry.read.getGame(["m0-m5"])) as any;
     assert.equal(fetched.version, 1);
   });
+
+  it("AC-M5-2: getGame reverts UnsupportedVersion on a future-schema record", async function () {
+    const { keccak256, concat, pad, toHex, stringToHex } = await import("viem");
+    const { factory, registry } = await deploySystem();
+    const gameId = "m0-m5-neg";
+    await publishEthGame(factory, gameId, 10n);
+
+    // Sanity: a current-schema record reads fine (gate passes for v1).
+    const ok = (await registry.read.getGame([gameId])) as any;
+    assert.equal(ok.version, 1);
+
+    // Fault injection: no public setter can raise the version
+    // (`registerGame` always stamps RECORD_VERSION), so simulate a
+    // future-schema record with `hardhat_setStorageAt`, then assert the
+    // fail-closed gate fires. Layout: slot 0 = Ownable._owner,
+    // slot 1 = `games` mapping; GameRecord packs pgc1 at base+0 and
+    // (publisher:20, createdAt:8, active:1, version:1 = 30 bytes) at base+1,
+    // so version sits at bits 232..240. String-key base =
+    // keccak256(raw bytes of id . p).
+    const base = keccak256(
+      concat([stringToHex(gameId), pad(toHex(1n), { size: 32 })]),
+    );
+    const packedSlot = pad(toHex(BigInt(base) + 1n), { size: 32 });
+    const publicClient = await viem.getPublicClient();
+    const before = (await publicClient.getStorageAt({
+      address: registry.address,
+      slot: packedSlot,
+    })) as `0x${string}`;
+    const cur = BigInt(before);
+    assert.equal(
+      Number((cur >> 232n) & 0xffn),
+      1,
+      "slot math sanity: version reads 1 before injection",
+    );
+    const bumped = (cur & ~(0xffn << 232n)) | (2n << 232n);
+    const testClient = await viem.getTestClient();
+    await testClient.setStorageAt({
+      address: registry.address,
+      index: packedSlot,
+      value: pad(toHex(bumped), { size: 32 }),
+    });
+
+    await assert.rejects(
+      () => registry.read.getGame([gameId]),
+      /UnsupportedVersion/,
+    );
+
+    // Boundary: an unregistered game still returns the zero record without
+    // reverting (gate only fires on real future-schema records).
+    const empty = (await registry.read.getGame(["no-such-game"])) as any;
+    assert.equal(
+      empty.pgc1,
+      "0x0000000000000000000000000000000000000000",
+    );
+  });
 });
