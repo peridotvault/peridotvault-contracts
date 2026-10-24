@@ -7,8 +7,8 @@ use crate::{
     errors::PglError,
     events::GameCreated,
     state::{
-        CreatorState, Game, PglConfig, CREATOR_STATE_SEED, GAME_SEED, MAX_GAME_ID_LEN,
-        MAX_METADATA_URI_LEN, PGL_CONFIG_SEED,
+        CreatorState, Game, PglConfig, CURRENT_VERSION, CREATOR_STATE_SEED, GAME_SEED,
+        MAX_GAME_ID_LEN, MAX_METADATA_URI_LEN, PGL_CONFIG_SEED,
     },
 };
 
@@ -64,6 +64,7 @@ pub(crate) fn handler(ctx: Context<CreateGame>, game_id: String, metadata_uri: S
     game.metadata_uri = metadata_uri.clone();
     game.created_at = now;
     game.bump = ctx.bumps.game;
+    game.version = CURRENT_VERSION;
 
     creator_state.next_nonce = creator_state
         .next_nonce

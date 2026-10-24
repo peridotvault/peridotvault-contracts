@@ -9,6 +9,7 @@ use crate::{
     state::{
         AcceptedPaymentToken, AuthorizedProgram, BPS_DENOMINATOR,
         GamePaymentOption, GameStoreConfig, PurchaseReceipt, StoreConfig,
+        CURRENT_VERSION,
     },
 };
 
@@ -64,11 +65,14 @@ pub struct BuyGame<'info> {
     /// CHECK: validated manually in handler for paid path.
     pub referrer_payment_account: Option<UncheckedAccount<'info>>,
 
-    /// CHECK: validated via store_config.store_actor address constraint and pgl1 authorized_actor PDA.
+    /// H2 (Access control): the store mint authority. Must sign `buy_game`
+    /// so signer privilege extends into the pgl1 `mint_license` CPI, where
+    /// `actor` is now a required `Signer`. Direct `mint_license` calls
+    /// without this signature fail. Validated against `store_config.store_actor`.
     #[account(
         address = store_config.store_actor @ StoreError::InvalidStoreActor
     )]
-    pub store_actor: UncheckedAccount<'info>,
+    pub store_actor: Signer<'info>,
 
     #[account(
         seeds = [pgl1::state::AUTHORIZED_ACTOR_SEED, store_actor.key().as_ref()],
@@ -118,10 +122,30 @@ pub(crate) fn handler(
         StoreError::GameNotActive
     );
     require!(ctx.accounts.game_store_config.active, StoreError::StoreGameInactive);
+    // M5 version gates (fail-closed; never misinterpret newer schemas).
+    require!(
+        ctx.accounts.game_store_config.version <= CURRENT_VERSION,
+        StoreError::UnsupportedVersion
+    );
+    require!(
+        ctx.accounts.game.version <= pgl1::state::CURRENT_VERSION,
+        StoreError::UnsupportedVersion
+    );
+    require!(
+        ctx.accounts.registry_game.version <= registry_program::state::CURRENT_VERSION,
+        StoreError::UnsupportedVersion
+    );
+
+    let is_free = ctx.accounts.game_store_config.is_free;
 
     let (final_price, payment_mint_key, effective_referral_bps) =
         if let Some(chosen_mint) = mint_token {
             // ── Paid game path ──────────────────────────────────────────
+            // H3: free games MUST NOT take payment (no ambiguous middle).
+            require!(
+                !is_free,
+                StoreError::FreeGamePaymentNotAllowed
+            );
             let payment_mint_info = ctx.accounts.payment_mint.as_ref()
                 .ok_or(error!(StoreError::PaymentTokenNotAllowed))?;
 
@@ -357,6 +381,11 @@ pub(crate) fn handler(
             (fp, payment_mint_info.key(), referral)
         } else {
             // ── Free game path ──────────────────────────────────────────
+            // H3: the free path REQUIRES the explicit on-chain free flag.
+            // A paid game (`is_free == false`) with `mint_token == None`
+            // fails here (AC-H3-1). The flag is authoritative: even a game
+            // with zero payment options but `is_free == false` fails.
+            require!(is_free, StoreError::FreePathNotAllowed);
             (0u64, Pubkey::default(), 0u16)
         };
 
@@ -388,6 +417,9 @@ pub(crate) fn handler(
         license: ctx.accounts.license.to_account_info(),
         system_program: ctx.accounts.system_program.to_account_info(),
     };
+    // H2: `store_actor` signed this `buy_game` instruction, so signer
+    // privilege extends into the CPI where pgl1 enforces `MissingActorSignature`
+    // unless the actor signed (delegated authority-key model per M0 spec §3.1 Q3).
     let cpi_ctx =
         CpiContext::new(ctx.accounts.pgl1_program.to_account_info(), cpi_accounts);
     pgl1::cpi::mint_license(cpi_ctx, None)
@@ -405,6 +437,7 @@ pub(crate) fn handler(
     receipt.referral_bps_applied = effective_referral_bps;
     receipt.purchased_at = now;
     receipt.bump = ctx.bumps.purchase_receipt;
+    receipt.version = CURRENT_VERSION;
 
     emit!(GamePurchased {
         buyer: receipt.buyer,

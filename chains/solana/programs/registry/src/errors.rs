@@ -64,4 +64,7 @@ pub enum RegistryError {
 
     #[msg("Insufficient fee balance in publisher payment account")]
     InsufficientFeeBalance,
+
+    #[msg("Unsupported account version")]
+    UnsupportedVersion,
 }

@@ -4,7 +4,7 @@ use crate::{
     errors::StoreError,
     events::GameStoreActiveUpdated,
     state::{
-        AuthorizedProgram, GameStoreConfig,
+        AuthorizedProgram, GameStoreConfig, CURRENT_VERSION,
     },
 };
 
@@ -32,6 +32,10 @@ pub struct SetGameStoreActive<'info> {
 
 pub(crate) fn handler(ctx: Context<SetGameStoreActive>, active: bool) -> Result<()> {
     require_keys_eq!(ctx.accounts.game.publisher, ctx.accounts.publisher.key(), StoreError::Unauthorized);
+    require!(
+        ctx.accounts.game_store_config.version <= CURRENT_VERSION,
+        StoreError::UnsupportedVersion
+    );
     require_keys_eq!(ctx.accounts.registry_game.game, ctx.accounts.game.key(), StoreError::RegistryGameMismatch);
     require!(
         matches!(

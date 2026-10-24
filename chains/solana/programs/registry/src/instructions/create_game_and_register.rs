@@ -7,7 +7,8 @@ use crate::{
     errors::RegistryError,
     events::GameRegistered,
     state::{
-        AcceptedPaymentToken, GameStatus, PublishGrant, RegistryConfig, RegistryGame, MAX_GAME_ID_LEN, MAX_METADATA_URI_LEN,
+        AcceptedPaymentToken, GameStatus, PublishGrant, RegistryConfig, RegistryGame,
+        CURRENT_VERSION, MAX_GAME_ID_LEN, MAX_METADATA_URI_LEN,
     },
 };
 
@@ -211,6 +212,7 @@ pub(crate) fn handler<'info>(
     ctx.accounts.registry_game.registered_at = now;
     ctx.accounts.registry_game.status = GameStatus::Active;
     ctx.accounts.registry_game.bump = ctx.bumps.registry_game;
+    ctx.accounts.registry_game.version = CURRENT_VERSION;
 
     // Always init game_store_config (free + paid games)
     invoke_init_game_store_config(

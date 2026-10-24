@@ -3,13 +3,17 @@ use anchor_lang::prelude::*;
 use crate::{
     errors::PglError,
     events::MetadataUriUpdated,
-    state::{Game, MAX_METADATA_URI_LEN, GAME_SEED},
+    state::{Game, CURRENT_VERSION, MAX_METADATA_URI_LEN, GAME_SEED},
 };
 
 pub(crate) fn handler(ctx: Context<SetMetadataUri>, metadata_uri: String) -> Result<()> {
     require!(
         !metadata_uri.trim().is_empty() && metadata_uri.len() <= MAX_METADATA_URI_LEN,
         PglError::InvalidMetadataUri
+    );
+    require!(
+        ctx.accounts.game.version <= CURRENT_VERSION,
+        PglError::UnsupportedVersion
     );
 
     let game = &mut ctx.accounts.game;

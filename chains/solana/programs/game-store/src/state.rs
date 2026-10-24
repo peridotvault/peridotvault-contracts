@@ -7,6 +7,9 @@ pub const BPS_DENOMINATOR: u64 = 10_000;
 pub const PLATFORM_FEE_BPS_MAX: u16 = 10_000;
 pub const MAX_REFERRAL_BPS_HARD_CAP: u16 = 5_000;
 
+/// M5: current schema version for all versioned game-store accounts.
+pub const CURRENT_VERSION: u8 = 1;
+
 #[account]
 pub struct StoreConfig {
     pub authority: Pubkey,
@@ -54,10 +57,15 @@ pub struct GameStoreConfig {
     pub discount_starts_at: Option<i64>,
     pub discount_expires_at: Option<i64>,
     pub bump: u8,
+    /// H3: explicit on-chain free marker. Default `false` (paid, fail-closed).
+    /// `mint_token=None` requires `is_free == true`; `Some` requires `false`.
+    pub is_free: bool,
+    /// M5 schema version.
+    pub version: u8,
 }
 
 impl GameStoreConfig {
-    pub const SPACE: usize = 8 + 32 + 1 + 3 + 3 + 9 + 9 + 1;
+    pub const SPACE: usize = 8 + 32 + 1 + 3 + 3 + 9 + 9 + 1 + 1 + 1;
 }
 
 #[account]
@@ -84,8 +92,10 @@ pub struct PurchaseReceipt {
     pub referral_bps_applied: u16,
     pub purchased_at: i64,
     pub bump: u8,
+    /// M5: attestation-envelope schema version.
+    pub version: u8,
 }
 
 impl PurchaseReceipt {
-    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 32 + 2 + 8 + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 32 + 2 + 8 + 1 + 1;
 }

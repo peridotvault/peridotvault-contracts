@@ -5,7 +5,7 @@ use crate::{
     events::GamePaymentOptionSet,
     state::{
         AcceptedPaymentToken, AuthorizedProgram, GamePaymentOption,
-        GameStoreConfig, ROLE_REGISTRY,
+        GameStoreConfig, CURRENT_VERSION, ROLE_REGISTRY,
     },
 };
 
@@ -67,6 +67,20 @@ pub struct SetGamePaymentOption<'info> {
 
 pub(crate) fn handler(ctx: Context<SetGamePaymentOption>, base_price: u64, active: bool) -> Result<()> {
     require!(base_price > 0, StoreError::InvalidPrice);
+    // M5 version gate.
+    require!(
+        ctx.accounts.game_store_config.version <= CURRENT_VERSION,
+        StoreError::UnsupportedVersion
+    );
+    // H3 fail-closed: a free game cannot gain an ACTIVE payment option.
+    // Deactivation/cleanup on a free game is allowed; authority must clear
+    // the flag before re-adding paid options.
+    if active {
+        require!(
+            !ctx.accounts.game_store_config.is_free,
+            StoreError::FreeGameHasPaymentOptions
+        );
+    }
 
     let publisher_key = ctx.accounts.game.publisher;
 

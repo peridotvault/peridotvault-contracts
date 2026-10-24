@@ -37,4 +37,13 @@ pub enum PglError {
 
     #[msg("Authorized actor is still active")]
     AuthorizedActorStillActive,
+
+    #[msg("Missing actor signature (H2: mint requires authorized signer)")]
+    MissingActorSignature,
+
+    #[msg("Missing renewal signer (M1: holder or actor must sign)")]
+    MissingRenewalSigner,
+
+    #[msg("Unsupported account version")]
+    UnsupportedVersion,
 }

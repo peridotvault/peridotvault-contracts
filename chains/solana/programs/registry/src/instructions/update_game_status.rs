@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::{
     errors::RegistryError,
     events::GameStatusUpdated,
-    state::{GameStatus, RegistryConfig, RegistryGame},
+    state::{GameStatus, RegistryConfig, RegistryGame, CURRENT_VERSION},
 };
 
 #[derive(Accounts)]
@@ -26,6 +26,10 @@ pub struct UpdateGameStatus<'info> {
 }
 
 pub(crate) fn handler(ctx: Context<UpdateGameStatus>, status: u8) -> Result<()> {
+    require!(
+        ctx.accounts.registry_game.version <= CURRENT_VERSION,
+        RegistryError::UnsupportedVersion
+    );
     let next_status = GameStatus::from_u8(status).ok_or(error!(RegistryError::InvalidStatusTransition))?;
     let current_status = ctx.accounts.registry_game.status;
 
