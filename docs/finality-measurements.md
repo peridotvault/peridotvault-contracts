@@ -11,7 +11,7 @@ mainnet-looking endpoints (fail-closed substring guard).
   ephemeral dev chain (no reorg source exists). The full M2 suite
   (`chains/evm/test/M2Attestation.ts`, 12 tests) + M1 suite (16 tests) run
   green with zero finality wait.
-- `XChainAttester.consume` (3-of-5): **106,447 gas** (NFR bound 400k).
+- `XChainAttester.consume` (3-of-5): **≈106.5k gas** (106,447–106,471 across runs; in-test NFR bound 400k).
 
 ### Solana — solana-test-validator 2.3.13, single node
 - `consume_xchain_attestation` (paid, wormhole label, 3-of-5) landed in
@@ -20,7 +20,7 @@ mainnet-looking endpoints (fail-closed substring guard).
   The 13 s is an idle-validator artifact (vote rooting on a quiet node),
   not a protocol floor — devnet confirmation is normally faster; the
   testnet row below must be measured, not inferred.
-- Compute: **335,879 CU consumed** of a 600,000 budget. The default 200,000
+- Compute: **333,031 CU consumed** (range 333k–336k across runs) of a 600,000 budget. The default 200,000
   CU limit is INSUFFICIENT (tx fails `exceeded CUs`) — every testnet/mainnet
   consume MUST prepend `ComputeBudgetProgram.setComputeUnitLimit` (≥400k).
   This is a runbook requirement, not an optimization.
@@ -59,11 +59,12 @@ Localnet fixtures already encode the short-but-enforced pattern
   `8bded127489463727a70ab54c8db857605a98e387010a7460e9b8723749d605a`**,
   `declare_id G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE` embedded
   (verified present exactly once; no temp ids).
-- Localnet run used a TEMP-ID build (`H1yS7Rmi…`, sha256
-  `4ff60a49860aedd59d9b6bb03c1f8dba33bd4fc44e0e6977619b6f05b412`)
-  because Anchor enforces declared-id == deployed-id; the temp build was
-  never committed and the source was reverted + rebuilt deterministically
-  (same sha256 as the pre-temp build).
+- Localnet runs used TEMP-ID builds (Anchor enforces
+  declared-id == deployed-id; temp builds never committed, source reverted
+  after each run). Final localnet evidence (`docs/m2-localnet-evidence.json`)
+  came from the post-F2/F3 source tree built with a temp id; the committed
+  source carries only the protocol id and rebuilds to the digest above
+  (verified: protocol id present exactly once, zero temp ids).
 - Rule: any value-bearing deploy MUST be a reproducible build from the
   merged `paperclip` source (e.g. `solana-verify`), with the digest
   recorded in the deploy ticket — and NEVER executed by an agent without

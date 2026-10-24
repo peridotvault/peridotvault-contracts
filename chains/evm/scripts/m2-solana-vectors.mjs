@@ -30,7 +30,7 @@ const DOMAIN_TYPESTRING =
 
 // Declared protocol program id (crate::ID in registry/src/lib.rs).
 const DECLARED_PROGRAM_ID = process.env.M2_DECLARED_PROGRAM_ID || "G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE";
-const DEST_CHAIN_ID = "solana:localnet";
+const DEST_CHAIN_ID = process.env.M2_DEST_CHAIN || "solana:localnet";
 
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function base58Decode(s) {
@@ -114,7 +114,7 @@ const message = {
   paidTokenFormat: 0,
   receiptVersion: 1,
   version: 1,
-  nonce: 7n,
+  nonce: process.env.M2_NONCE ? BigInt(process.env.M2_NONCE) : 7n,
   homeFinalizedBlock: 12345678n,
   observedAt: BigInt(nowSec),
   transportId: keccak256(toHex("wormhole")),
@@ -134,11 +134,11 @@ console.log("sigs:", sigs.length);
 
 const out = {
   domain,
-  message: { ...message, paidAmount: "100", nonce: "7", homeFinalizedBlock: "12345678", observedAt: message.observedAt.toString() },
+  message: { ...message, paidAmount: "100", nonce: message.nonce.toString(), homeFinalizedBlock: "12345678", observedAt: message.observedAt.toString() },
   digest,
   signatures: sigs,
   signers,
 };
-const outPath = `${process.env.M2_OUT_DIR || process.env.PAPERCLIP_RUN_SCRATCH_DIR}/m2-attest.json`;
+const outPath = process.env.M2_OUT || `${process.env.M2_OUT_DIR || process.env.PAPERCLIP_RUN_SCRATCH_DIR}/m2-attest.json`;
 writeFileSync(outPath, JSON.stringify(out, null, 2));
 console.log("wrote", outPath);
