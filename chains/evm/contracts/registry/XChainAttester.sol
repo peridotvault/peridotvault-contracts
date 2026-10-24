@@ -69,6 +69,10 @@ contract XChainAttester is EIP712, Ownable {
         /// comparison — compared only for byte equality (AC-REG-5 lineage).
         bytes32 licensee;
         bool isFree;
+        /// Cross-chain width (Tobias F4): the Solana dest represents
+        /// paidAmount/nonce/homeFinalizedBlock as u64. Values >= 2^64 are
+        /// UNREPRESENTABLE on Solana — fail-closed, never recognized.
+        /// Keep cross-chain settlements < 2^64 unless the domain is widened.
         uint256 paidAmount;
         bytes paidToken;
         uint8 paidTokenFormat;

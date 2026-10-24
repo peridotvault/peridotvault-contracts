@@ -140,10 +140,7 @@ pub(crate) fn init_handler(
     reorg_delay: i64,
 ) -> Result<()> {
     check_signer_set(&signers)?;
-    require!(
-        dest_chain_id.len() <= crate::state::MAX_DEST_CHAIN_ID_LEN,
-        XchainErrorCode::InvalidDestChainId
-    );
+    xchain_attest::check_dest_config(&dest_chain_id).map_err(map_err)?;
     require!(reorg_delay >= 0, XchainErrorCode::AttestationReorgDelayNotElapsed);
     let config = &mut ctx.accounts.config;
     config.authority = ctx.accounts.authority.key();
@@ -166,10 +163,7 @@ pub(crate) fn update_handler(
     reorg_delay: i64,
 ) -> Result<()> {
     check_signer_set(&signers)?;
-    require!(
-        dest_chain_id.len() <= crate::state::MAX_DEST_CHAIN_ID_LEN,
-        XchainErrorCode::InvalidDestChainId
-    );
+    xchain_attest::check_dest_config(&dest_chain_id).map_err(map_err)?;
     require!(reorg_delay >= 0, XchainErrorCode::AttestationReorgDelayNotElapsed);
     let config = &mut ctx.accounts.config;
     config.signers = signers;

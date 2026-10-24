@@ -213,6 +213,16 @@ pub fn check_reorg(
     Ok(())
 }
 
+/// Tobias F2 residual: config dest must be non-empty and bounded (an empty
+/// config dest is still anchored but is an ops footgun — reject at init).
+/// Length bound mirrors `MAX_DEST_CHAIN_ID_LEN` (account sizing).
+pub fn check_dest_config(dest_chain_id: &str) -> Result<(), XchainError> {
+    if dest_chain_id.is_empty() || dest_chain_id.len() > crate::state::MAX_DEST_CHAIN_ID_LEN {
+        return Err(XchainError::InvalidDestChainId);
+    }
+    Ok(())
+}
+
 /// Tobias F2: the attested dest chain must EXACTLY match the attester
 /// config's dest chain (execution-anchored domain). Claim-anchored domains
 /// (caller-supplied dest with no config check) are rejected.
@@ -485,6 +495,17 @@ mod tests {
         assert!(check_reorg(1000, 900, 60).is_ok());
         assert_eq!(check_reorg(950, 900, 60), Err(XchainError::ReorgDelayNotElapsed));
         assert_eq!(check_reorg(900, 901, 0), Err(XchainError::ObservedAtInFuture));
+    }
+
+    /// AC-DEST-CONFIG-SOL (Tobias F2 residual): empty/oversize config dest rejected.
+    #[test]
+    fn dest_config_bounds() {
+        assert!(check_dest_config("solana:localnet").is_ok());
+        assert_eq!(check_dest_config(""), Err(XchainError::InvalidDestChainId));
+        assert_eq!(
+            check_dest_config(&"x".repeat(crate::state::MAX_DEST_CHAIN_ID_LEN + 1)),
+            Err(XchainError::InvalidDestChainId)
+        );
     }
 
     /// AC-DEST-SOL (Tobias F2): config dest mismatch rejected; match passes.
