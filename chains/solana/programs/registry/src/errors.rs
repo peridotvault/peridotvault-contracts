@@ -124,4 +124,10 @@ pub enum XchainErrorCode {
 
     #[msg("gameId argument is not the canonical derivation")]
     GameIdMismatch,
+
+    #[msg("Free path with non-empty paid token")]
+    PaidTokenNonEmptyOnFreePath,
+
+    #[msg("Invalid paid token format")]
+    InvalidTokenFormat,
 }

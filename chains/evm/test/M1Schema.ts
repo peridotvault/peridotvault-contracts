@@ -163,6 +163,21 @@ describe("M1 schema (EVM)", async function () {
     );
   });
 
+  it("AC-REG-6 (Tobias ANT-491 fix 2): all-zero programId reverts InvalidProgramId", async function () {
+    const { registry } = await deploy();
+    const pub = "0x1111111111111111111111111111111111111111" as `0x${string}`;
+    const zero20 = "0x0000000000000000000000000000000000000000" as `0x${string}`;
+    const impl = "0x2222222222222222222222222222222222222222" as `0x${string}`;
+    // proposeGame with zero programId fails fail-closed.
+    await assert.rejects(
+      () => registry.write.proposeGame(["eip155:84532", pub, "zero-prog", zero20, 0]),
+      /InvalidProgramId/,
+    );
+    // proposeUpdate with zero programId fails the same way.
+    const gameId = await proposeActive(registry, "eip155:84532", pub, "zero-prog-ok", impl, 0);
+    await assert.rejects(() => registry.write.proposeUpdate([gameId, zero20, 60n]), /InvalidProgramId/);
+  });
+
   it("AC-REG-1: PROPOSED→ACTIVE sets registeredAt and emits GameActivated", async function () {
     const { registry } = await deploy();
     const pub = "0x1111111111111111111111111111111111111111" as `0x${string}`;

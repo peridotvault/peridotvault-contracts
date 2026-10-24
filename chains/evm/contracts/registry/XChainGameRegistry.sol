@@ -279,6 +279,11 @@ contract XChainGameRegistry is Ownable {
         if (e.version > CURRENT_VERSION) revert UnsupportedVersion();
     }
 
+    /// Publisher stays length-only BY DESIGN (spec §5 self-asserted rule:
+    /// publisher identity is self-asserted at propose time, no on-chain
+    /// allowlist in M1 — zero-address publisher is therefore allowed here).
+    /// programId is fail-secure instead (see _checkProgramId): a zero
+    /// program would brick the execution path, so it is rejected.
     function _checkPublisher(
         bytes calldata publisher,
         IdFormat format
@@ -287,12 +292,20 @@ contract XChainGameRegistry is Ownable {
         if (publisher.length != want) revert InvalidPublisher();
     }
 
+    /// Length + non-zero (Tobias ANT-491 fix 2: mirrors Solana
+    /// validate_sized_bytes all-zero rejection in xchain.rs). Length is
+    /// checked first so the byte scan short-circuits on malformed input
+    /// (Gas lens: cheap check before the O(n) scan).
     function _checkProgramId(
         bytes calldata programId,
         IdFormat format
     ) internal pure {
         uint256 want = format == IdFormat.EVM20 ? 20 : 32;
         if (programId.length != want) revert InvalidProgramId();
+        for (uint256 i = 0; i < programId.length; i++) {
+            if (programId[i] != 0) return;
+        }
+        revert InvalidProgramId();
     }
 
     /// 1..128 bytes, printable ASCII only (0x21..0x7E). This excludes ALL

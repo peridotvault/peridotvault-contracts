@@ -53,9 +53,11 @@ fn map_err(e: xchain::XchainError) -> Error {
             error!(XchainErrorCode::PaidAmountNonZeroOnFreePath)
         }
         xchain::XchainError::PaidTokenNonEmptyOnFreePath => {
-            error!(XchainErrorCode::PaidAmountNonZeroOnFreePath)
+            error!(XchainErrorCode::PaidTokenNonEmptyOnFreePath)
         }
-        xchain::XchainError::InvalidTokenFormat => error!(XchainErrorCode::InvalidPublisher),
+        xchain::XchainError::InvalidTokenFormat => {
+            error!(XchainErrorCode::InvalidTokenFormat)
+        }
     }
 }
 
@@ -271,4 +273,52 @@ pub(crate) fn cancel_proposal_handler(ctx: Context<CloseXchainProposal>) -> Resu
     }
     emit!(XchainProposalCancelled { game_id: entry.game_id });
     Ok(())
+}
+
+#[cfg(test)]
+mod mapping_tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    /// Tobias ANT-491 fix 1: every xchain logic error maps 1:1 to a DISTINCT
+    /// on-chain code (no aliasing — PaidTokenNonEmptyOnFreePath and
+    /// InvalidTokenFormat previously collapsed onto other variants).
+    #[test]
+    fn xchain_error_maps_one_to_one_distinct_codes() {
+        let cases: [(xchain::XchainError, XchainErrorCode); 15] = [
+            (xchain::XchainError::UnknownChainId, XchainErrorCode::UnknownChainId),
+            (xchain::XchainError::InvalidPublisher, XchainErrorCode::InvalidPublisher),
+            (xchain::XchainError::EmptyLocalId, XchainErrorCode::EmptyLocalId),
+            (xchain::XchainError::LocalIdTooLong, XchainErrorCode::LocalIdTooLong),
+            (xchain::XchainError::InvalidLocalIdCharset, XchainErrorCode::InvalidLocalIdCharset),
+            (xchain::XchainError::InvalidProgramId, XchainErrorCode::InvalidProgramId),
+            (xchain::XchainError::InvalidTransition, XchainErrorCode::InvalidXchainTransition),
+            (xchain::XchainError::UpdateNotEffective, XchainErrorCode::UpdateNotEffective),
+            (xchain::XchainError::ZeroTimelock, XchainErrorCode::ZeroTimelock),
+            (xchain::XchainError::VersionMismatch, XchainErrorCode::XchainVersionMismatch),
+            (xchain::XchainError::UnsupportedVersion, XchainErrorCode::UnsupportedXchainVersion),
+            (xchain::XchainError::PaidAmountZeroOnPaidPath, XchainErrorCode::PaidAmountZeroOnPaidPath),
+            (
+                xchain::XchainError::PaidAmountNonZeroOnFreePath,
+                XchainErrorCode::PaidAmountNonZeroOnFreePath,
+            ),
+            (
+                xchain::XchainError::PaidTokenNonEmptyOnFreePath,
+                XchainErrorCode::PaidTokenNonEmptyOnFreePath,
+            ),
+            (xchain::XchainError::InvalidTokenFormat, XchainErrorCode::InvalidTokenFormat),
+        ];
+        let mut seen = HashSet::new();
+        for (logic, code) in cases {
+            let got: u32 = match map_err(logic) {
+                anchor_lang::error::Error::AnchorError(a) => a.error_code_number,
+                anchor_lang::error::Error::ProgramError(_) => {
+                    panic!("expected AnchorError")
+                }
+            };
+            let want: u32 = code.into();
+            assert_eq!(got, want, "logic error maps to its distinct on-chain code");
+            assert!(seen.insert(got), "duplicate on-chain code {}", got);
+        }
+    }
 }
