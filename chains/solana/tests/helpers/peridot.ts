@@ -593,6 +593,8 @@ export async function buyGameForBuyer(
 
   if (mintToken === null) {
     // ── Free game path ──────────────────────────────────────────────
+    // H2: `store_actor` must sign `buy_game` so signer privilege extends
+    // into the pgl1 `mint_license` CPI (`actor: Signer`).
     return base.storeProgram.methods
       .buyGame(null, referrer)
       .accounts({
@@ -620,7 +622,7 @@ export async function buyGameForBuyer(
         token_program: TOKEN_PROGRAM_ID,
         system_program: SystemProgram.programId,
       })
-      .signers([buyer])
+      .signers([buyer, base.authority])
       .rpc()
       .then(() => ({ buyer, purchaseReceiptPda }));
   }
@@ -734,7 +736,7 @@ export async function buyGameForBuyer(
       token_program: TOKEN_PROGRAM_ID,
       system_program: SystemProgram.programId,
     })
-    .signers([buyer])
+    .signers([buyer, base.authority])
     .rpc();
 
   return { buyer, purchaseReceiptPda };
