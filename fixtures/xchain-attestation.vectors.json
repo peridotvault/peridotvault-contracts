@@ -1,0 +1,51 @@
+{
+  "domain": {
+    "name": "PGL1-XCHAIN",
+    "version": "1",
+    "chainId": 31337,
+    "verifyingContract": "0x5fbdb2315678afecb367f032d93f642f64180aa3"
+  },
+  "typeString": "Attestation(bytes32 gameId,string homeChainId,string destChainId,bytes32 licensee,bool isFree,uint256 paidAmount,bytes paidToken,uint8 paidTokenFormat,uint8 receiptVersion,uint8 version,uint256 nonce,uint256 homeFinalizedBlock,uint64 observedAt,bytes32 transportId)",
+  "vectors": [
+    {
+      "label": "paid-evm-licensee",
+      "message": {
+        "gameId": "0x0caa721bcbc49d63675f8da91c9043a18f897cc8d02d6a8be47be614aa399a37",
+        "homeChainId": "eip155:84532",
+        "destChainId": "eip155:4202",
+        "licensee": "0x0000000000000000000000001111111111111111111111111111111111111111",
+        "isFree": false,
+        "paidAmount": "100",
+        "paidToken": "0x2222222222222222222222222222222222222222",
+        "paidTokenFormat": 0,
+        "receiptVersion": 1,
+        "version": 1,
+        "nonce": "7",
+        "homeFinalizedBlock": "12345678",
+        "observedAt": "1792842563",
+        "transportId": "0xbb1afaacba60eec9f9fd090745c62b9aa1c2b5d4a941f7d5d8cb5bfa4545d056"
+      },
+      "digest": "0x8621f0e4845687dc7dcf81560436ee397d396bdadd0117360a0461a82ca20ab3"
+    },
+    {
+      "label": "free-solana-licensee",
+      "message": {
+        "gameId": "0xcbc854bce5cb9dad945e74017bb3041e63e8769380280c21539b62e2e271d549",
+        "homeChainId": "eip155:84532",
+        "destChainId": "solana:devnet",
+        "licensee": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "isFree": true,
+        "paidAmount": "0",
+        "paidToken": "0x",
+        "paidTokenFormat": 0,
+        "receiptVersion": 1,
+        "version": 1,
+        "nonce": "1",
+        "homeFinalizedBlock": "12345679",
+        "observedAt": "1792842563",
+        "transportId": "0x2087ffd82dea3ff6acd5826e3dada93bc462a4eb0f89103f8fb700b35b41820b"
+      },
+      "digest": "0xf8419fd86928169a53f3f186f44ba099d3d2da857a0f24ec20169a2332374c4b"
+    }
+  ]
+}
