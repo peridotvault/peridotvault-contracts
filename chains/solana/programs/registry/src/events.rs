@@ -69,3 +69,48 @@ pub struct GameClosed {
     pub game_id: String,
     pub closed_by: Pubkey,
 }
+
+#[event]
+pub struct XchainGameProposed {
+    pub game_id: [u8; 32],
+    pub chain_id: String,
+}
+
+#[event]
+pub struct XchainGameActivated {
+    pub game_id: [u8; 32],
+    pub registered_at: i64,
+}
+
+#[event]
+pub struct XchainGameDeprecated {
+    pub game_id: [u8; 32],
+}
+
+#[event]
+pub struct XchainEmergencyFreeze {
+    pub game_id: [u8; 32],
+    pub freezer: Pubkey,
+}
+
+#[event]
+pub struct XchainProposalCancelled {
+    pub game_id: [u8; 32],
+}
+
+#[event]
+pub struct XchainUpdateProposed {
+    pub game_id: [u8; 32],
+    pub effective_at: i64,
+    pub timelock_delay: i64,
+}
+
+#[event]
+pub struct XchainUpdateCancelled {
+    pub game_id: [u8; 32],
+}
+
+#[event]
+pub struct XchainUpdateExecuted {
+    pub game_id: [u8; 32],
+}

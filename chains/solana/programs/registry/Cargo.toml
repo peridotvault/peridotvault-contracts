@@ -22,3 +22,7 @@ default = []
 anchor-lang = { version = "0.32.1", features = ["init-if-needed"] }
 anchor-spl = { version = "0.32.1", features = ["token_2022", "token_2022_extensions"] }
 pgl1 = { path = "../pgl1", features = ["cpi"] }
+sha3 = "0.10"
+
+[dev-dependencies]
+serde_json = "1"
