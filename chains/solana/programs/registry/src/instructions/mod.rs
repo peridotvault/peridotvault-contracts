@@ -17,6 +17,8 @@ pub use set_publish_grant::*;
 pub use set_treasury::*;
 pub use update_game_status::*;
 pub use update_payment_token::*;
+pub mod xchain_consume;
 pub mod xchain_entry;
 
+pub use xchain_consume::*;
 pub use xchain_entry::*;

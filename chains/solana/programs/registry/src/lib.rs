@@ -5,6 +5,7 @@ pub mod events;
 pub mod instructions;
 pub mod state;
 pub mod xchain;
+pub mod xchain_attest;
 
 pub use instructions::*;
 
@@ -107,5 +108,29 @@ pub mod registry {
 
     pub fn cancel_xchain_proposal(ctx: Context<CloseXchainProposal>) -> Result<()> {
         instructions::xchain_entry::cancel_proposal_handler(ctx)
+    }
+
+    // M2 attestation consume path (ANT-487, recognition-only).
+    pub fn init_xchain_attester(
+        ctx: Context<InitXchainAttester>,
+        signers: [[u8; 20]; 5],
+        reorg_delay: i64,
+    ) -> Result<()> {
+        instructions::xchain_consume::init_handler(ctx, signers, reorg_delay)
+    }
+
+    pub fn update_xchain_attester(
+        ctx: Context<UpdateXchainAttester>,
+        signers: [[u8; 20]; 5],
+        reorg_delay: i64,
+    ) -> Result<()> {
+        instructions::xchain_consume::update_handler(ctx, signers, reorg_delay)
+    }
+
+    pub fn consume_xchain_attestation(
+        ctx: Context<ConsumeXchainAttestation>,
+        args: ConsumeArgs,
+    ) -> Result<()> {
+        instructions::xchain_consume::consume_handler(ctx, args)
     }
 }

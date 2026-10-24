@@ -177,3 +177,38 @@ impl XchainGameEntry {
         + 8
         + (1 + (4 + MAX_PROGRAM_ID_LEN) + 1 + 8 + 8 + 8 + (4 + MAX_PROGRAM_ID_LEN));
 }
+
+/// M2 attester config (ANT-487). One global reorg delay for M2-prep (per-home
+/// chain delays are a small extension — same shape as the EVM mapping);
+/// single value keeps the localnet/testnet consume path minimal.
+#[account]
+pub struct XchainAttesterConfig {
+    pub authority: Pubkey,
+    /// 5 ECDSA (secp256k1) attester addresses (20 bytes each, EVM style).
+    pub signers: [[u8; 20]; 5],
+    /// Reorg/finality delay in seconds, counted from the attested
+    /// `observed_at` (Unix seconds).
+    pub reorg_delay: i64,
+    pub bump: u8,
+}
+
+impl XchainAttesterConfig {
+    pub const SPACE: usize = 8 + 32 + (5 * 20) + 8 + 1;
+}
+
+/// M2 recognition record (ANT-487): dest-side proof that (game_id, licensee)
+/// was attested under `digest`. PDA seeds bind game_id + licensee + nonce, so
+/// re-consuming the same attestation fails at account init (the on-chain
+/// replay backstop — equivalent to the EVM `consumed[digest]` set), while a
+/// fresh nonce for the same pair records a fresh recognition.
+#[account]
+pub struct XchainRecognition {
+    pub game_id: [u8; 32],
+    pub licensee: [u8; 32],
+    pub digest: [u8; 32],
+    pub consumed_at: i64,
+}
+
+impl XchainRecognition {
+    pub const SPACE: usize = 8 + 32 + 32 + 32 + 8;
+}

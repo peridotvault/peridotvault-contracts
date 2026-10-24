@@ -88,6 +88,20 @@ pub enum XchainError {
     PaidAmountNonZeroOnFreePath,
     PaidTokenNonEmptyOnFreePath,
     InvalidTokenFormat,
+    /// M2 attestation (ANT-487): recovered signer outside the 5-key set.
+    UnknownAttester,
+    /// M2: same attester counted twice toward the quorum.
+    DuplicateAttesterSignature,
+    /// M2: fewer than 3 distinct member signatures.
+    ThresholdNotMet,
+    /// M2: digest already consumed (replay).
+    AlreadyConsumed,
+    /// M2: secp256k1 recovery failed (bad sig/recovery id/hash).
+    InvalidAttestationSignature,
+    /// M2: reorg delay after observed_at has not elapsed.
+    ReorgDelayNotElapsed,
+    /// M2: attester observation timestamp lies in the future.
+    ObservedAtInFuture,
 }
 
 pub fn is_supported_chain(chain_id: &str) -> bool {

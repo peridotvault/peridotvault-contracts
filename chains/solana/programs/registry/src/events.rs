@@ -114,3 +114,16 @@ pub struct XchainUpdateCancelled {
 pub struct XchainUpdateExecuted {
     pub game_id: [u8; 32],
 }
+
+#[event]
+pub struct XchainAttesterConfigured {
+    pub reorg_delay: i64,
+    pub authority: Pubkey,
+}
+
+#[event]
+pub struct XchainAttestationConsumed {
+    pub game_id: [u8; 32],
+    pub licensee: [u8; 32],
+    pub digest: [u8; 32],
+}

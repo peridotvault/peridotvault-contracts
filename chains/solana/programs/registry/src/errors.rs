@@ -130,4 +130,25 @@ pub enum XchainErrorCode {
 
     #[msg("Invalid paid token format")]
     InvalidTokenFormat,
+
+    #[msg("Unknown attester (recovered signer outside the attester set)")]
+    UnknownAttester,
+
+    #[msg("Duplicate attester signature toward the quorum")]
+    DuplicateAttesterSignature,
+
+    #[msg("Attestation quorum threshold not met")]
+    AttestationThresholdNotMet,
+
+    #[msg("Attestation digest already consumed")]
+    AttestationAlreadyConsumed,
+
+    #[msg("Invalid attestation signature")]
+    InvalidAttestationSignature,
+
+    #[msg("Attestation reorg delay not elapsed")]
+    AttestationReorgDelayNotElapsed,
+
+    #[msg("Attestation observation timestamp is in the future")]
+    AttestationObservedAtInFuture,
 }

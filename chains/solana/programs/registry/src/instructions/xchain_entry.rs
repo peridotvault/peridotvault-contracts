@@ -27,7 +27,7 @@ fn to_logic_status(s: XchainStatus) -> xchain::XchainStatus {
     }
 }
 
-fn map_err(e: xchain::XchainError) -> Error {
+pub(crate) fn map_err(e: xchain::XchainError) -> Error {
     match e {
         xchain::XchainError::UnknownChainId => error!(XchainErrorCode::UnknownChainId),
         xchain::XchainError::InvalidPublisher => error!(XchainErrorCode::InvalidPublisher),
@@ -57,6 +57,25 @@ fn map_err(e: xchain::XchainError) -> Error {
         }
         xchain::XchainError::InvalidTokenFormat => {
             error!(XchainErrorCode::InvalidTokenFormat)
+        }
+        xchain::XchainError::UnknownAttester => error!(XchainErrorCode::UnknownAttester),
+        xchain::XchainError::DuplicateAttesterSignature => {
+            error!(XchainErrorCode::DuplicateAttesterSignature)
+        }
+        xchain::XchainError::ThresholdNotMet => {
+            error!(XchainErrorCode::AttestationThresholdNotMet)
+        }
+        xchain::XchainError::AlreadyConsumed => {
+            error!(XchainErrorCode::AttestationAlreadyConsumed)
+        }
+        xchain::XchainError::InvalidAttestationSignature => {
+            error!(XchainErrorCode::InvalidAttestationSignature)
+        }
+        xchain::XchainError::ReorgDelayNotElapsed => {
+            error!(XchainErrorCode::AttestationReorgDelayNotElapsed)
+        }
+        xchain::XchainError::ObservedAtInFuture => {
+            error!(XchainErrorCode::AttestationObservedAtInFuture)
         }
     }
 }
@@ -285,7 +304,7 @@ mod mapping_tests {
     /// InvalidTokenFormat previously collapsed onto other variants).
     #[test]
     fn xchain_error_maps_one_to_one_distinct_codes() {
-        let cases: [(xchain::XchainError, XchainErrorCode); 15] = [
+        let cases: [(xchain::XchainError, XchainErrorCode); 22] = [
             (xchain::XchainError::UnknownChainId, XchainErrorCode::UnknownChainId),
             (xchain::XchainError::InvalidPublisher, XchainErrorCode::InvalidPublisher),
             (xchain::XchainError::EmptyLocalId, XchainErrorCode::EmptyLocalId),
@@ -307,6 +326,32 @@ mod mapping_tests {
                 XchainErrorCode::PaidTokenNonEmptyOnFreePath,
             ),
             (xchain::XchainError::InvalidTokenFormat, XchainErrorCode::InvalidTokenFormat),
+            // M2 attestation (ANT-487): 1:1, same no-aliasing rule.
+            (xchain::XchainError::UnknownAttester, XchainErrorCode::UnknownAttester),
+            (
+                xchain::XchainError::DuplicateAttesterSignature,
+                XchainErrorCode::DuplicateAttesterSignature,
+            ),
+            (
+                xchain::XchainError::ThresholdNotMet,
+                XchainErrorCode::AttestationThresholdNotMet,
+            ),
+            (
+                xchain::XchainError::AlreadyConsumed,
+                XchainErrorCode::AttestationAlreadyConsumed,
+            ),
+            (
+                xchain::XchainError::InvalidAttestationSignature,
+                XchainErrorCode::InvalidAttestationSignature,
+            ),
+            (
+                xchain::XchainError::ReorgDelayNotElapsed,
+                XchainErrorCode::AttestationReorgDelayNotElapsed,
+            ),
+            (
+                xchain::XchainError::ObservedAtInFuture,
+                XchainErrorCode::AttestationObservedAtInFuture,
+            ),
         ];
         let mut seen = HashSet::new();
         for (logic, code) in cases {
