@@ -371,6 +371,12 @@ describe("M2 attestation round-trip (EVM)", async function () {
       () => attester.write.consume([msgToViem(m), [dup0, ...one, dup0]]),
       /DuplicateSignature/,
     );
+    // 6 entries (> 5 members) can never be legitimate -> TooManySignatures.
+    const six = [...(await quorumSigs(domain, m)), ...(await quorumSigs(domain, m))];
+    await assert.rejects(
+      () => attester.write.consume([msgToViem(m), six]),
+      /TooManySignatures/,
+    );
     // Sanity: the honest quorum still works after the sad paths.
     await attester.write.consume([msgToViem(m), await quorumSigs(domain, m)]);
     assert.equal(await attester.read.isRecognized([m.gameId, m.licensee]), true);

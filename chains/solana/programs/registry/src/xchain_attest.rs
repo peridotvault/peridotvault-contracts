@@ -55,6 +55,12 @@ fn word_u8(v: u8) -> [u8; 32] {
 /// EIP-712 view of the attestation. Integer widths mirror the Solidity
 /// struct: u64 values encode as uint256 words, u8 as uint8 words, bool as a
 /// 0/1 word — byte-identical to `abi.encode` on the EVM side.
+/// Domain-width note (Tobias F4): the Solana dest represents paid_amount /
+/// nonce / home_finalized_block / observed_at as u64, encoded as EIP-712
+/// uint256 words. Encodings agree with the EVM side below 2^64; EVM uint256
+/// values >= 2^64 are UNREPRESENTABLE on Solana — fail-closed (never
+/// recognized, no false accept), but large-value licenses silently cannot
+/// cross. Keep cross-chain settlements < 2^64 unless the domain is widened.
 pub struct AttestationView<'a> {
     pub game_id: [u8; 32],
     pub home_chain_id: &'a str,
@@ -203,6 +209,25 @@ pub fn check_reorg(
     }
     if now < observed_at.saturating_add(delay) {
         return Err(XchainError::ReorgDelayNotElapsed);
+    }
+    Ok(())
+}
+
+/// Tobias F2: the attested dest chain must EXACTLY match the attester
+/// config's dest chain (execution-anchored domain). Claim-anchored domains
+/// (caller-supplied dest with no config check) are rejected.
+pub fn check_dest_chain_id(config_dest: &str, args_dest: &str) -> Result<(), XchainError> {
+    if config_dest != args_dest {
+        return Err(XchainError::InvalidDestChainId);
+    }
+    Ok(())
+}
+
+/// Tobias F3: cap supplied signatures at the attester-set size BEFORE any
+/// recovery (each recovery costs CUs; junk-padded relays must not burn them).
+pub fn check_sig_cap(len: usize) -> Result<(), XchainError> {
+    if len > ATTESTER_COUNT {
+        return Err(XchainError::TooManyAttestationSignatures);
     }
     Ok(())
 }
@@ -460,6 +485,24 @@ mod tests {
         assert!(check_reorg(1000, 900, 60).is_ok());
         assert_eq!(check_reorg(950, 900, 60), Err(XchainError::ReorgDelayNotElapsed));
         assert_eq!(check_reorg(900, 901, 0), Err(XchainError::ObservedAtInFuture));
+    }
+
+    /// AC-DEST-SOL (Tobias F2): config dest mismatch rejected; match passes.
+    #[test]
+    fn dest_chain_anchor() {
+        assert!(check_dest_chain_id("solana:localnet", "solana:localnet").is_ok());
+        assert_eq!(
+            check_dest_chain_id("solana:localnet", "solana:EtWBMkgFUSkMhvZSGQi4uAiEE8RjqiB1MwWXEaAu34"),
+            Err(XchainError::InvalidDestChainId)
+        );
+    }
+
+    /// AC-SIGCAP-SOL (Tobias F3): >5 supplied sigs rejected before recovery.
+    #[test]
+    fn sig_cap() {
+        assert!(check_sig_cap(3).is_ok());
+        assert!(check_sig_cap(5).is_ok());
+        assert_eq!(check_sig_cap(6), Err(XchainError::TooManyAttestationSignatures));
     }
 
     /// AC-DOMAIN-SOL: Solana-dest domain derivation (mirrors

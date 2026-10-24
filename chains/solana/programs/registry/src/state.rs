@@ -181,11 +181,16 @@ impl XchainGameEntry {
 /// M2 attester config (ANT-487). One global reorg delay for M2-prep (per-home
 /// chain delays are a small extension — same shape as the EVM mapping);
 /// single value keeps the localnet/testnet consume path minimal.
+pub const MAX_DEST_CHAIN_ID_LEN: usize = 64;
+
 #[account]
 pub struct XchainAttesterConfig {
     pub authority: Pubkey,
     /// 5 ECDSA (secp256k1) attester addresses (20 bytes each, EVM style).
     pub signers: [[u8; 20]; 5],
+    /// Execution-anchored dest chain (Tobias F2): consume requires
+    /// `args.dest_chain_id` to EXACTLY match this value.
+    pub dest_chain_id: String,
     /// Reorg/finality delay in seconds, counted from the attested
     /// `observed_at` (Unix seconds).
     pub reorg_delay: i64,
@@ -193,7 +198,7 @@ pub struct XchainAttesterConfig {
 }
 
 impl XchainAttesterConfig {
-    pub const SPACE: usize = 8 + 32 + (5 * 20) + 8 + 1;
+    pub const SPACE: usize = 8 + 32 + (5 * 20) + (4 + MAX_DEST_CHAIN_ID_LEN) + 8 + 1;
 }
 
 /// M2 recognition record (ANT-487): dest-side proof that (game_id, licensee)

@@ -136,13 +136,19 @@ fn check_signer_set(signers: &[[u8; 20]; ATTESTER_COUNT]) -> Result<()> {
 pub(crate) fn init_handler(
     ctx: Context<InitXchainAttester>,
     signers: [[u8; 20]; ATTESTER_COUNT],
+    dest_chain_id: String,
     reorg_delay: i64,
 ) -> Result<()> {
     check_signer_set(&signers)?;
+    require!(
+        dest_chain_id.len() <= crate::state::MAX_DEST_CHAIN_ID_LEN,
+        XchainErrorCode::InvalidDestChainId
+    );
     require!(reorg_delay >= 0, XchainErrorCode::AttestationReorgDelayNotElapsed);
     let config = &mut ctx.accounts.config;
     config.authority = ctx.accounts.authority.key();
     config.signers = signers;
+    config.dest_chain_id = dest_chain_id;
     config.reorg_delay = reorg_delay;
     config.bump = ctx.bumps.config;
 
@@ -156,12 +162,18 @@ pub(crate) fn init_handler(
 pub(crate) fn update_handler(
     ctx: Context<UpdateXchainAttester>,
     signers: [[u8; 20]; ATTESTER_COUNT],
+    dest_chain_id: String,
     reorg_delay: i64,
 ) -> Result<()> {
     check_signer_set(&signers)?;
+    require!(
+        dest_chain_id.len() <= crate::state::MAX_DEST_CHAIN_ID_LEN,
+        XchainErrorCode::InvalidDestChainId
+    );
     require!(reorg_delay >= 0, XchainErrorCode::AttestationReorgDelayNotElapsed);
     let config = &mut ctx.accounts.config;
     config.signers = signers;
+    config.dest_chain_id = dest_chain_id;
     config.reorg_delay = reorg_delay;
 
     emit!(XchainAttesterConfigured {
@@ -225,6 +237,17 @@ pub(crate) fn consume_handler(
         .map_err(|_| map_err(xchain::XchainError::ObservedAtInFuture))?;
     xchain_attest::check_reorg(now, observed_at, ctx.accounts.config.reorg_delay)
         .map_err(map_err)?;
+
+    // Tobias F2: dest chain is execution-anchored (config), never trusted
+    // from the claim alone. Checked BEFORE recovery (cheap fail-closed).
+    xchain_attest::check_dest_chain_id(
+        &ctx.accounts.config.dest_chain_id,
+        &args.dest_chain_id,
+    )
+    .map_err(map_err)?;
+
+    // Tobias F3: cap supplied sigs at the set size before any CU spend.
+    xchain_attest::check_sig_cap(args.signatures.len()).map_err(map_err)?;
 
     // Quorum: recover every provided sig, then require 3 DISTINCT members.
     let compact: Vec<([u8; 64], u8)> = args

@@ -151,4 +151,10 @@ pub enum XchainErrorCode {
 
     #[msg("Attestation observation timestamp is in the future")]
     AttestationObservedAtInFuture,
+
+    #[msg("Attestation dest chain id does not match attester config")]
+    InvalidDestChainId,
+
+    #[msg("Too many attestation signatures supplied")]
+    TooManyAttestationSignatures,
 }

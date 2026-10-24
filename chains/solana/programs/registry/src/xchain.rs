@@ -102,6 +102,11 @@ pub enum XchainError {
     ReorgDelayNotElapsed,
     /// M2: attester observation timestamp lies in the future.
     ObservedAtInFuture,
+    /// M2 (Tobias F2): dest chain id does not match the attester config
+    /// (claim-anchored domain rejected — must be execution-anchored).
+    InvalidDestChainId,
+    /// M2 (Tobias F3): more signatures supplied than attester-set members.
+    TooManyAttestationSignatures,
 }
 
 pub fn is_supported_chain(chain_id: &str) -> bool {

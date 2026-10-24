@@ -114,17 +114,19 @@ pub mod registry {
     pub fn init_xchain_attester(
         ctx: Context<InitXchainAttester>,
         signers: [[u8; 20]; 5],
+        dest_chain_id: String,
         reorg_delay: i64,
     ) -> Result<()> {
-        instructions::xchain_consume::init_handler(ctx, signers, reorg_delay)
+        instructions::xchain_consume::init_handler(ctx, signers, dest_chain_id, reorg_delay)
     }
 
     pub fn update_xchain_attester(
         ctx: Context<UpdateXchainAttester>,
         signers: [[u8; 20]; 5],
+        dest_chain_id: String,
         reorg_delay: i64,
     ) -> Result<()> {
-        instructions::xchain_consume::update_handler(ctx, signers, reorg_delay)
+        instructions::xchain_consume::update_handler(ctx, signers, dest_chain_id, reorg_delay)
     }
 
     pub fn consume_xchain_attestation(

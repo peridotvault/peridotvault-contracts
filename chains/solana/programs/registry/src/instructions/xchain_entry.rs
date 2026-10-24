@@ -77,6 +77,12 @@ pub(crate) fn map_err(e: xchain::XchainError) -> Error {
         xchain::XchainError::ObservedAtInFuture => {
             error!(XchainErrorCode::AttestationObservedAtInFuture)
         }
+        xchain::XchainError::InvalidDestChainId => {
+            error!(XchainErrorCode::InvalidDestChainId)
+        }
+        xchain::XchainError::TooManyAttestationSignatures => {
+            error!(XchainErrorCode::TooManyAttestationSignatures)
+        }
     }
 }
 
@@ -304,7 +310,7 @@ mod mapping_tests {
     /// InvalidTokenFormat previously collapsed onto other variants).
     #[test]
     fn xchain_error_maps_one_to_one_distinct_codes() {
-        let cases: [(xchain::XchainError, XchainErrorCode); 22] = [
+        let cases: [(xchain::XchainError, XchainErrorCode); 24] = [
             (xchain::XchainError::UnknownChainId, XchainErrorCode::UnknownChainId),
             (xchain::XchainError::InvalidPublisher, XchainErrorCode::InvalidPublisher),
             (xchain::XchainError::EmptyLocalId, XchainErrorCode::EmptyLocalId),
@@ -351,6 +357,14 @@ mod mapping_tests {
             (
                 xchain::XchainError::ObservedAtInFuture,
                 XchainErrorCode::AttestationObservedAtInFuture,
+            ),
+            (
+                xchain::XchainError::InvalidDestChainId,
+                XchainErrorCode::InvalidDestChainId,
+            ),
+            (
+                xchain::XchainError::TooManyAttestationSignatures,
+                XchainErrorCode::TooManyAttestationSignatures,
             ),
         ];
         let mut seen = HashSet::new();

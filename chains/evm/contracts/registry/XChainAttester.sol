@@ -117,6 +117,8 @@ contract XChainAttester is EIP712, Ownable {
 
     error InvalidSignerSet();
     error InsufficientSignatures();
+    /// Hygiene (Tobias F3): more sigs than set members — never legitimate.
+    error TooManySignatures();
     error UnknownSigner(address recovered);
     error DuplicateSignature(address signer);
     error AlreadyConsumed(bytes32 digest);
@@ -223,6 +225,8 @@ contract XChainAttester is EIP712, Ownable {
         if (consumed[digest]) revert AlreadyConsumed(digest);
 
         if (signatures.length < THRESHOLD) revert InsufficientSignatures();
+        // Tobias F3 hygiene: cap at the set size before any ecrecover.
+        if (signatures.length > ATTESTER_COUNT) revert TooManySignatures();
         uint256 distinct = 0;
         // Bounded loop (5 max) over calldata; duplicates/unknowns revert
         // instead of being silently skipped (fail-closed threshold).
