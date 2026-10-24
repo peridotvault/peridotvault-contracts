@@ -277,8 +277,8 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         // there is no public `mint()` on clones or the implementation (the
         // only `_mint` call in this contract is below). Unauthorized direct
         // minting is impossible by construction; payment enforcement is the
-        // minter gate (Tobias-reviewed: no separate MINTER_ROLE needed for
-        // the permissionless purchase model).
+        // minter gate (permissionless purchase model: payment enforcement is
+        // the minter gate; no MINTER_ROLE by design).
         // H3 two-sided free/paid invariant (fail-closed, flag authoritative):
         if (isFree) {
             // Free path: zero settlement only. Any payment attempt fails
@@ -346,6 +346,13 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     /// Only the owner may flip the flag. Marking free while `price != 0`
     /// resets price to 0 atomically; marking paid requires the caller to
     /// set a non-zero price afterwards via `setPrice`.
+    /// No mirror guard on `paymentToken`: the token address is immutable
+    /// after `initialize` (no setter), so rejecting `free == true` while it
+    /// is set would make ERC20 games permanently un-freeable. The stale
+    /// config is inert — the free path in `buy` settles zero and moves no
+    /// tokens — so flipping free harms only the publisher's own revenue
+    /// (self-harm only, owner-gated, no third-party funds at risk).
+    /// Recovery is `setIsFree(false)` + `setPrice(nz)`.
     function setIsFree(bool free_) external onlyOwner {
         isFree = free_;
         if (free_) {
