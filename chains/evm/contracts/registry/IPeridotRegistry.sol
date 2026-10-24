@@ -17,7 +17,8 @@ interface IPeridotRegistry {
             address pgc1,
             address publisher,
             uint64 createdAt,
-            bool active
+            bool active,
+            uint8 version
         );
 
     function gameIdOf(address pgc1) external view returns (string memory);

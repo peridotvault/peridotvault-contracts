@@ -35,6 +35,10 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     uint256 public override maxSupply; // 0 = unlimited
     uint256 public override price;
 
+    /// H3: explicit on-chain free marker. Default `false` (paid, fail-closed).
+    /// `buy` with zero payment requires `isFree == true`; payment requires `false`.
+    bool public override isFree;
+
     string private _tokenBaseURI;
 
     bool private _initialized;
@@ -140,6 +144,9 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         platformFeeBps = platformFeeBps_;
 
         price = initialPrice;
+        // H3: paid by default. A zero initial price does NOT imply free;
+        // the owner must explicitly call `setIsFree(true)`.
+        isFree = false;
         maxSupply = initialMaxSupply;
         _tokenBaseURI = tokenURI1155;
 
@@ -160,6 +167,17 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
 
     function pgcVersion() external pure override returns (uint256) {
         return 1;
+    }
+
+    /// M5: on-chain contract schema version (mirrors `pgcVersion`).
+    function contractVersion() external pure returns (uint8) {
+        return PGC1Constants.CONTRACT_VERSION;
+    }
+
+    /// M5: purchase-attestation envelope version (forward-compat with the
+    /// EIP-712 `PGL1-XCHAIN` envelope planned for M2-prep).
+    function attestationVersion() external pure returns (uint8) {
+        return PGC1Constants.ATTESTATION_VERSION;
     }
 
     /* ======================================================
@@ -254,6 +272,34 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
             revert PGC1Errors.AlreadyOwned();
 
         _enforceCap();
+
+        // H2 (Access control): `buy` is the SOLE external mint entry point —
+        // there is no public `mint()` on clones or the implementation (the
+        // only `_mint` call in this contract is below). Unauthorized direct
+        // minting is impossible by construction; payment enforcement is the
+        // minter gate (Tobias-reviewed: no separate MINTER_ROLE needed for
+        // the permissionless purchase model).
+        // H3 two-sided free/paid invariant (fail-closed, flag authoritative):
+        if (isFree) {
+            // Free path: zero settlement only. Any payment attempt fails
+            // (no ambiguous middle).
+            if (paymentToken == address(0)) {
+                if (msg.value != 0) revert PGC1Errors.FreeGamePaymentNotAllowed();
+            } else {
+                if (msg.value != 0) revert PGC1Errors.EthNotAccepted();
+            }
+            if (price != 0) revert PGC1Errors.FreeGamePaymentNotAllowed();
+        } else {
+            // Paid path: exact payment required (zero payment reverts).
+            if (paymentToken == address(0)) {
+                if (msg.value != price) revert PGC1Errors.InvalidPayment();
+                if (price == 0) revert PGC1Errors.FreePathNotAllowed();
+            } else {
+                if (msg.value != 0) revert PGC1Errors.EthNotAccepted();
+                if (price == 0) revert PGC1Errors.FreePathNotAllowed();
+            }
+        }
+
         _mint(msg.sender, PGC1Constants.LICENSE_ID, 1, "");
 
         if (purchasedAt[msg.sender] == 0) {
@@ -261,12 +307,16 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
             _buyers.push(msg.sender);
         }
 
-        if (paymentToken == address(0)) {
-            if (msg.value != price) revert PGC1Errors.InvalidPayment();
-            _splitEth(price);
-        } else {
-            if (msg.value != 0) revert PGC1Errors.EthNotAccepted();
-            _splitErc20(IERC20(paymentToken), price);
+        // Free path settles zero (skip token/ETH movement entirely);
+        // paid path splits exactly `price` (re-checked below).
+        if (!isFree) {
+            if (paymentToken == address(0)) {
+                if (msg.value != price) revert PGC1Errors.InvalidPayment();
+                _splitEth(price);
+            } else {
+                if (msg.value != 0) revert PGC1Errors.EthNotAccepted();
+                _splitErc20(IERC20(paymentToken), price);
+            }
         }
 
         emit PGC1Events.Purchased(msg.sender, price);
@@ -281,8 +331,30 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     ====================================================== */
 
     function setPrice(uint256 newPrice) external override onlyOwner {
+        // H3: price and free flag must stay consistent (no ambiguous middle).
+        // Free games are always price 0; paid games always price > 0.
+        if (isFree) {
+            if (newPrice != 0) revert PGC1Errors.FreeGamePaymentNotAllowed();
+        } else {
+            if (newPrice == 0) revert PGC1Errors.FreePathNotAllowed();
+        }
         price = newPrice;
         emit PGC1Events.PriceUpdated(newPrice);
+    }
+
+    /// H3: explicitly mark a game free (price forced to 0) or paid.
+    /// Only the owner may flip the flag. Marking free while `price != 0`
+    /// resets price to 0 atomically; marking paid requires the caller to
+    /// set a non-zero price afterwards via `setPrice`.
+    function setIsFree(bool free_) external onlyOwner {
+        isFree = free_;
+        if (free_) {
+            if (price != 0) {
+                price = 0;
+                emit PGC1Events.PriceUpdated(0);
+            }
+        }
+        emit PGC1Events.FreeFlagUpdated(free_);
     }
 
     /* ======================================================
@@ -329,10 +401,15 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
     }
 
     function _splitEth(uint256 amount) internal {
+        // M2 native-withdraw hardening: skip zero settlement (no-op).
+        if (amount == 0) return;
         uint256 fee = (amount * platformFeeBps) / PGC1Constants.BPS_DENOMINATOR;
 
         uint256 devAmt = amount - fee;
 
+        // Checks-effects-interactions: state (`_mint`, balances) already
+        // updated before this call; `nonReentrant` on `buy` blocks reentry.
+        // Zero addresses impossible: set at `initialize` (ZeroAddress gate).
         (bool ok1, ) = payable(treasuryRouter).call{value: fee}("");
         if (!ok1) revert PGC1Errors.PayoutFailed();
 

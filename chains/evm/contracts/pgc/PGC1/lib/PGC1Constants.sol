@@ -5,4 +5,8 @@ library PGC1Constants {
     uint256 internal constant LICENSE_ID = 1;
     uint16 internal constant BPS_DENOMINATOR = 10_000;
     uint16 internal constant PLATFORM_FEE_BPS_CAP = 2_000; // 20% cap (adjustable policy)
+
+    // M5: contract + attestation-envelope schema versions.
+    uint8 internal constant CONTRACT_VERSION = 1;
+    uint8 internal constant ATTESTATION_VERSION = 1;
 }

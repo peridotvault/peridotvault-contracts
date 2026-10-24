@@ -12,8 +12,16 @@ interface IPGC1 {
     // --- sale config ---
     function price() external view returns (uint256);
 
+    // --- H3 free flag ---
+    function isFree() external view returns (bool);
+    function setIsFree(bool free_) external;
+
     // --- identity ---
     function pgcVersion() external pure returns (uint256);
+
+    // --- M5 versions ---
+    function contractVersion() external pure returns (uint8);
+    function attestationVersion() external pure returns (uint8);
 
     // --- actions ---
     function buy() external payable;

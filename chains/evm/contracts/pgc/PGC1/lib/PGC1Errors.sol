@@ -19,4 +19,11 @@ library PGC1Errors {
     error EmptyMetadataHash();
     error EmptyMetadataURI();
     error NoMetadataPublished();
+
+    // M0 H3: free/paid path violations.
+    error FreePathNotAllowed();
+    error FreeGamePaymentNotAllowed();
+
+    // M0 M5: attestation/envelope version gate.
+    error UnsupportedVersion();
 }

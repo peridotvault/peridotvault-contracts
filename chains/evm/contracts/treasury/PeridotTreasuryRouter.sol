@@ -2,8 +2,15 @@
 pragma solidity ^0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract PeridotTreasuryRouter {
+contract PeridotTreasuryRouter is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
+    /// M5: contract schema version.
+    uint8 public constant CONTRACT_VERSION = 1;
+
     // ---- Admin set (minimal) ----
     mapping(address => bool) public isAdmin;
     uint256 public adminCount;
@@ -20,8 +27,10 @@ contract PeridotTreasuryRouter {
     // ---- Errors (cheaper than revert strings) ----
     error NotAdmin();
     error ZeroAddress();
+    error ZeroAmount();
     error LastAdmin();
     error EthSweepFailed();
+    error InsufficientBalance();
 
     modifier onlyAdmin() {
         if (!isAdmin[msg.sender]) revert NotAdmin();
@@ -97,22 +106,27 @@ contract PeridotTreasuryRouter {
     // -------------------------
 
     /// @notice Sweep all ETH held by this router to `recipient`.
-    function sweepETH() external onlyAdmin {
+    /// @dev M2 hardening: nonReentrant + checks-effects-interactions
+    /// (balance read before the call), explicit ZeroAddress recipient gate,
+    /// ZeroAmount and balance-sufficiency checks, event per withdrawal.
+    function sweepETH() external onlyAdmin nonReentrant {
+        if (recipient == address(0)) revert ZeroAddress();
         uint256 bal = address(this).balance;
+        if (bal == 0) revert ZeroAmount();
         (bool ok, ) = recipient.call{value: bal}("");
         if (!ok) revert EthSweepFailed();
         emit SweptETH(recipient, bal);
     }
 
     /// @notice Sweep all balance of an ERC20 token held by this router to `recipient`.
-    function sweepToken(IERC20 token) external onlyAdmin {
+    /// @dev M2 hardening: SafeERC20 (supports no-return USDT-style tokens),
+    /// nonReentrant, zero-address gates, event per withdrawal.
+    function sweepToken(IERC20 token) external onlyAdmin nonReentrant {
+        if (address(token) == address(0)) revert ZeroAddress();
+        if (recipient == address(0)) revert ZeroAddress();
         uint256 bal = token.balanceOf(address(this));
-        if (bal > 0) {
-            // Minimal transfer (no SafeERC20 to keep bytecode smaller)
-            // Most major tokens return bool true, but note: non-standard tokens exist.
-            bool ok = token.transfer(recipient, bal);
-            require(ok, "TOKEN_TRANSFER_FAILED");
-        }
+        if (bal == 0) revert ZeroAmount();
+        token.safeTransfer(recipient, bal);
         emit SweptToken(address(token), recipient, bal);
     }
 }
