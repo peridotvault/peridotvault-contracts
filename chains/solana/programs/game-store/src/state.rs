@@ -60,12 +60,20 @@ pub struct GameStoreConfig {
     /// H3: explicit on-chain free marker. Default `false` (paid, fail-closed).
     /// `mint_token=None` requires `is_free == true`; `Some` requires `false`.
     pub is_free: bool,
+    /// H3 consistency guard: count of ACTIVE `GamePaymentOption` PDAs for
+    /// this game. Maintained by `set_game_payment_option` (create/update
+    /// transitions) and `remove_game_payment_option` (close of an active
+    /// option decrements). `set_game_free_flag(true)` requires this to be 0,
+    /// so a game can never be simultaneously "free" (free path open) and
+    /// "priced" (paid path advertising prices). Fail-closed: the count lives
+    /// on-chain, so omitting option accounts cannot bypass the guard.
+    pub active_payment_options: u16,
     /// M5 schema version.
     pub version: u8,
 }
 
 impl GameStoreConfig {
-    pub const SPACE: usize = 8 + 32 + 1 + 3 + 3 + 9 + 9 + 1 + 1 + 1;
+    pub const SPACE: usize = 8 + 32 + 1 + 3 + 3 + 9 + 9 + 1 + 1 + 2 + 1;
 }
 
 #[account]

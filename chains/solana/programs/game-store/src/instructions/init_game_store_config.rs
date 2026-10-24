@@ -82,6 +82,7 @@ pub(crate) fn handler(ctx: Context<InitGameStoreConfig>, active: bool) -> Result
     // H3: new games are PAID by default (fail-closed; authority opts into free
     // via `set_game_free_flag`). M5: stamp schema version.
     cfg.is_free = false;
+    cfg.active_payment_options = 0;
     cfg.version = CURRENT_VERSION;
 
     emit!(GameStoreConfigInitialized {

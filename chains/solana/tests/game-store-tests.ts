@@ -583,6 +583,7 @@ describe("game-store program", () => {
           authorized_source_program: base.authorizedSourceProgramPda,
           source_program: base.pglProgram.programId,
           game: game.gamePda,
+          game_store_config: storeFixture.gameStoreConfigPda,
           mint: base.paymentMint,
           game_payment_option: storeFixture.gamePaymentOptionPda,
         })

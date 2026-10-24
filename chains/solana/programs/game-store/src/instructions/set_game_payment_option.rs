@@ -40,7 +40,9 @@ pub struct SetGamePaymentOption<'info> {
         owner = registry_program.key() @ StoreError::RegistryProgramNotAuthorized,
     )]
     pub registry_game: UncheckedAccount<'info>,
+    // H3 guard counter lives here: mutated on every option transition.
     #[account(
+        mut,
         seeds = [b"game_store_config", game.key().as_ref()],
         bump = game_store_config.bump,
         has_one = game
@@ -104,15 +106,34 @@ pub(crate) fn handler(ctx: Context<SetGamePaymentOption>, base_price: u64, activ
     require_keys_eq!(ctx.accounts.accepted_payment_token.mint, ctx.accounts.mint.key(), StoreError::PaymentTokenNotAllowed);
 
     let option = &mut ctx.accounts.game_payment_option;
-    if option.game != Pubkey::default() {
+    let is_new = option.game == Pubkey::default();
+    if !is_new {
         require_keys_eq!(option.game, ctx.accounts.game.key(), StoreError::GamePaymentOptionMismatch);
     }
+    let was_active = !is_new && option.active;
 
     option.game = ctx.accounts.game.key();
     option.mint = ctx.accounts.mint.key();
     option.base_price = base_price;
     option.active = active;
     option.bump = ctx.bumps.game_payment_option;
+
+    // H3 guard counter: track ACTIVE options so `set_game_free_flag(true)`
+    // can fail closed without enumerating PDAs (which on-chain code cannot
+    // do). Checked math: an underflow here would mean corrupted state, and
+    // must fail rather than silently wrap.
+    let cfg = &mut ctx.accounts.game_store_config;
+    if active && !was_active {
+        cfg.active_payment_options = cfg
+            .active_payment_options
+            .checked_add(1)
+            .ok_or(StoreError::MathOverflow)?;
+    } else if !active && was_active {
+        cfg.active_payment_options = cfg
+            .active_payment_options
+            .checked_sub(1)
+            .ok_or(StoreError::MathOverflow)?;
+    }
 
     emit!(GamePaymentOptionSet {
         game: option.game,
