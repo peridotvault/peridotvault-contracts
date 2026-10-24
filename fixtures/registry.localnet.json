@@ -1,0 +1,30 @@
+{
+  "_comment": "PGC1 M1 localnet registry fixture (ANT-490, parent ANT-485 spec §3.5). version=1, status=active. timelockDelay is SHORT (60s) but enforced — short ≠ absent (AC-TIME-1 test advances time past it and asserts pre-effectiveAt reverts). impl/programId are filled by the local deploy script; null here means 'not yet deployed', never a live address.",
+  "network": "localnet",
+  "fixtureOnly": true,
+  "timelockDelay": 60,
+  "entries": [
+    {
+      "chainId": "eip155:31337",
+      "programId": null,
+      "programIdNote": "filled by chains/evm local deploy output (deployments/localhost/31337.json); null until deployed",
+      "format": "EVM20",
+      "version": 1,
+      "status": "active",
+      "localId": "demo-game-001",
+      "publisherHex": "f39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "gameId": "0x2e1eda57deb0444f46d824c9e7621c321d4d80f838162d7a82ebbddd5974fbbe"
+    },
+    {
+      "chainId": "solana:localnet",
+      "programId": null,
+      "programIdNote": "filled by local `anchor deploy` output; solana:localnet is a convention label, never a ledger hash (spec §5)",
+      "format": "SOLANA32",
+      "version": 1,
+      "status": "active",
+      "localId": "local-sandbox",
+      "publisherHex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+      "gameId": "0xa0a198947363924ea524a1829af8d61a1811681072f8af5d9a0881b2ebb6c99c"
+    }
+  ]
+}

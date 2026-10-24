@@ -1,0 +1,43 @@
+{
+  "_comment": "PGC1 M1 testnet registry fixture (ANT-490, parent ANT-485 spec §3.5). ALL impl/programId values are PLACEHOLDERS until testnet deploys exist — schema-valid and loadable, but the loader MUST refuse to treat them as live (fail-closed read). Zero mainnet chain IDs (CI grep gate, AC-FIX-1).",
+  "network": "testnet",
+  "fixtureOnly": true,
+  "timelockDelay": 60,
+  "timelockNote": "Short fixture delay; production 48–72h constant is [ANT-486] ops scope. Short ≠ absent — enforcement tests still apply.",
+  "entries": [
+    {
+      "chainId": "eip155:84532",
+      "programId": "0x1111111111111111111111111111111111111111",
+      "placeholder": true,
+      "format": "EVM20",
+      "version": 1,
+      "status": "active",
+      "localId": "base-game-alpha",
+      "publisherHex": "1111111111111111111111111111111111111111",
+      "gameId": "0x9d57305b20edcd5492f3d634f2197a995d39f5e68b000f914ee775677486a719"
+    },
+    {
+      "chainId": "eip155:4202",
+      "programId": "0x2222222222222222222222222222222222222222",
+      "placeholder": true,
+      "format": "EVM20",
+      "version": 1,
+      "status": "active",
+      "localId": "lisk-game-beta",
+      "publisherHex": "2222222222222222222222222222222222222222",
+      "gameId": "0xf201df0feaab24d86fc2728130b9b93972279aa89b414aac54a5858dd767274e"
+    },
+    {
+      "chainId": "solana:EtWBMkgFUSkMhvZSGQi4uAiEE8RjqiB1MwWXEaAu34",
+      "programId": "G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE",
+      "placeholder": true,
+      "placeholderNote": "Current registry program id reused as a shape-valid placeholder only — NOT a deployed M1 entry. Q3 (Tristan) ruling pending on placeholder-vs-omitted.",
+      "format": "SOLANA32",
+      "version": 1,
+      "status": "active",
+      "localId": "devnet-quest-7",
+      "publisherHex": "4a5b6c7d8e9f00112233445566778899aabbccddeeff00112233445566778899",
+      "gameId": "0xb048bf29f01d35c2823a9a6478c4966785b5d78a430fcc6500ef7f3eeba74ac6"
+    }
+  ]
+}
