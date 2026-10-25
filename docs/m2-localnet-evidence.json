@@ -1,0 +1,15 @@
+{
+  "network": "solana-test-validator 2.3.13 localnet (http://127.0.0.1:8899), single idle node",
+  "programNote": "TEMP-ID localnet build of committed source (protocol crate::ID G2XvhJoEkjiu3rCysaAjTuDj1dT5NAS8RNUTVi9H7ggE; temp deploy id differs per run — see docs/finality-measurements.md section 3)",
+  "consumeTx": "2rvFCjwtVyRzjJAmp8CsiKCVCu8ptpVeDVAy6gBuB4MV2CbHD6aVsUggdC45hRWdav3fT8faVwrGezKiC27uL1dm",
+  "consumeSlot": 110,
+  "computeUnitsConsumed": 333031,
+  "timeToFinalizedMs": 12986,
+  "timeNote": "finality latency measured on an equivalent idle single-node run (slot 142, ~1 slot elapsed); local-idle artifact, not a protocol floor",
+  "digest": "0x87d324ab8bd72af53d446e59679e1e506b93a46827af567f2cdd0c1bccc2f2b6",
+  "recognitionMatchesAttestation": true,
+  "replayRejected": "Allocate: already in use (PDA init)",
+  "tamperedAmountRejected": "UnknownAttester",
+  "wrongDestRejected": "InvalidDestChainId (6028)",
+  "cuNote": "consume CU measured 333031-335879 across runs; default 200k limit insufficient — ComputeBudget >=400k required"
+}

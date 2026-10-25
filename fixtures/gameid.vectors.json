@@ -1,0 +1,53 @@
+{
+  "_comment": "PGC1 M1 cross-stack gameId vectors (ANT-490, parent ANT-485 spec §3.1/§3.5). Derivation: gameId = keccak256(abi.encode(string chainId, bytes publisher, string localId)). Consumed by BOTH chains/evm/test/M1Schema.ts (ethers/viem abi.encode + keccak) and the Solana registry unit tests (manual §3.1 byte layout + keccak) to prove cross-stack equivalence (AC-GAMEID-1..3).",
+  "_deviation": "Vectors 1-3 reproduce the spec §3.1 worked examples byte-identically (verified with viem encodeAbiParameters). Vectors 4-5 as PRINTED in the spec do not reproduce under the normative derivation: #5's publisher hex is 66 chars (33 bytes, spec labels it 32 B), and #4's chainId is truncated with an ellipsis so the exact preimage is unrecoverable. Both are recomputed here from the stated inputs with corrected 32-byte publishers (see publisherNote). Flagged to Theo (spec owner) for confirmation; cross-stack equivalence (the normative property, AC-GAMEID-2) holds for all 5 as written.",
+  "vectors": [
+    {
+      "vector": 1,
+      "chainId": "eip155:31337",
+      "publisherHex": "f39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "publisherBytes": 20,
+      "localId": "demo-game-001",
+      "gameId": "0x2e1eda57deb0444f46d824c9e7621c321d4d80f838162d7a82ebbddd5974fbbe",
+      "matchesSpecPrint": true
+    },
+    {
+      "vector": 2,
+      "chainId": "eip155:84532",
+      "publisherHex": "1111111111111111111111111111111111111111",
+      "publisherBytes": 20,
+      "localId": "base-game-alpha",
+      "gameId": "0x9d57305b20edcd5492f3d634f2197a995d39f5e68b000f914ee775677486a719",
+      "matchesSpecPrint": true
+    },
+    {
+      "vector": 3,
+      "chainId": "eip155:4202",
+      "publisherHex": "2222222222222222222222222222222222222222",
+      "publisherBytes": 20,
+      "localId": "lisk-game-beta",
+      "gameId": "0xf201df0feaab24d86fc2728130b9b93972279aa89b414aac54a5858dd767274e",
+      "matchesSpecPrint": true
+    },
+    {
+      "vector": 4,
+      "chainId": "solana:EtWBMkgFUSkMhvZSGQi4uAiEE8RjqiB1MwWXEaAu34",
+      "publisherHex": "4a5b6c7d8e9f00112233445566778899aabbccddeeff00112233445566778899",
+      "publisherBytes": 32,
+      "localId": "devnet-quest-7",
+      "gameId": "0xb048bf29f01d35c2823a9a6478c4966785b5d78a430fcc6500ef7f3eeba74ac6",
+      "matchesSpecPrint": false,
+      "publisherNote": "Publisher hex as printed (64 chars / 32 B, clean). Spec prints chainId truncated (solana:EtWBMkg…Au34) and gameId 0xdac0…4208, which does not reproduce from the §3.1 normative table's full devnet string under abi.encode(string,bytes,string); recomputed here from the full normative chainId."
+    },
+    {
+      "vector": 5,
+      "chainId": "solana:localnet",
+      "publisherHex": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+      "publisherBytes": 32,
+      "localId": "local-sandbox",
+      "gameId": "0xa0a198947363924ea524a1829af8d61a1811681072f8af5d9a0881b2ebb6c99c",
+      "matchesSpecPrint": false,
+      "publisherNote": "Spec prints 66 hex chars (33 bytes) while labeling it (32 B). Corrected to 32 bytes by dropping the trailing 00 of the repeated 0011…eeff pattern; spec gameId 0x1669…1756 does not reproduce from any 32-byte variant, so gameId is recomputed."
+    }
+  ]
+}

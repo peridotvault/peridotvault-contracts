@@ -4,6 +4,8 @@ pub mod errors;
 pub mod events;
 pub mod instructions;
 pub mod state;
+pub mod xchain;
+pub mod xchain_attest;
 
 pub use instructions::*;
 
@@ -61,5 +63,76 @@ pub mod registry {
 
     pub fn close_registry_game(ctx: Context<CloseRegistryGame>) -> Result<()> {
         instructions::close_registry_game::handler(ctx)
+    }
+
+    // M1 cross-chain entries (ANT-490).
+    pub fn propose_xchain_game(
+        ctx: Context<ProposeXchainGame>,
+        chain_id: String,
+        publisher: Vec<u8>,
+        local_id: String,
+        program_id: Vec<u8>,
+        format: u8,
+        game_id: [u8; 32],
+    ) -> Result<()> {
+        instructions::xchain_entry::propose_handler(ctx, chain_id, publisher, local_id, program_id, format, game_id)
+    }
+
+    pub fn activate_xchain_game(ctx: Context<XchainEntryAdmin>) -> Result<()> {
+        instructions::xchain_entry::activate_handler(ctx)
+    }
+
+    pub fn deprecate_xchain_game(ctx: Context<XchainEntryAdmin>) -> Result<()> {
+        instructions::xchain_entry::deprecate_handler(ctx)
+    }
+
+    pub fn freeze_xchain_game(ctx: Context<XchainEntryAdmin>) -> Result<()> {
+        instructions::xchain_entry::freeze_handler(ctx)
+    }
+
+    pub fn propose_xchain_update(
+        ctx: Context<XchainEntryAdmin>,
+        new_program_id: Vec<u8>,
+        timelock_delay: i64,
+    ) -> Result<()> {
+        instructions::xchain_entry::propose_update_handler(ctx, new_program_id, timelock_delay)
+    }
+
+    pub fn cancel_xchain_update(ctx: Context<XchainEntryAdmin>) -> Result<()> {
+        instructions::xchain_entry::cancel_update_handler(ctx)
+    }
+
+    pub fn execute_xchain_update(ctx: Context<XchainEntryAdmin>) -> Result<()> {
+        instructions::xchain_entry::execute_update_handler(ctx)
+    }
+
+    pub fn cancel_xchain_proposal(ctx: Context<CloseXchainProposal>) -> Result<()> {
+        instructions::xchain_entry::cancel_proposal_handler(ctx)
+    }
+
+    // M2 attestation consume path (ANT-487, recognition-only).
+    pub fn init_xchain_attester(
+        ctx: Context<InitXchainAttester>,
+        signers: [[u8; 20]; 5],
+        dest_chain_id: String,
+        reorg_delay: i64,
+    ) -> Result<()> {
+        instructions::xchain_consume::init_handler(ctx, signers, dest_chain_id, reorg_delay)
+    }
+
+    pub fn update_xchain_attester(
+        ctx: Context<UpdateXchainAttester>,
+        signers: [[u8; 20]; 5],
+        dest_chain_id: String,
+        reorg_delay: i64,
+    ) -> Result<()> {
+        instructions::xchain_consume::update_handler(ctx, signers, dest_chain_id, reorg_delay)
+    }
+
+    pub fn consume_xchain_attestation(
+        ctx: Context<ConsumeXchainAttestation>,
+        args: ConsumeArgs,
+    ) -> Result<()> {
+        instructions::xchain_consume::consume_handler(ctx, args)
     }
 }
