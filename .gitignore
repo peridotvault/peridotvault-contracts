@@ -20,3 +20,9 @@ chains/solana/.yarn/
 
 # Local nested git backups
 .git-backups/
+
+# Secrets hygiene (ANT-504): ignore real env files at any depth.
+# *.env.example files are NOT matched by these patterns and stay tracked.
+*.env
+.env.*
+!.env.example
