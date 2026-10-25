@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use crate::{
     errors::StoreError,
     events::GameStoreConfigInitialized,
-    state::{AuthorizedProgram, GameStoreConfig, ROLE_REGISTRY},
+    state::{AuthorizedProgram, GameStoreConfig, CURRENT_VERSION, ROLE_REGISTRY},
 };
 
 #[derive(Accounts)]
@@ -79,6 +79,11 @@ pub(crate) fn handler(ctx: Context<InitGameStoreConfig>, active: bool) -> Result
     cfg.discount_starts_at = None;
     cfg.discount_expires_at = None;
     cfg.bump = ctx.bumps.game_store_config;
+    // H3: new games are PAID by default (fail-closed; authority opts into free
+    // via `set_game_free_flag`). M5: stamp schema version.
+    cfg.is_free = false;
+    cfg.active_payment_options = 0;
+    cfg.version = CURRENT_VERSION;
 
     emit!(GameStoreConfigInitialized {
         game: cfg.game,

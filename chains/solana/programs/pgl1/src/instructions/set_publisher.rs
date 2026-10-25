@@ -3,11 +3,15 @@ use anchor_lang::prelude::*;
 use crate::{
     errors::PglError,
     events::PublisherUpdated,
-    state::{Game, GAME_SEED},
+    state::{Game, CURRENT_VERSION, GAME_SEED},
 };
 
 pub(crate) fn handler(ctx: Context<SetPublisher>, new_publisher: Pubkey) -> Result<()> {
     require!(new_publisher != Pubkey::default(), PglError::Unauthorized);
+    require!(
+        ctx.accounts.game.version <= CURRENT_VERSION,
+        PglError::UnsupportedVersion
+    );
 
     let game = &mut ctx.accounts.game;
     let signer = ctx.accounts.publisher.key();

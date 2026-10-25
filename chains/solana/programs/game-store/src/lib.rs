@@ -78,6 +78,10 @@ pub mod game_store {
         set_game_store_active::handler(ctx, active)
     }
 
+    pub fn set_game_free_flag(ctx: Context<SetGameFreeFlag>, is_free: bool) -> Result<()> {
+        set_game_free_flag::handler(ctx, is_free)
+    }
+
     pub fn set_game_payment_option(
         ctx: Context<SetGamePaymentOption>,
         base_price: u64,

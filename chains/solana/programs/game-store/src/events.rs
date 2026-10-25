@@ -63,6 +63,12 @@ pub struct GameStoreActiveUpdated {
 }
 
 #[event]
+pub struct GameFreeFlagUpdated {
+    pub game: Pubkey,
+    pub is_free: bool,
+}
+
+#[event]
 pub struct GamePaymentOptionSet {
     pub game: Pubkey,
     pub mint: Pubkey,

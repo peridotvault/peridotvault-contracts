@@ -3,6 +3,9 @@ use anchor_lang::prelude::*;
 pub const MAX_GAME_ID_LEN: usize = 64;
 pub const MAX_METADATA_URI_LEN: usize = 256;
 
+/// M5: current schema version for all versioned registry accounts.
+pub const CURRENT_VERSION: u8 = 1;
+
 #[account]
 pub struct RegistryConfig {
     pub authority: Pubkey,
@@ -34,10 +37,12 @@ pub struct RegistryGame {
     pub registered_at: i64,
     pub status: GameStatus,
     pub bump: u8,
+    /// M5 schema version.
+    pub version: u8,
 }
 
 impl RegistryGame {
-    pub const SPACE: usize = 8 + 32 + (4 + MAX_GAME_ID_LEN) + 8 + 1 + 1;
+    pub const SPACE: usize = 8 + 32 + (4 + MAX_GAME_ID_LEN) + 8 + 1 + 1 + 1;
 }
 
 #[account]

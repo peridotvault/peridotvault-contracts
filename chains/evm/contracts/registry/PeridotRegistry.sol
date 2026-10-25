@@ -4,11 +4,18 @@ pragma solidity ^0.8.28;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract PeridotRegistry is Ownable {
+    /// M5: registry schema version.
+    uint8 public constant REGISTRY_VERSION = 1;
+    /// M5: game-record / attestation-envelope schema version (forward-compat
+    /// with the EIP-712 `PGL1-XCHAIN` envelope planned for M2-prep, Q4).
+    uint8 public constant RECORD_VERSION = 1;
+
     struct GameRecord {
         address pgc1;
         address publisher;
         uint64 createdAt;
         bool active;
+        uint8 version;
     }
 
     /* ======================================================
@@ -48,6 +55,7 @@ contract PeridotRegistry is Ownable {
     error GameNotRegistered();
     error PGC1AlreadyRegistered();
     error InvalidGameId();
+    error UnsupportedVersion();
 
     modifier onlyFactory() {
         if (msg.sender != factory) revert NotFactory();
@@ -86,7 +94,8 @@ contract PeridotRegistry is Ownable {
             pgc1: pgc1,
             publisher: publisher,
             createdAt: uint64(block.timestamp),
-            active: true
+            active: true,
+            version: RECORD_VERSION
         });
 
         gameIdOf[pgc1] = gameId;
@@ -130,6 +139,10 @@ contract PeridotRegistry is Ownable {
     function getGame(
         string calldata gameId
     ) external view returns (GameRecord memory) {
-        return games[gameId];
+        GameRecord memory record = games[gameId];
+        // M5: fail-closed version gate — never misinterpret a newer schema.
+        if (record.pgc1 != address(0) && record.version > RECORD_VERSION)
+            revert UnsupportedVersion();
+        return record;
     }
 }

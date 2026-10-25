@@ -64,4 +64,13 @@ pub enum StoreError {
     InvalidRole,
     #[msg("Program role insufficient for this action")]
     InsufficientRole,
+
+    #[msg("Free path not allowed: paid game requires payment")]
+    FreePathNotAllowed,
+    #[msg("Payment not allowed for free game")]
+    FreeGamePaymentNotAllowed,
+    #[msg("Free game cannot have active payment options")]
+    FreeGameHasPaymentOptions,
+    #[msg("Unsupported account version")]
+    UnsupportedVersion,
 }

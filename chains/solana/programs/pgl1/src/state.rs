@@ -9,6 +9,11 @@ pub const LICENSE_SEED: &[u8] = b"license";
 pub const MAX_GAME_ID_LEN: usize = 64;
 pub const MAX_METADATA_URI_LEN: usize = 256;
 
+/// M5: current schema version for all versioned pgl1 accounts.
+/// Bump policy: minor = additive/compatible, major = re-registration.
+/// Readers must reject `version > CURRENT_VERSION` (see `UnsupportedVersion`).
+pub const CURRENT_VERSION: u8 = 1;
+
 #[account]
 pub struct PglConfig {
     pub authority: Pubkey,
@@ -52,6 +57,8 @@ pub struct Game {
     pub metadata_uri: String,
     pub created_at: i64,
     pub bump: u8,
+    /// M5 schema version. Always `CURRENT_VERSION` for new accounts.
+    pub version: u8,
 }
 
 impl Game {
@@ -62,6 +69,7 @@ impl Game {
         + 4 + MAX_GAME_ID_LEN
         + 4 + MAX_METADATA_URI_LEN
         + 8
+        + 1
         + 1;
 }
 
@@ -72,8 +80,10 @@ pub struct License {
     pub issued_at: i64,
     pub expires_at: Option<i64>,
     pub bump: u8,
+    /// M5 schema version. Always `CURRENT_VERSION` for new accounts.
+    pub version: u8,
 }
 
 impl License {
-    pub const SPACE: usize = 8 + 32 + 32 + 8 + (1 + 8) + 1;
+    pub const SPACE: usize = 8 + 32 + 32 + 8 + (1 + 8) + 1 + 1;
 }
