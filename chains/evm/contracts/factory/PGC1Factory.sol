@@ -9,6 +9,7 @@ import {
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {PGC1} from "../pgc/PGC1/PGC1.sol";
+import {PGC1Constants} from "../pgc/PGC1/lib/PGC1Constants.sol";
 import {PGC1Errors} from "../pgc/PGC1/lib/PGC1Errors.sol";
 import {IPeridotRegistry} from "../registry/IPeridotRegistry.sol";
 
@@ -132,7 +133,8 @@ contract PGC1Factory is Ownable {
     }
 
     function setPlatformFeeBps(uint16 newBps) external onlyOwner {
-        if (newBps > 10_000) revert InvalidPlatformFeeBps();
+        if (newBps > PGC1Constants.PLATFORM_FEE_BPS_CAP)
+            revert InvalidPlatformFeeBps();
 
         platformFeeBps = newBps;
 
