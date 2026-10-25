@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Pre-commit secrets guard (ANT-504).
+# Install once per clone/worktree:  git config core.hooksPath .githooks
+# Requires gitleaks for the full scan: https://github.com/gitleaks/gitleaks#installing
+# Without gitleaks, a conservative fallback scan runs instead (never silent-pass).
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+CONFIG="$REPO_ROOT/.gitleaks.toml"
+
+# 1) Fail closed: never allow a real .env file into a commit.
+#    Staged paths ending in .env or like .env.local are blocked; *.env.example is allowed.
+BLOCKED="$(git diff --cached --name-only --diff-filter=ACM -z \
+  | tr '\0' '\n' \
+  | grep -E '(^|/)\.env(\.[^/]*)?$' \
+  | grep -v '\.env\.example$' || true)"
+if [ -n "$BLOCKED" ]; then
+  echo "pre-commit: refusing to commit real env file(s):" >&2
+  echo "$BLOCKED" >&2
+  echo "Keep secrets in your untracked working-tree .env; commit only *.env.example." >&2
+  exit 1
+fi
+
+# 2) Content scan: gitleaks when present, fallback pattern scan otherwise.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --verbose --config "$CONFIG"
+else
+  echo "pre-commit: gitleaks not installed — running fallback scan." >&2
+  echo "Install gitleaks so this hook runs the full rule set: https://github.com/gitleaks/gitleaks#installing" >&2
+  SUSPECT="$(git diff --cached -U0 -- . \
+    | grep -E '^\+\s*[^#]*\b(DEPLOYER_PRIVATE_KEY|SEPOLIA_PRIVATE_KEY|_PRIVATE_KEY|SEEDPHRASE|MNEMONIC)\b\s*[:=]' \
+    | grep -v -E 'YOUR_|EXAMPLE|CHANGEME|PLACEHOLDER|<[^>]*>|""|'"''"'' || true)"
+  if [ -n "$SUSPECT" ]; then
+    # Redact values: never print potential secret material to logs.
+    echo "pre-commit: possible secret in staged changes (fallback scan):" >&2
+    echo "$SUSPECT" | sed -E 's/((:|)=).*$/\1<redacted>/' >&2
+    echo "If this is a placeholder, mark it YOUR_/EXAMPLE/CHANGEME/PLACEHOLDER; otherwise remove the secret and retry." >&2
+    exit 1
+  fi
+  echo "pre-commit: fallback scan clean." >&2
+fi

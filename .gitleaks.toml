@@ -1,0 +1,10 @@
+# Repo-local gitleaks config (ANT-504). Scanned by .githooks/pre-commit.
+# Full rule reference: https://github.com/gitleaks/gitleaks
+title = "peridotvault-contracts secrets policy"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Example env files carry placeholders only, never real secrets."
+paths = ['''chains/evm/\.env\.example$''']
