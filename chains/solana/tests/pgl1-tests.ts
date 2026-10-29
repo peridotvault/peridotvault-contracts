@@ -11,6 +11,33 @@ import {
   ROLE_REGISTRY,
 } from "./helpers/peridot";
 
+// ANT-897: derive the game PDA from the LIVE creator nonce, not a hardcoded
+// zero. The creator nonce advances with every created game, so a hardcoded
+// `Buffer.alloc(8)` collides with games created by earlier tests sharing
+// this publisher (order-dependent ConstraintSeeds/already-in-use failures).
+async function deriveNextGamePda(
+  base: Awaited<ReturnType<typeof setupPeridotFixture>>,
+  publisher: Keypair,
+): Promise<PublicKey> {
+  const creatorStatePda = derivePda(
+    [Buffer.from("creator_state"), publisher.publicKey.toBuffer()],
+    base.pglProgram.programId,
+  );
+  let nextNonce = BigInt(0);
+  if (await base.provider.connection.getAccountInfo(creatorStatePda)) {
+    const creatorState = (await base.pglProgram.account.creatorState.fetch(
+      creatorStatePda,
+    )) as any;
+    nextNonce = BigInt(creatorState.nextNonce.toString());
+  }
+  const nonceBuf = Buffer.alloc(8);
+  nonceBuf.writeBigUInt64LE(nextNonce);
+  return derivePda(
+    [Buffer.from("game"), publisher.publicKey.toBuffer(), nonceBuf],
+    base.pglProgram.programId,
+  );
+}
+
 describe("pgl1 program", () => {
   describe("initialize_pgl", () => {
     it("initializes PGL config with valid params", async () => {
@@ -274,17 +301,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -308,17 +333,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -330,9 +353,10 @@ describe("pgl1 program", () => {
         await base.pglProgram.methods
           .createGame(gameId, metadataUri)
           .accounts({
-            publisher: base.publisher.publicKey,
-            creatorState: creatorStatePda,
+            creator: base.publisher.publicKey,
             pglConfig: base.pglConfigPda,
+            treasury: base.authority.publicKey,
+            creatorState: creatorStatePda,
             game: gamePda,
             systemProgram: SystemProgram.programId,
           })
@@ -354,19 +378,17 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       let failed = false;
       try {
         await base.pglProgram.methods
           .createGame(gameId, metadataUri)
           .accounts({
-            publisher: base.publisher.publicKey,
-            creatorState: creatorStatePda,
+            creator: base.publisher.publicKey,
             pglConfig: base.pglConfigPda,
+            treasury: base.authority.publicKey,
+            creatorState: creatorStatePda,
             game: gamePda,
             systemProgram: SystemProgram.programId,
           })
@@ -388,19 +410,17 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       let failed = false;
       try {
         await base.pglProgram.methods
           .createGame(gameId, metadataUri)
           .accounts({
-            publisher: base.publisher.publicKey,
-            creatorState: creatorStatePda,
+            creator: base.publisher.publicKey,
             pglConfig: base.pglConfigPda,
+            treasury: base.authority.publicKey,
+            creatorState: creatorStatePda,
             game: gamePda,
             systemProgram: SystemProgram.programId,
           })
@@ -425,17 +445,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -467,17 +485,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -514,17 +530,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -557,17 +571,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -610,17 +622,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -660,17 +670,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -728,17 +736,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -791,17 +797,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -859,17 +863,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -916,17 +918,15 @@ describe("pgl1 program", () => {
         base.pglProgram.programId,
       );
 
-      const gamePda = derivePda(
-        [Buffer.from("game"), base.publisher.publicKey.toBuffer(), Buffer.alloc(8)],
-        base.pglProgram.programId,
-      );
+      const gamePda = await deriveNextGamePda(base, base.publisher);
 
       await base.pglProgram.methods
         .createGame(gameId, metadataUri)
         .accounts({
-          publisher: base.publisher.publicKey,
-          creatorState: creatorStatePda,
+          creator: base.publisher.publicKey,
           pglConfig: base.pglConfigPda,
+          treasury: base.authority.publicKey,
+          creatorState: creatorStatePda,
           game: gamePda,
           systemProgram: SystemProgram.programId,
         })
@@ -938,7 +938,7 @@ describe("pgl1 program", () => {
       await base.pglProgram.methods
         .closeCreatorState()
         .accounts({
-          publisher: base.publisher.publicKey,
+          creator: base.publisher.publicKey,
           creatorState: creatorStatePda,
           pglConfig: base.pglConfigPda,
           systemProgram: SystemProgram.programId,

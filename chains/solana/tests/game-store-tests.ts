@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
 import {
+  createMint,
   getOrCreateAssociatedTokenAccount,
   mintTo,
   TOKEN_PROGRAM_ID,
@@ -16,6 +17,7 @@ import {
   ROLE_REGISTRY,
   DEFAULT_GAME_PRICE,
   DEFAULT_PLATFORM_FEE_BPS,
+  PAYMENT_DECIMALS,
   DEFAULT_REFERRAL_BPS,
   DEFAULT_MAX_REFERRAL_BPS,
   STATUS_ACTIVE,
@@ -50,8 +52,8 @@ describe("game-store program", () => {
           )
           .accounts({
             authority: base.authority.publicKey,
-            store_config: base.storeConfigPda,
-            system_program: SystemProgram.programId,
+            storeConfig: base.storeConfigPda,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
       } catch (error: any) {
@@ -80,8 +82,8 @@ describe("game-store program", () => {
           )
           .accounts({
             authority: base.authority.publicKey,
-            store_config: newStoreConfigPda,
-            system_program: SystemProgram.programId,
+            storeConfig: newStoreConfigPda,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
       } catch (error: any) {
@@ -110,8 +112,8 @@ describe("game-store program", () => {
           )
           .accounts({
             authority: base.authority.publicKey,
-            store_config: newStoreConfigPda,
-            system_program: SystemProgram.programId,
+            storeConfig: newStoreConfigPda,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
       } catch (error: any) {
@@ -139,8 +141,8 @@ describe("game-store program", () => {
           )
           .accounts({
             authority: base.authority.publicKey,
-            store_config: newStoreConfigPda,
-            system_program: SystemProgram.programId,
+            storeConfig: newStoreConfigPda,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
       } catch (error: any) {
@@ -168,8 +170,8 @@ describe("game-store program", () => {
           )
           .accounts({
             authority: base.authority.publicKey,
-            store_config: newStoreConfigPda,
-            system_program: SystemProgram.programId,
+            storeConfig: newStoreConfigPda,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
       } catch (error: any) {
@@ -188,7 +190,7 @@ describe("game-store program", () => {
         .setTreasury(newTreasury)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
         })
         .rpc();
 
@@ -203,7 +205,7 @@ describe("game-store program", () => {
         .setPlatformFee(2_000)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
         })
         .rpc();
 
@@ -218,7 +220,7 @@ describe("game-store program", () => {
         .setDefaultReferral(500)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
         })
         .rpc();
 
@@ -233,7 +235,7 @@ describe("game-store program", () => {
         .setMaxReferral(3_000)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
         })
         .rpc();
 
@@ -249,7 +251,7 @@ describe("game-store program", () => {
         .setStoreActor(newActor)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
         })
         .rpc();
 
@@ -267,7 +269,7 @@ describe("game-store program", () => {
           .setTreasury(Keypair.generate().publicKey)
           .accounts({
             authority: nonAuthority.publicKey,
-            store_config: base.storeConfigPda,
+            storeConfig: base.storeConfigPda,
           })
           .signers([nonAuthority])
           .rpc();
@@ -291,10 +293,10 @@ describe("game-store program", () => {
         .addAuthorizedProgram(ROLE_SOURCE)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
           programId: newProgram.publicKey,
           authorizedProgram: authorizedPda,
-          system_program: SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -316,10 +318,10 @@ describe("game-store program", () => {
         .addAuthorizedProgram(ROLE_REGISTRY)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
           programId: newProgram.publicKey,
           authorizedProgram: authorizedPda,
-          system_program: SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -339,10 +341,10 @@ describe("game-store program", () => {
         .addAuthorizedProgram(ROLE_SOURCE)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
           programId: newProgram.publicKey,
           authorizedProgram: authorizedPda,
-          system_program: SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -350,7 +352,7 @@ describe("game-store program", () => {
         .updateAuthorizedProgram(false, ROLE_REGISTRY)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
           authorizedProgram: authorizedPda,
         })
         .rpc();
@@ -374,10 +376,10 @@ describe("game-store program", () => {
           .addAuthorizedProgram(5)
           .accounts({
             authority: base.authority.publicKey,
-            store_config: base.storeConfigPda,
+            storeConfig: base.storeConfigPda,
             programId: newProgram.publicKey,
             authorizedProgram: authorizedPda,
-            system_program: SystemProgram.programId,
+            systemProgram: SystemProgram.programId,
           })
           .rpc();
       } catch (error: any) {
@@ -401,10 +403,10 @@ describe("game-store program", () => {
         .addPaymentToken()
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
           mint: newMint.publicKey,
-          accepted_payment_token: acceptedPda,
-          system_program: SystemProgram.programId,
+          acceptedPaymentToken: acceptedPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -425,10 +427,10 @@ describe("game-store program", () => {
         .addPaymentToken()
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
+          storeConfig: base.storeConfigPda,
           mint: newMint.publicKey,
-          accepted_payment_token: acceptedPda,
-          system_program: SystemProgram.programId,
+          acceptedPaymentToken: acceptedPda,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -436,8 +438,8 @@ describe("game-store program", () => {
         .updatePaymentToken(false)
         .accounts({
           authority: base.authority.publicKey,
-          store_config: base.storeConfigPda,
-          accepted_payment_token: acceptedPda,
+          storeConfig: base.storeConfigPda,
+          acceptedPaymentToken: acceptedPda,
         })
         .rpc();
 
@@ -460,14 +462,14 @@ describe("game-store program", () => {
         .initGameStoreConfig(true)
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
-          authorized_registry_program: base.authorizedRegistryProgramPda,
-          registry_program: base.registryProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
           game: game.gamePda,
-          registry_game: game.registryGamePda,
-          game_store_config: gameStoreConfigPda,
-          system_program: SystemProgram.programId,
+          registryGame: game.registryGamePda,
+          gameStoreConfig: gameStoreConfigPda,
+          systemProgram: SystemProgram.programId,
         })
         .signers([game.publisher])
         .rpc();
@@ -491,14 +493,14 @@ describe("game-store program", () => {
         .initGameStoreConfig(true)
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
-          authorized_registry_program: base.authorizedRegistryProgramPda,
-          registry_program: base.registryProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
           game: game.gamePda,
-          registry_game: game.registryGamePda,
-          game_store_config: gameStoreConfigPda,
-          system_program: SystemProgram.programId,
+          registryGame: game.registryGamePda,
+          gameStoreConfig: gameStoreConfigPda,
+          systemProgram: SystemProgram.programId,
         })
         .signers([game.publisher])
         .rpc();
@@ -507,14 +509,14 @@ describe("game-store program", () => {
         .setGameStoreActive(false)
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
-          authorized_registry_program: base.authorizedRegistryProgramPda,
-          registry_program: base.registryProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
           game: game.gamePda,
-          registry_game: game.registryGamePda,
-          game_store_config: gameStoreConfigPda,
-          system_program: SystemProgram.programId,
+          registryGame: game.registryGamePda,
+          gameStoreConfig: gameStoreConfigPda,
+          systemProgram: SystemProgram.programId,
         })
         .signers([game.publisher])
         .rpc();
@@ -538,14 +540,14 @@ describe("game-store program", () => {
           .initGameStoreConfig(true)
           .accounts({
             publisher: nonPublisher.publicKey,
-            authorized_source_program: base.authorizedSourceProgramPda,
-            source_program: base.pglProgram.programId,
-            authorized_registry_program: base.authorizedRegistryProgramPda,
-            registry_program: base.registryProgram.programId,
+            authorizedSourceProgram: base.authorizedSourceProgramPda,
+            sourceProgram: base.pglProgram.programId,
+            authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+            registryProgram: base.registryProgram.programId,
             game: game.gamePda,
-            registry_game: game.registryGamePda,
-            game_store_config: gameStoreConfigPda,
-            system_program: SystemProgram.programId,
+            registryGame: game.registryGamePda,
+            gameStoreConfig: gameStoreConfigPda,
+            systemProgram: SystemProgram.programId,
           })
           .signers([nonPublisher])
           .rpc();
@@ -580,12 +582,12 @@ describe("game-store program", () => {
         .removeGamePaymentOption()
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
           game: game.gamePda,
-          game_store_config: storeFixture.gameStoreConfigPda,
+          gameStoreConfig: storeFixture.gameStoreConfigPda,
           mint: base.paymentMint,
-          game_payment_option: storeFixture.gamePaymentOptionPda,
+          gamePaymentOption: storeFixture.gamePaymentOptionPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -634,12 +636,12 @@ describe("game-store program", () => {
         .removeGamePaymentOption()
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
           game: game.gamePda,
-          game_store_config: store.gameStoreConfigPda,
+          gameStoreConfig: store.gameStoreConfigPda,
           mint: store.paymentMint,
-          game_payment_option: store.gamePaymentOptionPda,
+          gamePaymentOption: store.gamePaymentOptionPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -665,8 +667,16 @@ describe("game-store program", () => {
       await configureStoreForGame(base, game, { active: true });
       await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "reactivate");
 
-      // Second mint gets its own option PDA: 2.
-      const mint2 = Keypair.generate().publicKey;
+      // Second mint gets its own option PDA: 2. A real on-chain mint is
+      // required here: add_payment_token reads the mint account, so a
+      // bare random pubkey fails with AccountNotInitialized.
+      const mint2 = await createMint(
+        base.provider.connection,
+        base.authority,
+        base.authority.publicKey,
+        null,
+        PAYMENT_DECIMALS,
+      );
       const store2 = await configureStoreForGame(base, game, { paymentMint: mint2 });
       await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "second-option");
       expect(store2.gamePaymentOptionPda.toBase58()).to.not.eq(
@@ -704,13 +714,13 @@ describe("game-store program", () => {
         .setDiscount(new anchor.BN(discountBps), new anchor.BN(startsAt), new anchor.BN(expiresAt))
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
-          authorized_registry_program: base.authorizedRegistryProgramPda,
-          registry_program: base.registryProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
           game: game.gamePda,
-          registry_game: game.registryGamePda,
-          game_store_config: gameStoreConfigPda,
+          registryGame: game.registryGamePda,
+          gameStoreConfig: gameStoreConfigPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -735,13 +745,13 @@ describe("game-store program", () => {
         .setDiscount(new anchor.BN(1_000), new anchor.BN(0), new anchor.BN(9999999999))
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
-          authorized_registry_program: base.authorizedRegistryProgramPda,
-          registry_program: base.registryProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
           game: game.gamePda,
-          registry_game: game.registryGamePda,
-          game_store_config: gameStoreConfigPda,
+          registryGame: game.registryGamePda,
+          gameStoreConfig: gameStoreConfigPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -750,10 +760,10 @@ describe("game-store program", () => {
         .clearDiscount()
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
           game: game.gamePda,
-          game_store_config: gameStoreConfigPda,
+          gameStoreConfig: gameStoreConfigPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -780,13 +790,13 @@ describe("game-store program", () => {
           .setDiscount(new anchor.BN(10_001), new anchor.BN(0), new anchor.BN(9999999999))
           .accounts({
             publisher: game.publisher.publicKey,
-            authorized_source_program: base.authorizedSourceProgramPda,
-            source_program: base.pglProgram.programId,
-            authorized_registry_program: base.authorizedRegistryProgramPda,
-            registry_program: base.registryProgram.programId,
+            authorizedSourceProgram: base.authorizedSourceProgramPda,
+            sourceProgram: base.pglProgram.programId,
+            authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+            registryProgram: base.registryProgram.programId,
             game: game.gamePda,
-            registry_game: game.registryGamePda,
-            game_store_config: gameStoreConfigPda,
+            registryGame: game.registryGamePda,
+            gameStoreConfig: gameStoreConfigPda,
           })
           .signers([game.publisher])
           .rpc();
@@ -812,13 +822,13 @@ describe("game-store program", () => {
           .setDiscount(new anchor.BN(1_000), new anchor.BN(100), new anchor.BN(50))
           .accounts({
             publisher: game.publisher.publicKey,
-            authorized_source_program: base.authorizedSourceProgramPda,
-            source_program: base.pglProgram.programId,
-            authorized_registry_program: base.authorizedRegistryProgramPda,
-            registry_program: base.registryProgram.programId,
+            authorizedSourceProgram: base.authorizedSourceProgramPda,
+            sourceProgram: base.pglProgram.programId,
+            authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+            registryProgram: base.registryProgram.programId,
             game: game.gamePda,
-            registry_game: game.registryGamePda,
-            game_store_config: gameStoreConfigPda,
+            registryGame: game.registryGamePda,
+            gameStoreConfig: gameStoreConfigPda,
           })
           .signers([game.publisher])
           .rpc();
@@ -844,11 +854,11 @@ describe("game-store program", () => {
         .setReferralBps(new anchor.BN(1_000))
         .accounts({
           publisher: game.publisher.publicKey,
-          store_config: base.storeConfigPda,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
+          storeConfig: base.storeConfigPda,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
           game: game.gamePda,
-          game_store_config: gameStoreConfigPda,
+          gameStoreConfig: gameStoreConfigPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -871,11 +881,11 @@ describe("game-store program", () => {
         .setReferralBps(new anchor.BN(1_000))
         .accounts({
           publisher: game.publisher.publicKey,
-          store_config: base.storeConfigPda,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
+          storeConfig: base.storeConfigPda,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
           game: game.gamePda,
-          game_store_config: gameStoreConfigPda,
+          gameStoreConfig: gameStoreConfigPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -884,11 +894,11 @@ describe("game-store program", () => {
         .setReferralBps(new anchor.BN(0))
         .accounts({
           publisher: game.publisher.publicKey,
-          store_config: base.storeConfigPda,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
+          storeConfig: base.storeConfigPda,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
           game: game.gamePda,
-          game_store_config: gameStoreConfigPda,
+          gameStoreConfig: gameStoreConfigPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -913,11 +923,11 @@ describe("game-store program", () => {
           .setReferralBps(new anchor.BN(6_000))
           .accounts({
             publisher: game.publisher.publicKey,
-            store_config: base.storeConfigPda,
-            authorized_source_program: base.authorizedSourceProgramPda,
-            source_program: base.pglProgram.programId,
+            storeConfig: base.storeConfigPda,
+            authorizedSourceProgram: base.authorizedSourceProgramPda,
+            sourceProgram: base.pglProgram.programId,
             game: game.gamePda,
-            game_store_config: gameStoreConfigPda,
+            gameStoreConfig: gameStoreConfigPda,
           })
           .signers([game.publisher])
           .rpc();
@@ -991,20 +1001,20 @@ describe("game-store program", () => {
         .setGamePaymentOption(new anchor.BN(DEFAULT_GAME_PRICE), false)
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
-          authorized_registry_program: base.authorizedRegistryProgramPda,
-          registry_program: base.registryProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
           game: game.gamePda,
-          registry_game: game.registryGamePda,
-          game_store_config: derivePda(
+          registryGame: game.registryGamePda,
+          gameStoreConfig: derivePda(
             [Buffer.from("game_store_config"), game.gamePda.toBuffer()],
             base.storeProgram.programId,
           ),
           mint: base.paymentMint,
-          accepted_payment_token: base.storeAcceptedPaymentTokenPda,
-          game_payment_option: gamePaymentOptionPda,
-          system_program: SystemProgram.programId,
+          acceptedPaymentToken: base.storeAcceptedPaymentTokenPda,
+          gamePaymentOption: gamePaymentOptionPda,
+          systemProgram: SystemProgram.programId,
         })
         .signers([game.publisher])
         .rpc();
@@ -1084,13 +1094,13 @@ describe("game-store program", () => {
         .setDiscount(new anchor.BN(discountBps), new anchor.BN(startsAt), new anchor.BN(expiresAt))
         .accounts({
           publisher: game.publisher.publicKey,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
-          authorized_registry_program: base.authorizedRegistryProgramPda,
-          registry_program: base.registryProgram.programId,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
           game: game.gamePda,
-          registry_game: game.registryGamePda,
-          game_store_config: gameStoreConfigPda,
+          registryGame: game.registryGamePda,
+          gameStoreConfig: gameStoreConfigPda,
         })
         .signers([game.publisher])
         .rpc();
@@ -1121,11 +1131,11 @@ describe("game-store program", () => {
         .setReferralBps(new anchor.BN(customReferralBps))
         .accounts({
           publisher: game.publisher.publicKey,
-          store_config: base.storeConfigPda,
-          authorized_source_program: base.authorizedSourceProgramPda,
-          source_program: base.pglProgram.programId,
+          storeConfig: base.storeConfigPda,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
           game: game.gamePda,
-          game_store_config: gameStoreConfigPda,
+          gameStoreConfig: gameStoreConfigPda,
         })
         .signers([game.publisher])
         .rpc();
