@@ -14,7 +14,11 @@ pub struct SetGamePaymentOption<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    pub publisher: Option<Signer<'info>>,
+    /// H-3 (Access control, least privilege): game publisher must sign.
+    /// The permissionless fallback (registry-role-only, `publisher=None`)
+    /// is removed: price changes without the publisher's signature are
+    /// rejected by construction (fail-closed).
+    pub publisher: Signer<'info>,
 
     pub source_program: Program<'info, pgl1::program::Pgl1>,
     #[account(
@@ -86,14 +90,12 @@ pub(crate) fn handler(ctx: Context<SetGamePaymentOption>, base_price: u64, activ
 
     let publisher_key = ctx.accounts.game.publisher;
 
-    if let Some(ref publisher) = ctx.accounts.publisher {
-        require_keys_eq!(publisher.key(), publisher_key, StoreError::Unauthorized);
-    } else {
-        require!(
-            ctx.accounts.authorized_registry_program.role >= ROLE_REGISTRY,
-            StoreError::InsufficientRole
-        );
-    }
+    // H-3: publisher signature required — no permissionless fallback.
+    require_keys_eq!(
+        ctx.accounts.publisher.key(),
+        publisher_key,
+        StoreError::Unauthorized
+    );
 
     require_keys_eq!(ctx.accounts.registry_game.key(), {
         let (pda, _) = Pubkey::find_program_address(

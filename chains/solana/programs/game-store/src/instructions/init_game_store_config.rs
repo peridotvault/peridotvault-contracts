@@ -11,7 +11,11 @@ pub struct InitGameStoreConfig<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    pub publisher: Option<Signer<'info>>,
+    /// H-3 (Access control, least privilege): game publisher must sign.
+    /// The permissionless fallback (registry-role-only, `publisher=None`)
+    /// is removed: config creation without the publisher's signature is
+    /// rejected by construction (fail-closed).
+    pub publisher: Signer<'info>,
 
     pub source_program: Program<'info, pgl1::program::Pgl1>,
     #[account(
@@ -50,16 +54,12 @@ pub struct InitGameStoreConfig<'info> {
 }
 
 pub(crate) fn handler(ctx: Context<InitGameStoreConfig>, active: bool) -> Result<()> {
-    let publisher_key = ctx.accounts.game.publisher;
-
-    if let Some(ref publisher) = ctx.accounts.publisher {
-        require_keys_eq!(publisher.key(), publisher_key, StoreError::Unauthorized);
-    } else {
-        require!(
-            ctx.accounts.authorized_registry_program.role >= ROLE_REGISTRY,
-            StoreError::InsufficientRole
-        );
-    }
+    // H-3: publisher signature required — no permissionless fallback.
+    require_keys_eq!(
+        ctx.accounts.publisher.key(),
+        ctx.accounts.game.publisher,
+        StoreError::Unauthorized
+    );
 
     // Validate: game key matches (registry_game.game written in memory but not yet
     // serialized to account data at CPI time, so skip reading registry_game data)

@@ -65,10 +65,10 @@ pub struct BuyGame<'info> {
     /// CHECK: validated manually in handler for paid path.
     pub referrer_payment_account: Option<UncheckedAccount<'info>>,
 
-    /// H2 (Access control): the store mint authority. Must sign `buy_game`
-    /// so signer privilege extends into the pgl1 `mint_license` CPI, where
-    /// `actor` is now a required `Signer`. Direct `mint_license` calls
-    /// without this signature fail. Validated against `store_config.store_actor`.
+    // H-1 (Access control): the store mint authority. Must sign `buy_game`
+    // so signer privilege extends into the pgl1 `mint_license` CPI, where
+    // `actor` is now a required `Signer`. Direct `mint_license` calls
+    // without this signature fail at the Anchor constraint level.
     #[account(
         address = store_config.store_actor @ StoreError::InvalidStoreActor
     )]
@@ -381,11 +381,19 @@ pub(crate) fn handler(
             (fp, payment_mint_info.key(), referral)
         } else {
             // ── Free game path ──────────────────────────────────────────
-            // H3: the free path REQUIRES the explicit on-chain free flag.
-            // A paid game (`is_free == false`) with `mint_token == None`
-            // fails here (AC-H3-1). The flag is authoritative: even a game
-            // with zero payment options but `is_free == false` fails.
+            // H-4 (Access control + fail-closed price resolution): the free
+            // path REQUIRES the explicit on-chain free flag AND zero active
+            // payment options. A paid game (`is_free == false`) with
+            // `mint_token == None` fails here (AC-H3-1). The flag is
+            // authoritative, and the counter (not caller-supplied accounts)
+            // makes the zero-options side un-bypassable by omission — even a
+            // stale `is_free == true` with lingering active options fails
+            // closed here.
             require!(is_free, StoreError::FreePathNotAllowed);
+            require!(
+                ctx.accounts.game_store_config.active_payment_options == 0,
+                StoreError::FreeGameHasPaymentOptions
+            );
             (0u64, Pubkey::default(), 0u16)
         };
 
@@ -417,9 +425,9 @@ pub(crate) fn handler(
         license: ctx.accounts.license.to_account_info(),
         system_program: ctx.accounts.system_program.to_account_info(),
     };
-    // H2: `store_actor` signed this `buy_game` instruction, so signer
-    // privilege extends into the CPI where pgl1 enforces `MissingActorSignature`
-    // unless the actor signed (delegated authority-key model per M0 spec §3.1 Q3).
+    // H-1: `store_actor` signed this `buy_game` instruction, so signer
+    // privilege extends into the CPI where pgl1 requires `actor: Signer`
+    // (delegated authority-key model per M0 spec §3.1 Q3).
     let cpi_ctx =
         CpiContext::new(ctx.accounts.pgl1_program.to_account_info(), cpi_accounts);
     pgl1::cpi::mint_license(cpi_ctx, None)

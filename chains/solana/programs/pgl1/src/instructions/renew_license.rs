@@ -13,14 +13,10 @@ pub(crate) fn handler(ctx: Context<RenewLicense>, expires_at: i64) -> Result<()>
     let authorized_actor = &ctx.accounts.authorized_actor;
     require!(authorized_actor.active, PglError::AuthorizedActorInactive);
 
-    // M1 (Access control): at least one of holder / actor must sign.
-    // Anchor cannot express OR-of-signers via account types (two `Signer`s
-    // would require AND), so both stay `UncheckedAccount` with an explicit
-    // checks-effects-interactions-friendly check up front.
-    require!(
-        ctx.accounts.holder.is_signer || ctx.accounts.actor.is_signer,
-        PglError::MissingRenewalSigner
-    );
+    // H-2 (Access control, least privilege): the license holder MUST sign.
+    // `holder: Signer` enforces this at the Anchor constraint level
+    // (fail-closed before the handler runs). No delegated-renewal path:
+    // actor-only renewal is rejected by construction.
 
     // M5 version gates (fail-closed; never misinterpret newer schemas).
     require!(
@@ -57,13 +53,13 @@ pub(crate) fn handler(ctx: Context<RenewLicense>, expires_at: i64) -> Result<()>
 
 #[derive(Accounts)]
 pub struct RenewLicense<'info> {
-    /// M1: either `actor` or `holder` must sign (OR enforced in handler).
-    /// CHECK: validated via authorized_actor constraint (actor == actor.key) and active flag.
+    /// License's authorized actor record (active gate enforced in handler).
+    /// CHECK: identity validated via authorized_actor PDA constraint; no
+    /// signature required — renewal authority is the holder, not the actor.
     pub actor: UncheckedAccount<'info>,
 
-    /// M1: either `holder` or `actor` must sign (OR enforced in handler).
-    /// CHECK: target holder of the license; signer status checked in handler.
-    pub holder: UncheckedAccount<'info>,
+    /// H-2 (Access control): license holder, must sign. Enforced by type.
+    pub holder: Signer<'info>,
 
     #[account(
         seeds = [AUTHORIZED_ACTOR_SEED, actor.key().as_ref()],

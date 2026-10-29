@@ -50,7 +50,7 @@ async function deactivatePaymentOptionForGame(
     .rpc();
 }
 describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
-  it("AC-H2-1: direct mint_license without actor signature fails MissingActorSignature", async () => {
+  it("AC-H2-1 (ANT-886 H-1): direct mint_license without actor signature fails", async () => {
     const base = await setupPeridotFixture();
     const game = await createRegisteredGame(base, {
       gameId: `h2-direct-${Date.now()}`,
@@ -82,9 +82,14 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     } catch (e: any) {
       err = e;
     }
-    expect(err, "expected MissingActorSignature").to.not.be.null;
+    expect(err, "expected actor-signature rejection").to.not.be.null;
+    // ANT-886 H-1: `actor` is now `Signer` — enforcement moved from the
+    // handler (`MissingActorSignature`) to the Anchor constraint level, so
+    // the failure surfaces as a signer/verification error before the handler
+    // runs. Either code proves the same fail-closed property: no signature
+    // → no mint. The legacy code is accepted for IDL compat.
     expect(String(err?.error?.errorCode?.code ?? err?.message)).to.match(
-      /MissingActorSignature/,
+      /MissingActorSignature|signature|signer/i,
     );
   });
 
@@ -288,7 +293,7 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     expect(cfgAfterFlag.isFree).to.eq(true);
   });
 
-  it("AC-M1-1: renew_license with neither holder nor actor signing fails MissingRenewalSigner", async () => {
+  it("AC-M1-1 (ANT-886 H-2): renew_license without holder signature fails", async () => {
     const base = await setupPeridotFixture();
     const game = await createRegisteredGame(base, {
       gameId: `m1-unsigned-${Date.now()}`,
@@ -323,9 +328,13 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     } catch (e: any) {
       err = e;
     }
-    expect(err, "expected MissingRenewalSigner").to.not.be.null;
+    expect(err, "expected holder-signature rejection").to.not.be.null;
+    // ANT-886 H-2: `holder` is now `Signer` — only the license holder may
+    // renew (actor-only renewal rejected by construction). Enforcement moved
+    // from the handler (`MissingRenewalSigner`) to the Anchor constraint
+    // level; either code proves fail-closed. Legacy code accepted for compat.
     expect(String(err?.error?.errorCode?.code ?? err?.message)).to.match(
-      /MissingRenewalSigner/,
+      /MissingRenewalSigner|signature|signer/i,
     );
   });
 
@@ -395,5 +404,99 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     expect(Number(receipt.version)).to.eq(1);
     expect(Number(cfg.version)).to.eq(1);
     expect(Number(regGame.version)).to.eq(1);
+  });
+
+  it("AC-H3-6 (ANT-886 H-3): init_game_store_config without publisher fails", async () => {
+    const base = await setupPeridotFixture();
+    const game = await createRegisteredGame(base, {
+      gameId: `h3-nopub-${Date.now()}`,
+      metadataUri: "https://example.com/h3nopub.json",
+    });
+
+    const gameStoreConfigPda = derivePda(
+      [Buffer.from("game_store_config"), game.gamePda.toBuffer()],
+      base.storeProgram.programId,
+    );
+
+    let err: any = null;
+    try {
+      // Permissionless path removed (ANT-886 H-3): publisher is now a
+      // required Signer. Passing the publisher key WITHOUT its signature
+      // must fail at the Anchor constraint level — config creation without
+      // the publisher's signature is impossible by construction.
+      const impostor = Keypair.generate();
+      await base.storeProgram.methods
+        .initGameStoreConfig(true)
+        .accounts({
+          publisher: impostor.publicKey,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
+          game: game.gamePda,
+          registryGame: game.registryGamePda,
+          gameStoreConfig: gameStoreConfigPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+    } catch (e: any) {
+      err = e;
+    }
+    expect(err, "expected publisher-required rejection").to.not.be.null;
+  });
+
+  it("AC-H3-7 (ANT-886 H-3): set_game_payment_option with wrong publisher fails", async () => {
+    const base = await setupPeridotFixture();
+    const game = await createRegisteredGame(base, {
+      gameId: `h3-wrongpub-${Date.now()}`,
+      metadataUri: "https://example.com/h3wrongpub.json",
+    });
+    await configureStoreForGame(base, game);
+
+    const impostor = Keypair.generate();
+    const acceptedPaymentTokenPda = derivePda(
+      [Buffer.from("accepted_payment_token"), base.paymentMint.toBuffer()],
+      base.storeProgram.programId,
+    );
+    const gamePaymentOptionPda = derivePda(
+      [
+        Buffer.from("game_payment_option"),
+        game.gamePda.toBuffer(),
+        base.paymentMint.toBuffer(),
+      ],
+      base.storeProgram.programId,
+    );
+    const gameStoreConfigPda = derivePda(
+      [Buffer.from("game_store_config"), game.gamePda.toBuffer()],
+      base.storeProgram.programId,
+    );
+
+    let err: any = null;
+    try {
+      await base.storeProgram.methods
+        .setGamePaymentOption(new anchor.BN(999), true)
+        .accounts({
+          publisher: impostor.publicKey,
+          authorizedSourceProgram: base.authorizedSourceProgramPda,
+          sourceProgram: base.pglProgram.programId,
+          authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+          registryProgram: base.registryProgram.programId,
+          game: game.gamePda,
+          registryGame: game.registryGamePda,
+          gameStoreConfig: gameStoreConfigPda,
+          mint: base.paymentMint,
+          acceptedPaymentToken: acceptedPaymentTokenPda,
+          gamePaymentOption: gamePaymentOptionPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([impostor])
+        .rpc();
+    } catch (e: any) {
+      err = e;
+    }
+    expect(err, "expected Unauthorized for wrong publisher").to.not.be.null;
+    expect(String(err?.error?.errorCode?.code ?? err?.message)).to.match(
+      /Unauthorized/,
+    );
   });
 });
