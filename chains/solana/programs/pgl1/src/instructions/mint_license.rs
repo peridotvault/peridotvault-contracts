@@ -11,20 +11,12 @@ use crate::{
 
 pub(crate) fn handler(ctx: Context<MintLicense>, expires_at: Option<i64>) -> Result<()> {
     let authorized_actor = &ctx.accounts.authorized_actor;
+    // H-1 (Access control, least privilege): the authorized mint actor MUST
+    // sign. `Signer` type enforces this at the Anchor constraint level
+    // (fail-closed before the handler runs). Legitimate path is the
+    // game-store CPI where the store actor signs `buy_game` and signer
+    // privilege extends into this CPI (delegated authority-key model).
     require!(authorized_actor.active, PglError::AuthorizedActorInactive);
-
-    // H2 (Access control): the authorized mint actor MUST sign. `actor` stays
-    // `UncheckedAccount` (instead of `Signer`) deliberately so the failure
-    // surfaces as the specific `MissingActorSignature` error (AC-RV-2:
-    // negative tests assert exact codes) rather than a generic Anchor
-    // constraint error. Enforcement is identical: no signature → no mint.
-    // Legitimate path is the game-store CPI where the store actor signs
-    // `buy_game` and signer privilege extends into this CPI (delegated
-    // authority-key model per M0 spec §3.1 Q3).
-    require!(
-        ctx.accounts.actor.is_signer,
-        PglError::MissingActorSignature
-    );
 
     // M5: fail-closed version gate (Reorg & finality N/A; Upgradeability safety:
     // never misinterpret a newer schema).
@@ -65,11 +57,9 @@ pub(crate) fn handler(ctx: Context<MintLicense>, expires_at: Option<i64>) -> Res
 
 #[derive(Accounts)]
 pub struct MintLicense<'info> {
-    /// H2 (Access control): must sign — enforced in handler as
-    /// `MissingActorSignature` (specific error for AC-RV-2).
-    /// CHECK: signer status checked in handler; identity validated via
-    /// authorized_actor PDA constraint below.
-    pub actor: UncheckedAccount<'info>,
+    /// H-1 (Access control): authorized mint actor, must sign.
+    /// Identity validated via authorized_actor PDA constraint below.
+    pub actor: Signer<'info>,
 
     /// Holder who receives the license and pays rent.
     #[account(mut)]

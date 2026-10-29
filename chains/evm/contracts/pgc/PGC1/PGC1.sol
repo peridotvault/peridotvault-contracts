@@ -101,7 +101,12 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
        CONSTRUCTOR
     ====================================================== */
 
-    constructor() ERC1155("") Ownable(msg.sender) {}
+    constructor() ERC1155("") Ownable(msg.sender) {
+        // M-1 (Upgradeability safety): lock the implementation contract so
+        // `initialize` can never seize the logic contract itself. Clones have
+        // separate storage (`_initialized == false`) and are unaffected.
+        _initialized = true;
+    }
 
     /* ======================================================
        ERC1155 METADATA

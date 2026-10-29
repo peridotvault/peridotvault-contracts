@@ -7,14 +7,14 @@ export default defineConfig({
   solidity: {
     profiles: {
       default: {
-        version: "0.8.28",
+        version: "0.8.38",
         settings: {
           optimizer: { enabled: true, runs: 200 },
           viaIR: true,
         },
       },
       production: {
-        version: "0.8.28",
+        version: "0.8.38",
         settings: {
           optimizer: { enabled: true, runs: 200 },
           viaIR: true,

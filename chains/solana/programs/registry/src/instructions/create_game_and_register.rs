@@ -279,7 +279,7 @@ fn invoke_init_game_store_config<'info>(
 
     let accounts = vec![
         AccountMeta::new(payer.key(), true), // payer
-        AccountMeta::new_readonly(payer.key(), true), // publisher (Option<Signer>)
+        AccountMeta::new_readonly(payer.key(), true), // publisher: Signer (H-3)
         AccountMeta::new_readonly(source_program.key(), false),
         AccountMeta::new_readonly(authorized_source_program.key(), false),
         AccountMeta::new_readonly(registry_program.key(), false),
