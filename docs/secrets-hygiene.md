@@ -1,11 +1,12 @@
-# Secrets hygiene (ANT-504)
+# Secrets hygiene (ANT-504, ANT-885 C-1)
 
 ## Rule
 
 Real environment files are **never committed**. `chains/evm/.env` was
-accidentally tracked and is now untracked + git-ignored. Rotation of the
-exposed wallet/API key and any history rewrite are owned by the board (human)
-under ANT-502 — agents must not attempt either.
+accidentally tracked and is now untracked + git-ignored. `notes/account.txt`
+(carries deployer key material) was likewise tracked and is now untracked +
+git-ignored (ANT-885). Rotation of the exposed wallet/API key and any history
+rewrite are owned by the board (human) — agents must not attempt either.
 
 ## Setup (every clone/worktree, one command)
 
@@ -27,10 +28,12 @@ git config core.hooksPath   # must print: .githooks
 ## What the hook does
 
 1. **Fail closed on real env files.** Staging `.env` / `.env.<name>` is
-   rejected; only `*.env.example` may be committed.
+   rejected; only `*.env.example` may be committed. `notes/account.txt`
+   is likewise blocked (ANT-885).
 2. **Content scan.** `gitleaks protect --staged` with the repo-local
    `.gitleaks.toml`, or a fallback pattern scan for private-key/seed
    assignments (values redacted in output — secrets never land in logs).
+   CI runs the same scan on every push/PR via `.github/workflows/secrets-scan.yml`.
 
 ## If the hook fires
 

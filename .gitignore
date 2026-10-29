@@ -27,3 +27,7 @@ chains/solana/.yarn/
 *.env
 .env.*
 !.env.example
+
+# Secrets hygiene (ANT-885 C-1): deployer key material was tracked here.
+# File stays in working tree for local custody ops, never in git.
+notes/account.txt

@@ -10,9 +10,10 @@ CONFIG="$REPO_ROOT/.gitleaks.toml"
 
 # 1) Fail closed: never allow a real .env file into a commit.
 #    Staged paths ending in .env or like .env.local are blocked; *.env.example is allowed.
+#    ANT-885: notes/account.txt carries deployer key material — blocked too.
 BLOCKED="$(git diff --cached --name-only --diff-filter=ACM -z \
   | tr '\0' '\n' \
-  | grep -E '(^|/)[^/]*\.env(\.[^/]*)?$' \
+  | grep -E '(^|/)[^/]*\.env(\.[^/]*)?$|(^|/)notes/account\.txt$' \
   | grep -v '\.env\.example$' || true)"
 if [ -n "$BLOCKED" ]; then
   echo "pre-commit: refusing to commit real env file(s):" >&2
@@ -28,7 +29,7 @@ else
   echo "pre-commit: gitleaks not installed — running fallback scan." >&2
   echo "Install gitleaks so this hook runs the full rule set: https://github.com/gitleaks/gitleaks#installing" >&2
   SUSPECT="$(git diff --cached -U0 -- . \
-    | grep -E '^\+\s*[^#]*\b(DEPLOYER_PRIVATE_KEY|SEPOLIA_PRIVATE_KEY|_PRIVATE_KEY|SEEDPHRASE|MNEMONIC)\b\s*[:=]' \
+    | grep -E -i '^\+\s*[^#]*\b(DEPLOYER_PRIVATE_KEY|SEPOLIA_PRIVATE_KEY|PRIVATE[ _-]?KEY|SEED[ _-]?PHRASE|MNEMONIC)\b\s*[:=]' \
     | grep -v -E 'YOUR_|EXAMPLE|CHANGEME|PLACEHOLDER|<[^>]*>|""|'"''"'' || true)"
   if [ -n "$SUSPECT" ]; then
     # Redact values: never print potential secret material to logs.
