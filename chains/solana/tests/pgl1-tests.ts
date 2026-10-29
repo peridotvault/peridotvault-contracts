@@ -589,7 +589,8 @@ describe("pgl1 program", () => {
           license: licensePda,
           systemProgram: SystemProgram.programId,
         })
-        .signers([base.authority])
+        // ANT-897 (H-1): actor AND holder are both `Signer` now.
+        .signers([base.authority, base.gamer])
         .rpc();
 
       const license = (await base.pglProgram.account.license.fetch(licensePda)) as any;
@@ -641,7 +642,8 @@ describe("pgl1 program", () => {
           license: licensePda,
           systemProgram: SystemProgram.programId,
         })
-        .signers([base.authority])
+        // ANT-897 (H-1): actor AND holder are both `Signer` now.
+        .signers([base.authority, base.gamer])
         .rpc();
 
       const license = (await base.pglProgram.account.license.fetch(licensePda)) as any;
@@ -690,7 +692,9 @@ describe("pgl1 program", () => {
           license: licensePda,
           systemProgram: SystemProgram.programId,
         })
-        .signers([base.authority])
+        // ANT-897 (H-1): holder signs so the duplicate below fails with
+        // LicenseAlreadyExists — not a missing-signature error.
+        .signers([base.authority, base.gamer])
         .rpc();
 
       let failed = false;
@@ -705,7 +709,7 @@ describe("pgl1 program", () => {
             license: licensePda,
             systemProgram: SystemProgram.programId,
           })
-          .signers([base.authority])
+          .signers([base.authority, base.gamer])
           .rpc();
       } catch (error: any) {
         failed = true;
@@ -753,6 +757,8 @@ describe("pgl1 program", () => {
 
       let failed = false;
       try {
+        // ANT-897: holder signs so this fails past signature checks at
+        // account validation (unknown actor) — fail-closed either way.
         await base.pglProgram.methods
           .mintLicense(null)
           .accounts({
@@ -763,7 +769,7 @@ describe("pgl1 program", () => {
             license: licensePda,
             systemProgram: SystemProgram.programId,
           })
-          .signers([unauthorizedActor])
+          .signers([unauthorizedActor, base.gamer])
           .rpc();
       } catch (error: any) {
         failed = true;
@@ -817,9 +823,14 @@ describe("pgl1 program", () => {
           license: licensePda,
           systemProgram: SystemProgram.programId,
         })
-        .signers([base.authority])
+        // ANT-897 (H-1): actor AND holder are both `Signer` now.
+        .signers([base.authority, base.gamer])
         .rpc();
 
+      // ANT-897 (H-2): renewal authority is the holder, not the actor.
+      // `actor` is UncheckedAccount (no signature needed); `holder` must
+      // sign. Holder-only renewal also pins that actor signatures are
+      // neither required nor sufficient.
       await base.pglProgram.methods
         .renewLicense(new anchor.BN(newExpiry))
         .accounts({
@@ -830,7 +841,7 @@ describe("pgl1 program", () => {
           license: licensePda,
           systemProgram: SystemProgram.programId,
         })
-        .signers([base.authority])
+        .signers([base.gamer])
         .rpc();
 
       const license = (await base.pglProgram.account.license.fetch(licensePda)) as any;
@@ -872,6 +883,9 @@ describe("pgl1 program", () => {
 
       let failed = false;
       try {
+        // ANT-897 (H-2): holder signs so the failure below is genuinely
+        // about the missing license account — not a missing holder
+        // signature. Actor-only renewal is rejected by construction.
         await base.pglProgram.methods
           .renewLicense(new anchor.BN(newExpiry))
           .accounts({
@@ -882,7 +896,7 @@ describe("pgl1 program", () => {
             license: licensePda,
             systemProgram: SystemProgram.programId,
           })
-          .signers([base.authority])
+          .signers([base.gamer])
           .rpc();
       } catch (error: any) {
         failed = true;

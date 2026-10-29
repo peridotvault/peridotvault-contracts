@@ -43,7 +43,7 @@ export type GameFixture = {
 export type StoreGameFixture = {
   gameStoreConfigPda: PublicKey;
   gamePaymentOptionPda: PublicKey;
-  payment_mint: PublicKey;
+  paymentMint: PublicKey;
   basePrice: number;
 };
 
@@ -55,9 +55,9 @@ export type BaseFixture = {
   publisher: Keypair;
   gamer: Keypair;
   pglProgram: any;
-  registry_program: any;
+  registryProgram: any;
   storeProgram: any;
-  payment_mint: PublicKey;
+  paymentMint: PublicKey;
   pglConfigPda: PublicKey;
   registryConfigPda: PublicKey;
   storeConfigPda: PublicKey;

@@ -84,12 +84,13 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     }
     expect(err, "expected actor-signature rejection").to.not.be.null;
     // ANT-886 H-1: `actor` is now `Signer` — enforcement moved from the
-    // handler (`MissingActorSignature`) to the Anchor constraint level, so
-    // the failure surfaces as a signer/verification error before the handler
-    // runs. Either code proves the same fail-closed property: no signature
-    // → no mint. The legacy code is accepted for IDL compat.
+    // handler (`MissingActorSignature`) to the Anchor constraint level
+    // (`ConstraintSigner`, code 2002) or the runtime preflight
+    // ("Signature verification failed"). Any of the three proves the same
+    // fail-closed property: no signature → no mint. Alternation is pinned
+    // to exact Anchor/runtime/legacy tokens so prose can never satisfy it.
     expect(String(err?.error?.errorCode?.code ?? err?.message)).to.match(
-      /MissingActorSignature|signature|signer/i,
+      /MissingActorSignature|ConstraintSigner|Signature verification failed/,
     );
   });
 
@@ -332,9 +333,11 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     // ANT-886 H-2: `holder` is now `Signer` — only the license holder may
     // renew (actor-only renewal rejected by construction). Enforcement moved
     // from the handler (`MissingRenewalSigner`) to the Anchor constraint
-    // level; either code proves fail-closed. Legacy code accepted for compat.
+    // level (`ConstraintSigner`, code 2002) or the runtime preflight
+    // ("Signature verification failed"). Alternation is pinned to exact
+    // Anchor/runtime/legacy tokens so prose can never satisfy it.
     expect(String(err?.error?.errorCode?.code ?? err?.message)).to.match(
-      /MissingRenewalSigner|signature|signer/i,
+      /MissingRenewalSigner|ConstraintSigner|Signature verification failed/,
     );
   });
 

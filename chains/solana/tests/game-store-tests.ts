@@ -598,6 +598,93 @@ describe("game-store program", () => {
     });
   });
 
+  describe("active_payment_options invariant (ANT-897, Fuzz & invariant testing lens)", () => {
+    // Money-path property: the on-chain `active_payment_options` counter
+    // must ALWAYS equal the number of ACTIVE `GamePaymentOption` PDAs for
+    // the game. On-chain code cannot enumerate PDAs, so the test pins the
+    // property off-chain after every transition shape: create, price-only
+    // update (no double-count), deactivate, double-deactivate (no
+    // underflow), re-activate, second mint option, and close (remove) of
+    // both active and inactive options.
+    async function expectCounterMatchesOptions(
+      base: Awaited<ReturnType<typeof setupPeridotFixture>>,
+      game: Awaited<ReturnType<typeof createRegisteredGame>>,
+      gameStoreConfigPda: PublicKey,
+      step: string,
+    ) {
+      const cfg = (await base.storeProgram.account.gameStoreConfig.fetch(
+        gameStoreConfigPda,
+      )) as any;
+      const options = await base.storeProgram.account.gamePaymentOption.all([
+        { memcmp: { offset: 8, bytes: game.gamePda.toBase58() } },
+      ]);
+      const activeCount = options.filter((o: any) => o.account.active).length;
+      expect(
+        Number(cfg.activePaymentOptions),
+        `${step}: counter=${cfg.activePaymentOptions} active PDAs=${activeCount}`,
+      ).to.eq(activeCount);
+    }
+
+    async function removePaymentOption(
+      base: Awaited<ReturnType<typeof setupPeridotFixture>>,
+      game: Awaited<ReturnType<typeof createRegisteredGame>>,
+      store: Awaited<ReturnType<typeof configureStoreForGame>>,
+    ) {
+      await base.storeProgram.methods
+        .removeGamePaymentOption()
+        .accounts({
+          publisher: game.publisher.publicKey,
+          authorized_source_program: base.authorizedSourceProgramPda,
+          source_program: base.pglProgram.programId,
+          game: game.gamePda,
+          game_store_config: store.gameStoreConfigPda,
+          mint: store.paymentMint,
+          game_payment_option: store.gamePaymentOptionPda,
+        })
+        .signers([game.publisher])
+        .rpc();
+    }
+
+    it("counter tracks every activate/deactivate/remove transition", async () => {
+      const base = await setupPeridotFixture();
+      const game = await createRegisteredGame(base);
+      const store = await configureStoreForGame(base, game);
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "init");
+
+      // Price-only update on an active option: counter unchanged (1).
+      await configureStoreForGame(base, game, { basePrice: DEFAULT_GAME_PRICE + 1 });
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "price-update");
+
+      // Deactivate, then deactivate again: 0, no underflow.
+      await configureStoreForGame(base, game, { active: false });
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "deactivate");
+      await configureStoreForGame(base, game, { active: false });
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "double-deactivate");
+
+      // Re-activate: back to 1.
+      await configureStoreForGame(base, game, { active: true });
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "reactivate");
+
+      // Second mint gets its own option PDA: 2.
+      const mint2 = Keypair.generate().publicKey;
+      const store2 = await configureStoreForGame(base, game, { paymentMint: mint2 });
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "second-option");
+      expect(store2.gamePaymentOptionPda.toBase58()).to.not.eq(
+        store.gamePaymentOptionPda.toBase58(),
+      );
+
+      // Deactivate the second option: 1.
+      await configureStoreForGame(base, game, { paymentMint: mint2, active: false });
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "deactivate-second");
+
+      // Close the ACTIVE first option: 0. Close the INACTIVE second: still 0.
+      await removePaymentOption(base, game, store);
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "remove-active");
+      await removePaymentOption(base, game, store2);
+      await expectCounterMatchesOptions(base, game, store.gameStoreConfigPda, "remove-inactive");
+    });
+  });
+
   describe("discount", () => {
     it("set_discount applies discount", async () => {
       const base = await setupPeridotFixture();

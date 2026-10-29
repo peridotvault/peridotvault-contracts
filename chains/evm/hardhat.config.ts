@@ -42,8 +42,8 @@ export default defineConfig({
       type: "http",
       chainType: "op",
       chainId: 84532,
-      accounts: [process.env.DEPLOYER_PRIVATE_KEY!],
-      url: process.env.BASE_SEPOLIA_RPC!
+      url: configVariable("BASE_SEPOLIA_RPC"),
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
     },
   },
 });
