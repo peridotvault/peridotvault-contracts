@@ -46,6 +46,9 @@ describe("gamer library", () => {
         license: licenseA,
         systemProgram: SystemProgram.programId,
       })
+      // ANT-897 (H-1): actor AND holder are both `Signer` — the provider
+      // wallet signs as fee payer (actor), the gamer must sign explicitly.
+      .signers([base.gamer])
       .rpc();
 
     const gameB = await createRegisteredGame(base);
@@ -64,6 +67,8 @@ describe("gamer library", () => {
         license: licenseB,
         systemProgram: SystemProgram.programId,
       })
+      // ANT-897 (H-1): see above — holder must sign.
+      .signers([base.gamer])
       .rpc();
 
     const licenses = await base.pglProgram.account.license.all([

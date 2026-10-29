@@ -57,12 +57,20 @@ pub struct BuyGame<'info> {
     /// CHECK: validated manually in handler via PDA derivation for paid path.
     pub game_payment_option: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
+    /// `mut`: debited by the `transfer_checked` CPI (restores 4a5c19d).
+    #[account(mut)]
     pub buyer_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
+    /// `mut`: credited by the `transfer_checked` CPI (restores 4a5c19d).
+    #[account(mut)]
     pub publisher_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
+    /// `mut`: credited by the `transfer_checked` CPI (restores 4a5c19d).
+    #[account(mut)]
     pub treasury_payment_account: Option<UncheckedAccount<'info>>,
     /// CHECK: validated manually in handler for paid path.
+    /// `mut`: credited by the `transfer_checked` CPI when a referrer is set.
+    #[account(mut)]
     pub referrer_payment_account: Option<UncheckedAccount<'info>>,
 
     // H-1 (Access control): the store mint authority. Must sign `buy_game`

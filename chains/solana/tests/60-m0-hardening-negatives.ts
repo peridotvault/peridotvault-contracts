@@ -6,6 +6,7 @@ import {
   configureStoreForGame,
   createRegisteredGame,
   derivePda,
+  maybeFundSigner,
   setupPeridotFixture,
 } from "./helpers/peridot";
 
@@ -33,18 +34,19 @@ async function deactivatePaymentOptionForGame(
   await base.storeProgram.methods
     .setGamePaymentOption(new anchor.BN(store.basePrice), false)
     .accounts({
+      payer: game.publisher.publicKey,
       publisher: game.publisher.publicKey,
-      authorized_source_program: base.authorizedSourceProgramPda,
-      source_program: base.pglProgram.programId,
-      authorized_registry_program: base.authorizedRegistryProgramPda,
-      registry_program: base.registryProgram.programId,
+      authorizedSourceProgram: base.authorizedSourceProgramPda,
+      sourceProgram: base.pglProgram.programId,
+      authorizedRegistryProgram: base.authorizedRegistryProgramPda,
+      registryProgram: base.registryProgram.programId,
       game: game.gamePda,
-      registry_game: game.registryGamePda,
-      game_store_config: store.gameStoreConfigPda,
+      registryGame: game.registryGamePda,
+      gameStoreConfig: store.gameStoreConfigPda,
       mint: store.paymentMint,
-      accepted_payment_token: acceptedPaymentTokenPda,
-      game_payment_option: store.gamePaymentOptionPda,
-      system_program: SystemProgram.programId,
+      acceptedPaymentToken: acceptedPaymentTokenPda,
+      gamePaymentOption: store.gamePaymentOptionPda,
+      systemProgram: SystemProgram.programId,
     })
     .signers([game.publisher])
     .rpc();
@@ -58,6 +60,32 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     });
 
     const attacker = Keypair.generate();
+    // Fund the attacker so rent is covered: the ONLY failure reason below
+    // must be the missing actor signature (fail-closed), not an unfunded
+    // holder. Without this the negative is vacuous.
+    await maybeFundSigner(base.provider, attacker);
+
+    // The actor must be a keypair that NEITHER signs NOR pays: the provider
+    // wallet always signs as fee payer, so using the authority as actor
+    // would silently satisfy the signature and vacate the negative.
+    // Register it as an authorized actor first, so the missing signature
+    // is the one and only reason the mint fails.
+    const actor = Keypair.generate();
+    const authorizedActorPda = derivePda(
+      [Buffer.from("authorized_actor"), actor.publicKey.toBuffer()],
+      base.pglProgram.programId,
+    );
+    await base.pglProgram.methods
+      .addAuthorizedActor()
+      .accounts({
+        authority: base.authority.publicKey,
+        actor: actor.publicKey,
+        pglConfig: base.pglConfigPda,
+        authorizedActor: authorizedActorPda,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
     const licensePda = derivePda(
       [Buffer.from("license"), attacker.publicKey.toBuffer(), game.gamePda.toBuffer()],
       base.pglProgram.programId,
@@ -66,13 +94,13 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     let err: any = null;
     try {
       // actor = authorized store actor BUT the actor keypair does NOT sign.
-      // Only the holder (attacker) signs as payer.
+      // Only the holder (attacker) signs.
       await base.pglProgram.methods
         .mintLicense(null)
         .accounts({
-          actor: base.authority.publicKey,
+          actor: actor.publicKey,
           holder: attacker.publicKey,
-          authorizedActor: base.storeActorAuthorizedPda,
+          authorizedActor: authorizedActorPda,
           game: game.gamePda,
           license: licensePda,
           systemProgram: SystemProgram.programId,
@@ -84,12 +112,13 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     }
     expect(err, "expected actor-signature rejection").to.not.be.null;
     // ANT-886 H-1: `actor` is now `Signer` — enforcement moved from the
-    // handler (`MissingActorSignature`) to the Anchor constraint level, so
-    // the failure surfaces as a signer/verification error before the handler
-    // runs. Either code proves the same fail-closed property: no signature
-    // → no mint. The legacy code is accepted for IDL compat.
+    // handler (`MissingActorSignature`) to the Anchor constraint level
+    // (`ConstraintSigner`, code 2002) or the runtime preflight
+    // ("Signature verification failed"). Any of the three proves the same
+    // fail-closed property: no signature → no mint. Alternation is pinned
+    // to exact Anchor/runtime/legacy tokens so prose can never satisfy it.
     expect(String(err?.error?.errorCode?.code ?? err?.message)).to.match(
-      /MissingActorSignature|signature|signer/i,
+      /MissingActorSignature|ConstraintSigner|Signature verification failed/,
     );
   });
 
@@ -259,12 +288,12 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
       .removeGamePaymentOption()
       .accounts({
         publisher: game.publisher.publicKey,
-        authorized_source_program: base.authorizedSourceProgramPda,
-        source_program: base.pglProgram.programId,
+        authorizedSourceProgram: base.authorizedSourceProgramPda,
+        sourceProgram: base.pglProgram.programId,
         game: game.gamePda,
-        game_store_config: store.gameStoreConfigPda,
+        gameStoreConfig: store.gameStoreConfigPda,
         mint: base.paymentMint,
-        game_payment_option: store.gamePaymentOptionPda,
+        gamePaymentOption: store.gamePaymentOptionPda,
       })
       .signers([game.publisher])
       .rpc();
@@ -307,13 +336,15 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
       base.pglProgram.programId,
     );
     const newExpiry = new anchor.BN(Math.floor(Date.now() / 1000) + 172800);
-    const outsider = Keypair.generate();
 
     let err: any = null;
     try {
-      // Neither the holder nor the authorized actor signs: an unrelated
-      // outsider signs instead (pays nothing; the call must still fail).
-      // NOTE: holder/actor are passed as the real keys but without signatures.
+      // Neither the holder nor the authorized actor signs: no extra
+      // `.signers()` at all (the fee payer signs as payer only). The call
+      // must fail on the missing holder signature. NOTE: an unrelated
+      // third-party signer must NOT be attached — the runtime rejects
+      // signatures from keys absent from the instruction ("unknown
+      // signer"), which would vacate the negative.
       await base.pglProgram.methods
         .renewLicense(newExpiry)
         .accounts({
@@ -323,7 +354,6 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
           game: game.gamePda,
           license: licensePda,
         })
-        .signers([outsider])
         .rpc();
     } catch (e: any) {
       err = e;
@@ -332,9 +362,11 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
     // ANT-886 H-2: `holder` is now `Signer` — only the license holder may
     // renew (actor-only renewal rejected by construction). Enforcement moved
     // from the handler (`MissingRenewalSigner`) to the Anchor constraint
-    // level; either code proves fail-closed. Legacy code accepted for compat.
+    // level (`ConstraintSigner`, code 2002) or the runtime preflight
+    // ("Signature verification failed"). Alternation is pinned to exact
+    // Anchor/runtime/legacy tokens so prose can never satisfy it.
     expect(String(err?.error?.errorCode?.code ?? err?.message)).to.match(
-      /MissingRenewalSigner|signature|signer/i,
+      /MissingRenewalSigner|ConstraintSigner|Signature verification failed/,
     );
   });
 
@@ -428,6 +460,7 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
       await base.storeProgram.methods
         .initGameStoreConfig(true)
         .accounts({
+          payer: base.authority.publicKey,
           publisher: impostor.publicKey,
           authorizedSourceProgram: base.authorizedSourceProgramPda,
           sourceProgram: base.pglProgram.programId,
@@ -476,6 +509,7 @@ describe("M0 hardening negatives (H2/H3/M1/M5)", () => {
       await base.storeProgram.methods
         .setGamePaymentOption(new anchor.BN(999), true)
         .accounts({
+          payer: base.authority.publicKey,
           publisher: impostor.publicKey,
           authorizedSourceProgram: base.authorizedSourceProgramPda,
           sourceProgram: base.pglProgram.programId,
