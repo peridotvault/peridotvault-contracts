@@ -75,4 +75,8 @@ pub mod pgl1 {
     pub fn renew_license(ctx: Context<RenewLicense>, expires_at: i64) -> Result<()> {
         renew_license::handler(ctx, expires_at)
     }
+
+    pub fn revoke_license(ctx: Context<RevokeLicense>) -> Result<()> {
+        revoke_license::handler(ctx)
+    }
 }
