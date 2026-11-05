@@ -331,6 +331,22 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         _burn(msg.sender, PGC1Constants.LICENSE_ID, 1);
     }
 
+    /// @notice Owner-only license revocation (FR4-ON: burn path).
+    /// @dev PGC1 is soulbound (`_update` blocks transfers), so the holder
+    ///      cannot move the license away; only the owner can seize/burn it.
+    ///      Burns the full LICENSE_ID balance, then emits `LicenseRevoked`
+    ///      for the indexer mirror (`POST /internal/onchain/sync` with
+    ///      `status=revoked`). Purchase history (`purchasedAt` / `_buyers`)
+    ///      is intentionally preserved as an audit trail.
+    ///      Checks-effects-interactions: state (`_burn`) before event.
+    function revoke(address holder) external override onlyOwner nonReentrant {
+        if (holder == address(0)) revert PGC1Errors.ZeroAddress();
+        if (balanceOf(holder, PGC1Constants.LICENSE_ID) == 0)
+            revert PGC1Errors.NoLicenseToRevoke();
+        _burn(holder, PGC1Constants.LICENSE_ID, 1);
+        emit PGC1Events.LicenseRevoked(holder);
+    }
+
     /* ======================================================
        ADMIN
     ====================================================== */

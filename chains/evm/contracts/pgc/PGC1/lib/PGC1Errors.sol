@@ -16,6 +16,8 @@ library PGC1Errors {
 
     error NonTransferable();
 
+    error NoLicenseToRevoke();
+
     error EmptyMetadataHash();
     error EmptyMetadataURI();
     error NoMetadataPublished();

@@ -26,6 +26,7 @@ interface IPGC1 {
     // --- actions ---
     function buy() external payable;
     function burn() external;
+    function revoke(address holder) external;
 
     // --- admin ---
     function setPrice(uint256 newPrice) external;
