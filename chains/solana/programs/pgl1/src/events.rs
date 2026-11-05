@@ -91,3 +91,12 @@ pub struct LicenseRenewed {
     pub old_expires_at: Option<i64>,
     pub new_expires_at: i64,
 }
+
+#[event]
+pub struct LicenseRevoked {
+    pub license: Pubkey,
+    pub actor: Pubkey,
+    pub holder: Pubkey,
+    pub game: Pubkey,
+    pub revoked_at: i64,
+}
