@@ -327,8 +327,20 @@ contract PGC1 is ERC1155Supply, Ownable, ReentrancyGuard, IPGC1 {
         emit PGC1Events.Purchased(msg.sender, price);
     }
 
+    /// @notice Holder self-burn (self-revoke) of the full LICENSE_ID balance.
+    /// @dev PGC1 is soulbound (at most 1 per holder), so this burns the full
+    ///      balance instead of a literal 1. Emits `LicenseRevoked` so the
+    ///      indexer mirror does not stay confirmed while onchain balance is 0
+    ///      (mirror consumes it as `status=revoked`, same as owner `revoke`).
+    ///      Reentrancy & checks-effects-interactions: no external calls;
+    ///      state (`_burn`) before event. Gas: one `balanceOf` SLOAD to size
+    ///      the burn; zero-balance burns revert `NoLicenseToRevoke` instead
+    ///      of emitting a spurious revoke for a no-op (amount 0) burn.
     function burn() external override {
-        _burn(msg.sender, PGC1Constants.LICENSE_ID, 1);
+        uint256 bal = balanceOf(msg.sender, PGC1Constants.LICENSE_ID);
+        if (bal == 0) revert PGC1Errors.NoLicenseToRevoke();
+        _burn(msg.sender, PGC1Constants.LICENSE_ID, bal);
+        emit PGC1Events.LicenseRevoked(msg.sender);
     }
 
     /// @notice Owner-only license revocation (FR4-ON: burn path).

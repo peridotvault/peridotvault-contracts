@@ -132,3 +132,116 @@ describe("PGC1 revoke (ANT-941 FR4-ON)", async function () {
     );
   });
 });
+
+describe("PGC1 self-burn revoke event (ANT-954)", async function () {
+  const { viem } = await network.connect();
+  const publicClient = await viem.getPublicClient();
+
+  const PRICE = 100n; // wei, native payment (paymentToken = 0x0)
+  const LICENSE_ID = 1n;
+
+  async function deployGame(gameId: string) {
+    const [deployer, buyer, stranger] = await viem.getWalletClients();
+    const treasury = await viem.deployContract("PeridotTreasuryRouter", [
+      deployer.account.address,
+      [deployer.account.address],
+    ]);
+    const registry = await viem.deployContract("PeridotRegistry", []);
+    const pgc1Impl = await viem.deployContract("PGC1", []);
+    const factory = await viem.deployContract("PGC1Factory", [
+      pgc1Impl.address,
+      treasury.address,
+      "0x0000000000000000000000000000000000000000",
+      0n, // publishFee 0 for tests
+    ]);
+    await registry.write.setFactory([factory.address]);
+    await factory.write.setRegistry([registry.address]);
+
+    await factory.write.publishGame([
+      {
+        tokenURI1155: "ipfs://ant954-test",
+        initialContractMetaHash: `0x${"11".repeat(32)}`,
+        initialContractMetaURI: "ipfs://ant954-meta",
+        gameId,
+        paymentToken: "0x0000000000000000000000000000000000000000",
+        price: PRICE,
+        maxSupply: 0n, // unlimited
+      },
+    ]);
+    const record = (await registry.read.games([gameId])) as any;
+    const cloneAddr = record[0] as `0x${string}`;
+    assert.ok(cloneAddr !== "0x0000000000000000000000000000000000000000");
+    const pgc1 = await viem.getContractAt("PGC1", cloneAddr);
+
+    const buyAs = (account: { address: `0x${string}` }) =>
+      (pgc1.write.buy as any)([], { value: PRICE, account });
+    const burnAs = (account: { address: `0x${string}` }) =>
+      (pgc1.write.burn as any)([], { account });
+    return { pgc1, deployer, buyer, stranger, buyAs, burnAs };
+  }
+
+  it("self-burn emits LicenseRevoked; mirror consumes it as revoked", async function () {
+    const { pgc1, buyer, buyAs, burnAs } = await deployGame("ant954-selfburn");
+
+    const buyHash = (await buyAs(buyer.account)) as `0x${string}`;
+    const buyReceipt = await publicClient.waitForTransactionReceipt({
+      hash: buyHash,
+    });
+    console.log("      buy gasUsed:", buyReceipt.gasUsed.toString());
+    assert.equal(
+      await pgc1.read.balanceOf([buyer.account.address, LICENSE_ID]),
+      1n,
+    );
+
+    // Self-burn must emit LicenseRevoked(holder) — the indexer mirror
+    // consumes this as `status=revoked` (same as owner revoke).
+    await viem.assertions.emitWithArgs(
+      burnAs(buyer.account),
+      pgc1,
+      "LicenseRevoked",
+      [getAddress(buyer.account.address)],
+    );
+    assert.equal(
+      await pgc1.read.balanceOf([buyer.account.address, LICENSE_ID]),
+      0n,
+    );
+  });
+
+  it("empty self-burn reverts NoLicenseToRevoke (no spurious revoke)", async function () {
+    const { pgc1, stranger, burnAs } = await deployGame("ant954-empty");
+
+    await viem.assertions.revertWithCustomError(
+      burnAs(stranger.account),
+      pgc1,
+      "NoLicenseToRevoke",
+    );
+  });
+
+  it("double self-burn reverts; re-buy after self-burn works", async function () {
+    const { pgc1, buyer, buyAs, burnAs } =
+      await deployGame("ant954-rebuy");
+    await buyAs(buyer.account);
+
+    const burnHash = (await burnAs(buyer.account)) as `0x${string}`;
+    const burnReceipt = await publicClient.waitForTransactionReceipt({
+      hash: burnHash,
+    });
+    console.log("      self-burn gasUsed:", burnReceipt.gasUsed.toString());
+    assert.equal(
+      await pgc1.read.balanceOf([buyer.account.address, LICENSE_ID]),
+      0n,
+    );
+
+    await viem.assertions.revertWithCustomError(
+      burnAs(buyer.account),
+      pgc1,
+      "NoLicenseToRevoke",
+    );
+
+    await buyAs(buyer.account);
+    assert.equal(
+      await pgc1.read.balanceOf([buyer.account.address, LICENSE_ID]),
+      1n,
+    );
+  });
+});
